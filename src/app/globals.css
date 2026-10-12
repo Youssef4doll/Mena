@@ -1,0 +1,119 @@
+@import "tailwindcss";
+
+/*
+ * Mena — the palette of a Tunisian summer: lime-washed walls (cream), Sidi
+ * Bou Saïd blue for every action, terracotta for what is reduced, olive for
+ * what is in stock. One action colour, so the eye always knows where to tap.
+ */
+@theme {
+  --color-cream: #f7f3ec;
+  --color-sand: #efe7da;
+  --color-sand-2: #e6dccb;
+  --color-line: #e2d8c6;
+  --color-ink: #17181c;
+  --color-ink-2: #3a3a3f;
+  --color-muted: #6e685f;
+  --color-sea: #1d4f9e;
+  --color-sea-2: #173f80;
+  --color-sea-soft: #e3ebf7;
+  --color-clay: #b04f2c;
+  --color-clay-soft: #f6e4dc;
+  --color-olive: #476436;
+  --color-olive-soft: #e5ecdc;
+  --color-danger: #b42318;
+
+  --font-display: var(--font-fraunces), ui-serif, Georgia, serif;
+  --font-sans: var(--font-inter), var(--font-plex-ar), ui-sans-serif, system-ui, sans-serif;
+  --font-arabic: var(--font-plex-ar), var(--font-inter), ui-sans-serif, system-ui, sans-serif;
+
+  --radius-card: 1rem;
+  --shadow-soft: 0 1px 2px rgb(23 24 28 / 0.04), 0 8px 24px -12px rgb(23 24 28 / 0.12);
+  --shadow-lift: 0 2px 6px rgb(23 24 28 / 0.06), 0 18px 40px -18px rgb(23 24 28 / 0.28);
+
+  --animate-sheet-up: sheet-up 0.28s cubic-bezier(0.2, 0.8, 0.2, 1);
+  --animate-sheet-side: sheet-side 0.28s cubic-bezier(0.2, 0.8, 0.2, 1);
+  --animate-fade: fade 0.2s ease-out;
+  --animate-pop: pop 0.35s cubic-bezier(0.2, 0.8, 0.2, 1);
+
+  @keyframes sheet-up {
+    from { transform: translateY(100%); }
+    to { transform: translateY(0); }
+  }
+  @keyframes sheet-side {
+    from { transform: translateX(var(--sheet-from, 100%)); }
+    to { transform: translateX(0); }
+  }
+  @keyframes fade {
+    from { opacity: 0; }
+    to { opacity: 1; }
+  }
+  @keyframes pop {
+    0% { transform: scale(1); }
+    40% { transform: scale(1.25); }
+    100% { transform: scale(1); }
+  }
+}
+
+html {
+  -webkit-text-size-adjust: 100%;
+  -webkit-tap-highlight-color: transparent;
+}
+
+body {
+  background: var(--color-cream);
+  color: var(--color-ink);
+  font-family: var(--font-sans);
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+}
+
+[dir="rtl"] body {
+  font-family: var(--font-arabic);
+}
+
+/* Arabic reads better a touch larger and looser. */
+[dir="rtl"] .font-display {
+  font-family: var(--font-arabic);
+  font-weight: 700;
+  letter-spacing: 0;
+}
+
+/* Prices, refs and phone numbers stay left-to-right inside Arabic text. */
+.ltr-nums {
+  direction: ltr;
+  unicode-bidi: isolate;
+  font-variant-numeric: tabular-nums;
+}
+
+.no-scrollbar {
+  scrollbar-width: none;
+}
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
+/* The arch: the shape of a Tunisian doorway, used for images and the logo. */
+.arch {
+  border-radius: 999px 999px 1rem 1rem;
+}
+
+input,
+select,
+textarea {
+  font-size: 16px; /* below 16px, iOS zooms the page on focus */
+}
+
+:focus-visible {
+  outline: 2px solid var(--color-sea);
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}

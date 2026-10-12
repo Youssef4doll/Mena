@@ -147,6 +147,12 @@ async function popularIn(where: Prisma.ProductWhereInput, take: number) {
   return [...ranked, ...rest];
 }
 
+export const getShop = unstable_cache(
+  async (sort: SortKey) => (sort === "popular" ? popularIn({}, 120) : cards({}, orderFor(sort), 120)),
+  ["shop-v1"],
+  { tags: [CATALOG_TAG], revalidate: TTL },
+);
+
 export const getHome = unstable_cache(
   async () => {
     const since = new Date(Date.now() - 60 * 86_400_000);
