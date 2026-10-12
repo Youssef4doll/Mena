@@ -3,9 +3,11 @@
 import Link from "next/link";
 import Script from "next/script";
 import { usePathname } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useSyncExternalStore } from "react";
 import { dict, href, type Lang } from "@/i18n";
 import { getConsent, onConsent, setConsent, type Consent as C } from "@/lib/client/consent";
+
+const subscribeConsent = (cb: () => void) => onConsent(() => cb());
 import { track } from "@/lib/client/track";
 import { store } from "@/lib/client/storage";
 
@@ -18,15 +20,14 @@ type Ids = { metaPixelId: string; ga4Id: string; tiktokPixelId: string };
  */
 export function ConsentAndPixels({ lang, ids }: { lang: Lang; ids: Ids }) {
   const t = dict(lang);
-  const [consent, setC] = useState<C | "unknown">("unknown");
+  // The stored choice, read as an external store: "unknown" on the server and during hydration.
+  const consent = useSyncExternalStore<C | "unknown">(subscribeConsent, getConsent, () => "unknown");
   const pathname = usePathname();
   const anyPixel = Boolean(ids.metaPixelId || ids.ga4Id || ids.tiktokPixelId);
 
   useEffect(() => {
-    setC(getConsent());
     const ttclid = new URLSearchParams(location.search).get("ttclid");
     if (ttclid) store.set("mena_ttclid", ttclid);
-    return onConsent((v) => setC(v));
   }, []);
 
   // Our own page view, every route change.
@@ -35,10 +36,10 @@ export function ConsentAndPixels({ lang, ids }: { lang: Lang; ids: Ids }) {
   }, [pathname]);
 
   // Pixels' page views after client-side navigations (the first is sent by their init snippet).
-  const [first, setFirst] = useState(true);
+  const first = useRef(true);
   useEffect(() => {
-    if (first) {
-      setFirst(false);
+    if (first.current) {
+      first.current = false;
       return;
     }
     if (consent !== "granted") return;

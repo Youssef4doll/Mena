@@ -11,6 +11,7 @@ import { currentAttribution, track, trackNow } from "@/lib/client/track";
 import { adIds, getConsent } from "@/lib/client/consent";
 import { pixelInitiateCheckout } from "@/lib/client/pixels";
 import { store } from "@/lib/client/storage";
+import { useHydrated } from "@/lib/client/hydrated";
 import { formatTND } from "@/lib/money";
 import { normalizePhone } from "@/lib/phone";
 import { GOVERNORATES, governorateLabel } from "@/lib/governorates";
@@ -27,8 +28,15 @@ export function Checkout({ lang, settings }: { lang: Lang; settings: PublicSetti
   const t = dict(lang);
   const router = useRouter();
   const { lines, replace, clear, token } = useCart();
-  const [mounted, setMounted] = useState(false);
-  const [f, setF] = useState<Form>(EMPTY);
+  const mounted = useHydrated();
+  // Read once on the client; the form itself only renders after hydration.
+  const [f, setF] = useState<Form>(() => {
+    let saved: Partial<Form> = {};
+    try {
+      saved = JSON.parse(store.get(SAVED) ?? "{}");
+    } catch {}
+    return { ...EMPTY, ...saved, governorate: saved.governorate || getGov() || "" };
+  });
   const [touched, setTouched] = useState<Partial<Record<keyof Form, boolean>>>({});
   const [promoInput, setPromoInput] = useState("");
   const [promo, setPromo] = useState<string | null>(null);
@@ -41,15 +49,6 @@ export function Checkout({ lang, settings }: { lang: Lang; settings: PublicSetti
   const [busy, setBusy] = useState(false);
   const started = useRef(false);
   const phoneLogged = useRef(false);
-
-  useEffect(() => {
-    setMounted(true);
-    let saved: Partial<Form> = {};
-    try {
-      saved = JSON.parse(store.get(SAVED) ?? "{}");
-    } catch {}
-    setF((x) => ({ ...x, ...saved, governorate: saved.governorate || getGov() || "" }));
-  }, []);
 
   const phone = normalizePhone(f.phone);
   const key = useMemo(() => JSON.stringify(lines.map((l) => [l.productId, l.variantId, l.qty])), [lines]);
@@ -155,7 +154,7 @@ export function Checkout({ lang, settings }: { lang: Lang; settings: PublicSetti
         store.set(SAVED, JSON.stringify({ phone: f.phone, name: f.name, governorate: f.governorate, city: f.city, address: f.address }));
         clear();
         if (data.payUrl) {
-          location.href = data.payUrl;
+          window.location.assign(data.payUrl);
           return;
         }
         router.push(href(lang, `/commande/merci/${data.ref}`));

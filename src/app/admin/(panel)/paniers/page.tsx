@@ -1,6 +1,7 @@
 import { abandonedCarts } from "@/lib/abandoned";
 import { getSettings } from "@/lib/settings";
 import { prisma } from "@/lib/prisma";
+import { daysAgo } from "@/lib/analytics-range";
 import { formatTND } from "@/lib/money";
 import { formatPhone } from "@/lib/phone";
 import { cartReminderText, waLink } from "@/lib/messages";
@@ -11,7 +12,7 @@ import { RemindButtons } from "./RemindButtons";
 export const metadata = { title: "Paniers abandonnés" };
 
 export default async function CartsPage() {
-  const since = new Date(Date.now() - 30 * 86_400_000);
+  const since = daysAgo(30);
   const [list, settings, recovered, reminded] = await Promise.all([
     abandonedCarts(),
     getSettings(),

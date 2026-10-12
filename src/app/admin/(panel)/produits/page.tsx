@@ -1,6 +1,7 @@
 import Link from "next/link";
 import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
+import { daysAgo } from "@/lib/analytics-range";
 import { formatTND } from "@/lib/money";
 import { stockState } from "@/lib/catalog";
 import { Badge, Empty, PageTitle, Tabs, btn, input } from "@/components/admin/ui";
@@ -16,7 +17,7 @@ export default async function ProductsPage({ searchParams }: PageProps<"/admin/p
     ...(filter === "active" ? { active: true } : filter === "inactive" ? { active: false } : {}),
     ...(q ? { OR: [{ name: { contains: q, mode: "insensitive" } }, { supplierRef: { contains: q, mode: "insensitive" } }] } : {}),
   };
-  const since = new Date(Date.now() - 30 * 86_400_000);
+  const since = daysAgo(30);
   const [products, demoCount, views, sold] = await Promise.all([
     prisma.product.findMany({
       where,

@@ -2,15 +2,17 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { Logo } from "@/components/shop/Logo";
 
 export type NavItem = { href: string; label: string; badge?: number };
 
 export function Shell({ nav, admin, logout, children }: { nav: NavItem[]; admin: string; logout: () => Promise<void>; children: React.ReactNode }) {
   const pathname = usePathname();
-  const [open, setOpen] = useState(false);
-  useEffect(() => setOpen(false), [pathname]);
+  // Open on the page it was opened from; navigating closes it without an effect.
+  const [openOn, setOpenOn] = useState<string | null>(null);
+  const open = openOn === pathname;
+  const setOpen = (o: boolean) => setOpenOn(o ? pathname : null);
   const active = (href: string) => (href === "/admin" ? pathname === "/admin" : pathname.startsWith(href));
 
   const links = (

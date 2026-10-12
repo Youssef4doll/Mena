@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/prisma";
+import { daysAgo } from "@/lib/analytics-range";
 import { formatTND } from "@/lib/money";
 import { Card, PageTitle, input, label } from "@/components/admin/ui";
 import { ActionForm, ConfirmButton } from "@/components/admin/FormBits";
@@ -7,7 +8,7 @@ import { saveSupplier, deleteSupplier } from "../simple-actions";
 export const metadata = { title: "Fournisseurs" };
 
 export default async function SuppliersPage() {
-  const since = new Date(Date.now() - 30 * 86_400_000);
+  const since = daysAgo(30);
   const [suppliers, toOrder] = await Promise.all([
     prisma.supplier.findMany({ orderBy: { name: "asc" }, include: { _count: { select: { products: true } } } }),
     // Confirmed orders waiting to be ordered from each supplier.

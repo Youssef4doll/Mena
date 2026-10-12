@@ -5,7 +5,7 @@ import type { ClientEvent } from "../events";
 
 type Queued = { name: ClientEvent; path: string; productId?: string; value?: number; props?: Record<string, unknown>; at: string };
 
-let queue: Queued[] = [];
+const queue: Queued[] = [];
 let timer: ReturnType<typeof setTimeout> | null = null;
 
 function flush(useBeacon = false) {
@@ -46,6 +46,9 @@ if (typeof window !== "undefined") {
  */
 export function track(name: ClientEvent, data: { productId?: string; value?: number; props?: Record<string, unknown> } = {}) {
   try {
+    // Read the session now, on the page the event happened on: the landing
+    // URL's utm_* must be seen before a quick tap navigates away from it.
+    session();
     queue.push({ name, path: location.pathname.slice(0, 200), ...data, at: new Date().toISOString() });
     if (queue.length >= 10) flush();
     else if (!timer) timer = setTimeout(() => flush(), 1500);

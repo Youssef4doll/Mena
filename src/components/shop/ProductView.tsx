@@ -10,6 +10,7 @@ import { useCart } from "@/lib/client/cart-store";
 import { track } from "@/lib/client/track";
 import { pixelAddToCart, pixelContact, pixelViewContent } from "@/lib/client/pixels";
 import { getGov, setGov } from "@/lib/client/quote";
+import { useHydrated } from "@/lib/client/hydrated";
 import { formatTND } from "@/lib/money";
 import { GOVERNORATES, governorateLabel } from "@/lib/governorates";
 import { deliveryRangeLabel } from "@/lib/delivery";
@@ -364,8 +365,10 @@ function Gallery({ images, name, productId }: { images: P["images"]; name: strin
 /** Fee and usual delay for the chosen governorate, straight from the shop's delivery settings. */
 function DeliveryEstimate({ lang, settings, price, productId }: { lang: Lang; settings: PublicSettings; price: number; productId: string }) {
   const t = dict(lang);
-  const [gov, setG] = useState<string>("");
-  useEffect(() => setG(getGov() ?? ""), []);
+  const hydrated = useHydrated();
+  // The visitor's last pick (kept in this browser) until they choose here.
+  const [picked, setG] = useState<string | null>(null);
+  const gov = picked ?? (hydrated ? getGov() ?? "" : "");
   const zone = gov ? settings.delivery.zones[gov] : null;
   const threshold = settings.delivery.freeThreshold;
   const free = threshold != null && price >= threshold;

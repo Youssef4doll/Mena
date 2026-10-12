@@ -15,18 +15,18 @@ export function CartDrawer({ lang }: { lang: Lang }) {
   const t = dict(lang);
   const { open, setOpen, lines, setQty, remove, replace, token } = useCart();
   const [quote, setQuote] = useState<PublicQuote | null>(null);
-  const [loading, setLoading] = useState(false);
+  const [quotedKey, setQuotedKey] = useState<string | null>(null);
   const key = useMemo(() => JSON.stringify(lines.map((l) => [l.productId, l.variantId, l.qty])), [lines]);
+  const loading = quotedKey !== key;
 
   // Prices are always the server's.
   useEffect(() => {
     if (!open || lines.length === 0) return;
     const ctrl = new AbortController();
-    setLoading(true);
     fetchQuote({ lines: lines.map(({ productId, variantId, qty }) => ({ productId, variantId, qty })), governorate: getGov() }, ctrl.signal).then((q) => {
       if (ctrl.signal.aborted) return;
       setQuote(q);
-      setLoading(false);
+      setQuotedKey(key);
       // Lines the server dropped (gone, sold out) leave the basket, with a word about it.
       if (q && q.problems.length > 0) {
         const keep = lines

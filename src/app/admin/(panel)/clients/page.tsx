@@ -35,7 +35,10 @@ export default async function CustomersPage({ searchParams }: PageProps<"/admin/
 
   return (
     <>
-      <PageTitle title="Clients" sub="Un client = un numéro de téléphone." actions={<a href="/admin/analytics/export?report=customers" className={btn.ghost}>Exporter CSV</a>} />
+      <PageTitle title="Clients" sub="Un client = un numéro de téléphone." actions={
+        // A download, not a page: a plain link, never a client-side navigation.
+        // eslint-disable-next-line @next/next/no-html-link-for-pages
+        <a href="/admin/analytics/export?report=customers" className={btn.ghost}>Exporter CSV</a>} />
       <Tabs current={f} items={[
         { key: "all", label: "Tous", href: "/admin/clients" },
         { key: "repeat", label: "Fidèles (2+ livrées)", href: "/admin/clients?f=repeat" },

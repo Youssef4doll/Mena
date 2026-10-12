@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
+import { useHydrated } from "@/lib/client/hydrated";
 import { dict, href, pick, switchHref, type Lang } from "@/i18n";
 import { useCart, cartCount } from "@/lib/client/cart-store";
 import { track } from "@/lib/client/track";
@@ -15,29 +16,17 @@ type Cat = { slug: string; name: string; nameAr: string | null };
 export function Header({ lang, categories, announcement }: { lang: Lang; categories: Cat[]; announcement: string[] }) {
   const t = dict(lang);
   const pathname = usePathname();
-  const [menu, setMenu] = useState(false);
-  const [search, setSearch] = useState(false);
+  // Sheets remember the page they were opened on: navigating closes them.
+  const [menuOn, setMenuOn] = useState<string | null>(null);
+  const [searchOn, setSearchOn] = useState<string | null>(null);
+  const menu = menuOn === pathname;
+  const search = searchOn === pathname;
+  const setMenu = (o: boolean) => setMenuOn(o ? pathname : null);
+  const setSearch = (o: boolean) => setSearchOn(o ? pathname : null);
   const lines = useCart((s) => s.lines);
   const setOpen = useCart((s) => s.setOpen);
-  const [mounted, setMounted] = useState(false);
-  const [bump, setBump] = useState(false);
-  const count = mounted ? cartCount(lines) : 0;
-  const prev = useRef(count);
-
-  useEffect(() => setMounted(true), []);
-  useEffect(() => {
-    if (count > prev.current) {
-      setBump(true);
-      const id = setTimeout(() => setBump(false), 400);
-      prev.current = count;
-      return () => clearTimeout(id);
-    }
-    prev.current = count;
-  }, [count]);
-  useEffect(() => {
-    setMenu(false);
-    setSearch(false);
-  }, [pathname]);
+  const hydrated = useHydrated();
+  const count = hydrated ? cartCount(lines) : 0;
 
   return (
     <>
@@ -84,7 +73,8 @@ export function Header({ lang, categories, announcement }: { lang: Lang; categor
             >
               <IconBag className="h-[22px] w-[22px]" />
               {count > 0 && (
-                <span className={`absolute end-0.5 top-0.5 flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-sea px-1 text-[11px] font-semibold text-white ltr-nums ${bump ? "animate-pop" : ""}`}>
+                // Keyed on the count, so each change replays the little pop.
+                <span key={count} className="absolute end-0.5 top-0.5 flex h-[18px] min-w-[18px] animate-pop items-center justify-center rounded-full bg-sea px-1 text-[11px] font-semibold text-white ltr-nums">
                   {count}
                 </span>
               )}
@@ -169,12 +159,11 @@ function SearchSheet({ lang, onClose }: { lang: Lang; onClose: () => void }) {
   const input = useRef<HTMLInputElement>(null);
 
   useEffect(() => input.current?.focus(), []);
+  const term = q.trim();
+  // Suggestions only for a real term; a stale answer for a shorter one is never shown.
+  const shown = term.length >= 2 ? s : null;
   useEffect(() => {
-    const term = q.trim();
-    if (term.length < 2) {
-      setS(null);
-      return;
-    }
+    if (term.length < 2) return;
     const ctrl = new AbortController();
     const id = setTimeout(() => {
       fetch(`/api/suggest?q=${encodeURIComponent(term)}`, { signal: ctrl.signal })
@@ -186,7 +175,7 @@ function SearchSheet({ lang, onClose }: { lang: Lang; onClose: () => void }) {
       clearTimeout(id);
       ctrl.abort();
     };
-  }, [q]);
+  }, [term]);
 
   return (
     <Sheet side="top" onClose={onClose} label={t.nav.search}>
@@ -216,11 +205,11 @@ function SearchSheet({ lang, onClose }: { lang: Lang; onClose: () => void }) {
           <IconClose />
         </button>
       </form>
-      {s && (s.products.length > 0 || s.categories.length > 0) && (
+      {shown && (shown.products.length > 0 || shown.categories.length > 0) && (
         <div className="mx-auto w-full max-w-2xl px-4 pb-5">
-          {s.categories.length > 0 && (
+          {shown.categories.length > 0 && (
             <div className="mb-3 flex flex-wrap gap-2">
-              {s.categories.map((c) => (
+              {shown.categories.map((c) => (
                 <Link key={c.slug} href={href(lang, `/categorie/${c.slug}`)} className="rounded-full bg-sand px-3 py-1.5 text-sm" onClick={() => track("search_suggestion_clicked", { props: { q, kind: "category" } })}>
                   {pick(lang, c.name, c.nameAr)}
                 </Link>
@@ -228,7 +217,7 @@ function SearchSheet({ lang, onClose }: { lang: Lang; onClose: () => void }) {
             </div>
           )}
           <ul className="divide-y divide-line">
-            {s.products.map((p) => (
+            {shown.products.map((p) => (
               <li key={p.slug}>
                 <Link
                   href={href(lang, `/produit/${p.slug}`)}

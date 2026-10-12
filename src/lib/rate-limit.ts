@@ -26,7 +26,8 @@ export function hit(key: string, limit: number, windowMs: number): RateLimitResu
 export const LIMITS = {
   events: { limit: 120, windowMs: 60_000 },
   quote: { limit: 60, windowMs: 60_000 },
-  order: { limit: 5, windowMs: 10 * 60_000 },
+  // Loose: Tunisian mobile carriers put many customers behind one address (CGNAT).
+  order: { limit: 20, windowMs: 10 * 60_000 },
   lookup: { limit: 10, windowMs: 10 * 60_000 },
   login: { limit: 8, windowMs: 15 * 60_000 },
   cart: { limit: 60, windowMs: 60_000 },
