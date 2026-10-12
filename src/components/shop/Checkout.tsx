@@ -140,6 +140,7 @@ export function Checkout({ lang, settings }: { lang: Lang; settings: PublicSetti
           payment,
           expectedTotal: quote.total,
           cartToken: token || undefined,
+          restoredCartId: useCart.getState().restoredFrom ?? undefined,
           visitorId: a.visitorId,
           sessionId: a.sessionId,
           attribution: a.attribution,

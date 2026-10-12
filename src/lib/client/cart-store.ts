@@ -15,6 +15,9 @@ type CartState = {
   token: string;
   lines: CartLine[];
   open: boolean;
+  /** Set when the basket came from a reminder link, so the order closes that cart. */
+  restoredFrom: string | null;
+  setRestoredFrom: (id: string | null) => void;
   add: (line: CartLine) => void;
   setQty: (productId: string, variantId: string | null, qty: number) => void;
   remove: (productId: string, variantId: string | null) => void;
@@ -32,6 +35,8 @@ export const useCart = create<CartState>()(
       token: "",
       lines: [],
       open: false,
+      restoredFrom: null,
+      setRestoredFrom: (restoredFrom) => set({ restoredFrom }),
       add: (line) =>
         set((s) => {
           const existing = s.lines.find((l) => same(l, line));
@@ -45,13 +50,13 @@ export const useCart = create<CartState>()(
       remove: (productId, variantId) => set((s) => ({ lines: s.lines.filter((l) => !same(l, { productId, variantId })) })),
       replace: (lines) => set({ lines }),
       // A placed order starts a new basket with a new token.
-      clear: () => set({ lines: [], token: randomId() }),
+      clear: () => set({ lines: [], token: randomId(), restoredFrom: null }),
       setOpen: (open) => set({ open }),
     }),
     {
       name: "mena_cart",
       storage: createJSONStorage(() => localStorage),
-      partialize: (s) => ({ token: s.token, lines: s.lines }),
+      partialize: (s) => ({ token: s.token, lines: s.lines, restoredFrom: s.restoredFrom }),
     },
   ),
 );

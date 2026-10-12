@@ -17,6 +17,7 @@ import { formatTND } from "./money";
 import { deliveryRangeLabel } from "./delivery";
 import { revalidateTag } from "next/cache";
 import { CATALOG_TAG } from "./catalog";
+import { TRANSITIONS } from "./order-status";
 
 const text = (max: number) => z.string().trim().max(max);
 
@@ -38,6 +39,8 @@ export const placeOrderSchema = z.object({
   /** The total the customer was shown. A different server total stops the order and shows the new one. */
   expectedTotal: z.number().int().min(0),
   cartToken: z.string().max(64).optional(),
+  /** The abandoned cart a reminder link restored. */
+  restoredCartId: z.string().regex(/^[a-z0-9]{20,40}$/).optional(),
   visitorId: z.string().max(64).optional(),
   sessionId: z.string().max(64).optional(),
   attribution: z
@@ -209,6 +212,9 @@ export async function placeOrder(input: PlaceOrderInput, ctx: { ua: string | nul
           select: { id: true, ref: true, total: true, visitorId: true, sessionId: true, source: true, medium: true, campaign: true, device: true, governorate: true, name: true, locale: true, email: true, phone: true },
         });
 
+        if (input.restoredCartId) {
+          await tx.cart.updateMany({ where: { id: input.restoredCartId, status: "ACTIVE" }, data: { status: "CONVERTED", orderId: created.id } });
+        }
         if (input.cartToken) {
           await tx.cart.updateMany({ where: { tokenHash: hashToken(input.cartToken) }, data: { status: "CONVERTED", orderId: created.id, phone: phone! } });
         }
@@ -259,28 +265,7 @@ export async function placeOrder(input: PlaceOrderInput, ctx: { ua: string | nul
 
 // ------------------------------------------------------------------ status
 
-/** Which move is allowed from where. Anything else is refused. */
-export const TRANSITIONS: Record<OrderStatus, OrderStatus[]> = {
-  PENDING: ["CONFIRMED", "CANCELLED"],
-  CONFIRMED: ["SUPPLIER_ORDERED", "SHIPPED", "CANCELLED"],
-  SUPPLIER_ORDERED: ["SHIPPED", "CANCELLED"],
-  SHIPPED: ["DELIVERED", "REFUSED"],
-  DELIVERED: ["RETURNED"],
-  REFUSED: [],
-  RETURNED: [],
-  CANCELLED: [],
-};
-
-export const STATUS_LABELS: Record<OrderStatus, string> = {
-  PENDING: "À confirmer",
-  CONFIRMED: "Confirmée",
-  SUPPLIER_ORDERED: "Commandée fournisseur",
-  SHIPPED: "Expédiée",
-  DELIVERED: "Livrée",
-  REFUSED: "Refusée à la livraison",
-  RETURNED: "Retournée",
-  CANCELLED: "Annulée",
-};
+export { TRANSITIONS, STATUS_LABELS } from "./order-status";
 
 const EVENT_FOR: Partial<Record<OrderStatus, Parameters<typeof recordOrderEvent>[0]>> = {
   CONFIRMED: "order_confirmed",
