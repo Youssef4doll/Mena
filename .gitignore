@@ -10,3 +10,5 @@ playwright-report
 screenshots/tmp
 .pgdata
 .next-e2e
+.next-build
+screenshots/

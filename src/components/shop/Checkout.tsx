@@ -255,7 +255,7 @@ export function Checkout({ lang, settings }: { lang: Lang; settings: PublicSetti
           </Field>
           {!showNote ? (
             <button type="button" onClick={() => setShowNote(true)} className="self-start text-sm text-sea underline underline-offset-2">
-              {t.checkout.note} / {t.checkout.phoneAlt}
+              {t.checkout.addNote}
             </button>
           ) : (
             <>

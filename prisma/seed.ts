@@ -11,7 +11,11 @@ const prisma = new PrismaClient();
 async function main() {
   const email = process.env.ADMIN_EMAIL?.trim().toLowerCase();
   const password = process.env.ADMIN_PASSWORD;
-  if (!email || !password) throw new Error("Set ADMIN_EMAIL and ADMIN_PASSWORD.");
+  if (!email || !password) {
+    // Runs on every deploy: without the variables there is simply nothing to create.
+    console.log("ADMIN_EMAIL / ADMIN_PASSWORD not set: no admin account created.");
+    return;
+  }
   if (password.length < 10) throw new Error("ADMIN_PASSWORD must be at least 10 characters.");
   const existing = await prisma.adminUser.findUnique({ where: { email } });
   if (existing && process.env.ADMIN_RESET !== "1") {

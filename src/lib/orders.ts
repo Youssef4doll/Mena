@@ -78,7 +78,7 @@ class StockGone extends Error {}
  * customer saw stops the order — they are shown the new total and confirm
  * again, rather than being charged something they did not read.
  */
-export async function placeOrder(input: PlaceOrderInput, ctx: { ua: string | null; ip: string; ipHash: string; device: string }): Promise<PlaceResult> {
+export async function placeOrder(input: PlaceOrderInput, ctx: { ua: string | null; ip: string; ipHash: string; device: string }, attempt = 0): Promise<PlaceResult> {
   const phone = normalizePhone(input.phone);
   const phoneAlt = input.phoneAlt ? normalizePhone(input.phoneAlt) : null;
   const bad: string[] = [];
@@ -227,9 +227,9 @@ export async function placeOrder(input: PlaceOrderInput, ctx: { ua: string | nul
       const fresh = await quoteCart({ lines: input.lines, governorate: input.governorate, promoCode: input.promoCode, phone });
       return { ok: false, error: "cart_changed", quote: publicQuote(fresh) };
     }
-    if (e instanceof Prisma.PrismaClientKnownRequestError && (e.code === "P2034" || e.code === "P2002")) {
-      // A serialization conflict or a ref collision: one retry is the right amount.
-      return placeOrder(input, ctx);
+    if (e instanceof Prisma.PrismaClientKnownRequestError && (e.code === "P2034" || e.code === "P2002") && attempt < 2) {
+      // A serialization conflict (two orders for the last unit) or a ref collision: retry, a couple of times at most.
+      return placeOrder(input, ctx, attempt + 1);
     }
     console.error("[order] placement failed", e);
     return { ok: false, error: "server" };

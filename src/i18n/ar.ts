@@ -105,6 +105,7 @@ export const ar: Dict = {
     street: "العنوان",
     streetHint: "النهج، الرقم، علامة (قدّام…)",
     note: "ملاحظة للموزّع (اختياري)",
+    addNote: "زيد ملاحظة ولا رقم آخر",
     promo: "كود التخفيض",
     apply: "طبّق",
     removeCode: "نحّي",

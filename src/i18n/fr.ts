@@ -104,6 +104,7 @@ export const fr = {
     street: "Adresse",
     streetHint: "Rue, numéro, repère (à côté de…)",
     note: "Note pour le livreur (facultatif)",
+    addNote: "Ajouter une note ou un autre numéro",
     promo: "Code promo",
     apply: "Appliquer",
     removeCode: "Retirer",
