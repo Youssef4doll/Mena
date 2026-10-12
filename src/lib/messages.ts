@@ -39,8 +39,8 @@ export function cartReminderText(args: { name: string | null; locale: Locale; sh
   const n = args.name ? first(args.name) : "";
   const list = args.items.slice(0, 3).join(", ");
   return args.locale === "ar"
-    ? `السلام${n ? ` ${n}` : ""}، معاك ${args.shop}. تركت في السلة: ${list}. تحب نكمّلو الطلبية؟ ${args.url}`
-    : `Bonjour${n ? ` ${n}` : ""}, c'est ${args.shop}. Vous avez laissé dans votre panier : ${list}. On finalise ensemble ? ${args.url}`;
+    ? `السلام${n ? ` ${n}` : ""}، معاك ${args.shop}. بديت طلبية: ${list}. تحب نكمّلوها مع بعضنا؟ ${args.url}`
+    : `Bonjour${n ? ` ${n}` : ""}, c'est ${args.shop}. Vous avez commencé une commande : ${list}. On la termine ensemble ? ${args.url}`;
 }
 
 export function waLink(phone8: string, text: string) {

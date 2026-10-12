@@ -23,7 +23,7 @@ const text = (max: number) => z.string().trim().max(max);
 
 export const placeOrderSchema = z.object({
   lines: z
-    .array(z.object({ productId: z.string().min(1).max(40), variantId: z.string().max(40).nullish(), qty: z.number().int().min(1).max(10) }))
+    .array(z.object({ productId: z.string().min(1).max(40), variantId: z.string().max(40).nullish(), offerId: z.string().max(40).nullish(), qty: z.number().int().min(1).max(10) }))
     .min(1)
     .max(30),
   phone: text(30),
@@ -31,7 +31,8 @@ export const placeOrderSchema = z.object({
   name: text(80).pipe(z.string().min(2)),
   email: z.union([z.literal(""), z.email().max(120)]).optional(),
   governorate: text(40),
-  city: text(80).pipe(z.string().min(2)),
+  /** Optional: the one-step form asks for a single address line. */
+  city: text(80).optional(),
   address: text(200).pipe(z.string().min(4)),
   note: text(300).optional(),
   promoCode: text(40).optional(),
@@ -168,7 +169,7 @@ export async function placeOrder(input: PlaceOrderInput, ctx: { ua: string | nul
             phoneAlt,
             email: input.email || null,
             governorate: input.governorate,
-            city: input.city,
+            city: input.city ?? "",
             address: input.address,
             note: input.note || null,
             subtotal: quote.subtotal,
@@ -205,6 +206,9 @@ export async function placeOrder(input: PlaceOrderInput, ctx: { ua: string | nul
                 unitPrice: l.unitPrice,
                 unitCost: l.unitCost,
                 qty: l.qty,
+                lineTotal: l.lineTotal,
+                offerId: l.offerId,
+                offerLabel: l.offerLabel,
               })),
             },
             history: { create: { from: null, to: "PENDING", by: "client" } },
@@ -246,7 +250,7 @@ export async function placeOrder(input: PlaceOrderInput, ctx: { ua: string | nul
       await sendEmail({
         to: order.email,
         subject: `${settings.shop.name} — commande ${order.ref}`,
-        text: `${placedText(order, settings.shop.name, trackUrl)}\n\n${quote.lines.map((l) => `${l.qty} × ${l.name}${l.variantName ? ` (${l.variantName})` : ""} — ${formatTND(l.lineTotal)}`).join("\n")}\nLivraison : ${formatTND(quote.deliveryFee)}\nTotal : ${formatTND(quote.total)}`,
+        text: `${placedText(order, settings.shop.name, trackUrl)}\n\n${quote.lines.map((l) => `${l.qty} × ${l.name}${l.variantName ? ` (${l.variantName})` : ""}${l.offerLabel ? ` — ${l.offerLabel}` : ""} — ${formatTND(l.lineTotal)}`).join("\n")}\nLivraison : ${formatTND(quote.deliveryFee)}\nTotal : ${formatTND(quote.total)}`,
         kind: "order_placed",
         orderId: order.id,
       });

@@ -17,7 +17,7 @@ export async function GET(request: Request) {
     ["ref", "date", "statut", "nom", "telephone", "telephone2", "gouvernorat", "ville", "adresse", "articles", "sous_total", "remise", "livraison", "total", "cout_fournisseur", "marge", "paiement", "code_promo", "transporteur", "suivi", "source", "medium", "campagne", "appareil", "drapeaux", "note"],
     orders.map((o) => [
       o.ref, o.createdAt.toISOString(), STATUS_LABELS[o.status], o.name, o.phone, o.phoneAlt, o.governorate, o.city, o.address,
-      o.items.map((i) => `${i.qty}x ${i.name}${i.variantName ? ` (${i.variantName})` : ""}`).join(" | "),
+      o.items.map((i) => `${i.qty}x ${i.name}${i.variantName ? ` (${i.variantName})` : ""}${i.offerLabel ? ` [${i.offerLabel}]` : ""}`).join(" | "),
       dt(o.subtotal), dt(o.discount), dt(o.deliveryFee), dt(o.total), dt(o.costTotal), o.costTotal != null ? dt(o.subtotal - o.discount - o.costTotal) : "",
       o.paymentMethod, o.promoCodeText, o.carrier, o.trackingNumber, o.source, o.medium, o.campaign, o.device, o.flags.join(" "), o.note,
     ]),

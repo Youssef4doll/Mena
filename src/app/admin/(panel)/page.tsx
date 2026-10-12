@@ -68,8 +68,8 @@ export default async function Dashboard() {
           )}
         </Card>
         <div className="flex flex-col gap-4">
-          <Card title="Paniers à relancer (48 h)" aside={<Link href="/admin/paniers" className="text-sm text-sea underline">Relancer</Link>}>
-            <p className="text-sm">{reachable.length} panier(s) avec numéro · {formatTND(reachable.reduce((s, x) => s + x.value, 0))}</p>
+          <Card title="Commandes non terminées (48 h)" aside={<Link href="/admin/paniers" className="text-sm text-sea underline">Relancer</Link>}>
+            <p className="text-sm">{reachable.length} formulaire(s) avec numéro · {formatTND(reachable.reduce((s, x) => s + x.value, 0))}</p>
           </Card>
           <Card title="Stock à surveiller">
             {lowStock.length === 0 ? <p className="text-sm text-muted">Rien à signaler.</p> : (

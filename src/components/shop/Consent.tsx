@@ -72,7 +72,7 @@ export function ConsentAndPixels({ lang, ids }: { lang: Lang; ids: Ids }) {
 
       {anyPixel && consent === null && (
         <div className="fixed inset-x-3 bottom-3 z-40 mx-auto max-w-lg animate-sheet-up rounded-2xl border border-line bg-white p-4 shadow-lift" role="region" aria-label={t.footer.cookies}>
-          <p className="text-[13px] leading-relaxed text-ink-2">
+          <p className="text-[15px] leading-relaxed text-ink-2">
             {t.consent.text}{" "}
             <Link href={href(lang, "/confidentialite")} className="underline underline-offset-2">
               {t.footer.privacy}
@@ -82,7 +82,7 @@ export function ConsentAndPixels({ lang, ids }: { lang: Lang; ids: Ids }) {
             <button type="button" onClick={() => setConsent("denied")} className="h-10 flex-1 rounded-full border border-line text-sm font-medium">
               {t.consent.refuse}
             </button>
-            <button type="button" onClick={() => setConsent("granted")} className="h-10 flex-1 rounded-full bg-ink text-sm font-medium text-white">
+            <button type="button" onClick={() => setConsent("granted")} className="h-10 flex-1 rounded-full bg-sea text-sm font-medium text-white">
               {t.consent.accept}
             </button>
           </div>

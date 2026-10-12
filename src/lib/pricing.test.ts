@@ -127,3 +127,58 @@ test("unknown cost leaves the margin unknown rather than wrong", () => {
   const catalog = new Map([["p1", product({ cost: null })]]);
   assert.equal(priceCart({ ...base, catalog, lines: [{ productId: "p1", qty: 1 }] }).costTotal, null);
 });
+
+const offers = [
+  { id: "o1", label: "1 unité", labelAr: null, quantity: 1, price: 49_000, freeDelivery: false, active: true, endsAt: null },
+  { id: "o3", label: "2 + 1 offert", labelAr: null, quantity: 3, price: 99_000, freeDelivery: true, active: true, endsAt: null },
+  { id: "old", label: "Fini", labelAr: null, quantity: 2, price: 1_000, freeDelivery: false, active: true, endsAt: new Date("2026-10-01") },
+  { id: "off", label: "Éteinte", labelAr: null, quantity: 2, price: 1_000, freeDelivery: false, active: false, endsAt: null },
+];
+
+test("an offer sets the quantity and the price, whatever the request says", () => {
+  const catalog = new Map([["p1", product({ offers })]]);
+  const q = priceCart({ ...base, catalog, lines: [{ productId: "p1", offerId: "o3", qty: 9 }], governorate: "Sfax" });
+  assert.equal(q.lines[0].qty, 3);
+  assert.equal(q.lines[0].lineTotal, 99_000);
+  assert.equal(q.lines[0].unitPrice, 33_000);
+  assert.equal(q.lines[0].offerLabel, "2 + 1 offert");
+  assert.equal(q.subtotal, 99_000);
+  assert.equal(q.costTotal, 60_000);
+  // The offer includes delivery.
+  assert.equal(q.deliveryFee, 0);
+  assert.equal(q.delivery?.free, true);
+  assert.equal(q.total, 99_000);
+});
+
+test("ended, switched-off and unknown offers are refused, not repriced", () => {
+  const catalog = new Map([["p1", product({ offers })]]);
+  for (const offerId of ["old", "off", "nope"]) {
+    const q = priceCart({ ...base, catalog, lines: [{ productId: "p1", offerId, qty: 1 }] });
+    assert.equal(q.lines.length, 0, offerId);
+    assert.equal(q.problems[0].kind, "offer_unavailable", offerId);
+  }
+});
+
+test("an offer needs its whole quantity in stock", () => {
+  const catalog = new Map([["p1", product({ offers, stockMode: "TRACKED", stockQty: 2 })]]);
+  const q = priceCart({ ...base, catalog, lines: [{ productId: "p1", offerId: "o3", qty: 1 }] });
+  assert.equal(q.lines.length, 0);
+  assert.equal(q.problems[0].kind, "unavailable");
+  const ok = priceCart({ ...base, catalog, lines: [{ productId: "p1", offerId: "o1", qty: 1 }] });
+  assert.equal(ok.lines[0].qty, 1);
+});
+
+test("an offer is taken once even if sent twice", () => {
+  const catalog = new Map([["p1", product({ offers })]]);
+  const q = priceCart({ ...base, catalog, lines: [{ productId: "p1", offerId: "o3", qty: 1 }, { productId: "p1", offerId: "o3", qty: 1 }] });
+  assert.equal(q.lines.length, 1);
+  assert.equal(q.subtotal, 99_000);
+});
+
+test("an offer on a product with variants still needs the variant", () => {
+  const catalog = new Map([["p1", product({ offers, variants: [{ id: "v1", name: "Noir", price: null, stockQty: 0, available: true }] })]]);
+  assert.equal(priceCart({ ...base, catalog, lines: [{ productId: "p1", offerId: "o3", qty: 1 }] }).problems[0].kind, "variant_required");
+  const q = priceCart({ ...base, catalog, lines: [{ productId: "p1", variantId: "v1", offerId: "o3", qty: 1 }] });
+  assert.equal(q.lines[0].variantName, "Noir");
+  assert.equal(q.lines[0].lineTotal, 99_000);
+});

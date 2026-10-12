@@ -9,7 +9,7 @@ import { SITE_URL } from "@/lib/site";
 import { Badge, Empty, PageTitle, Stat } from "@/components/admin/ui";
 import { RemindButtons } from "./RemindButtons";
 
-export const metadata = { title: "Paniers abandonnés" };
+export const metadata = { title: "Commandes non terminées" };
 
 export default async function CartsPage() {
   const since = daysAgo(30);
@@ -26,14 +26,14 @@ export default async function CartsPage() {
 
   return (
     <>
-      <PageTitle title="Paniers abandonnés" sub="Paniers sans commande depuis plus d'une heure, 30 derniers jours. Valeur aux prix actuels. Un numéro est connu quand le client l'a tapé dans le formulaire de commande." />
+      <PageTitle title="Commandes non terminées" sub="Formulaires de commande commencés sans commande depuis plus d'une heure, 30 derniers jours. Valeur aux prix actuels. Le numéro est celui que le client a tapé dans le formulaire ; le lien de relance le ramène sur le produit, avec l'offre qu'il avait choisie." />
       <div className="mb-5 grid grid-cols-2 gap-3 lg:grid-cols-4">
-        <Stat label="Paniers abandonnés" value={String(list.length)} />
+        <Stat label="Non terminées" value={String(list.length)} />
         <Stat label="Valeur en jeu" value={formatTND(value)} tone={value ? "warn" : undefined} />
         <Stat label="Avec numéro" value={`${reachable.length}`} sub="relançables" />
         <Stat label="Relancés → commandés" value={`${recovered}/${reminded}`} sub="30 jours" tone="ok" />
       </div>
-      {list.length === 0 ? <Empty>Aucun panier abandonné.</Empty> : (
+      {list.length === 0 ? <Empty>Aucune commande non terminée.</Empty> : (
         <ul className="flex flex-col gap-2">
           {list.map(({ cart, value: v, items }) => {
             const url = `${SITE_URL}/panier/${cart.id}`;

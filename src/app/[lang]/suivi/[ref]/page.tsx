@@ -37,8 +37,8 @@ export default async function OrderRoute({ params, searchParams }: PageProps<"/[
     <div className="mx-auto flex max-w-xl flex-col gap-6 px-4 pt-8">
       <TrackView name="tracking_viewed" props={{ status: o.status }} />
       <div>
-        <p className="text-xs uppercase tracking-[0.14em] text-muted">{t.thanks.ref}</p>
-        <h1 className="font-display text-[30px] tracking-wide ltr-nums">{o.ref}</h1>
+        <p className="text-sm uppercase tracking-[0.14em] text-muted">{t.thanks.ref}</p>
+        <h1 className="text-[30px] tracking-wide ltr-nums">{o.ref}</h1>
         <p className="mt-1 text-sm text-muted">{dateFmt(o.createdAt)}</p>
       </div>
 
@@ -72,13 +72,13 @@ export default async function OrderRoute({ params, searchParams }: PageProps<"/[
           <dl className="mt-2 grid grid-cols-2 gap-3 border-t border-line pt-3 text-sm">
             {o.carrier && (
               <div>
-                <dt className="text-xs text-muted">{t.track.carrier}</dt>
+                <dt className="text-sm text-muted">{t.track.carrier}</dt>
                 <dd>{o.carrier}</dd>
               </div>
             )}
             {o.trackingNumber && (
               <div>
-                <dt className="text-xs text-muted">{t.track.tracking}</dt>
+                <dt className="text-sm text-muted">{t.track.tracking}</dt>
                 <dd className="ltr-nums">{o.trackingNumber}</dd>
               </div>
             )}
@@ -99,10 +99,12 @@ export default async function OrderRoute({ params, searchParams }: PageProps<"/[
               </span>
               <span className="flex-1">
                 {i.product ? <Link href={href(lang, `/produit/${i.product.slug}`)}>{pick(lang, i.name, i.product.nameAr)}</Link> : i.name}
-                {i.variantName && <span className="block text-xs text-muted">{i.variantName}</span>}
+                {i.variantName && <span className="block text-sm text-muted">{i.variantName}</span>}
+                {i.offerLabel && <span className="block text-sm text-muted">{i.offerLabel}</span>}
               </span>
-              <span className="ltr-nums">
-                {i.qty} × {formatTND(i.unitPrice, lang)}
+              <span className="text-end ltr-nums">
+                <span className="block text-sm text-muted">× {i.qty}</span>
+                {formatTND(i.lineTotal, lang)}
               </span>
             </li>
           ))}
@@ -123,7 +125,7 @@ export default async function OrderRoute({ params, searchParams }: PageProps<"/[
             <dd className="ltr-nums">{formatTND(o.total, lang)}</dd>
           </div>
         </dl>
-        <p className="mt-3 text-xs text-muted">
+        <p className="mt-3 text-sm text-muted">
           {t.track.deliveryTo} {o.city}, {governorateLabel(o.governorate, lang)}
         </p>
       </div>

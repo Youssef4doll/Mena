@@ -9,7 +9,7 @@ export default async function CategoriesPage() {
   const cats = await prisma.category.findMany({ orderBy: [{ sort: "asc" }, { name: "asc" }], include: { _count: { select: { products: true } } } });
   return (
     <>
-      <PageTitle title="Catégories" sub="Une catégorie sans produit en ligne n'apparaît pas sur la boutique." />
+      <PageTitle title="Catégories" sub="Chaque catégorie est une grande carte sur l'accueil, avec son titre et son image (sinon la photo d'un de ses produits). Une catégorie sans produit en ligne n'apparaît pas." />
       <div className="grid gap-4 lg:grid-cols-2">
         {cats.map((c) => (
           <Card key={c.id} title={c.name} aside={<span className="text-xs text-muted">{c._count.products} produit(s)</span>}>
@@ -25,13 +25,15 @@ export default async function CategoriesPage() {
   );
 }
 
-function CategoryFields({ c }: { c?: { id: string; name: string; nameAr: string | null; slug: string; sort: number; active: boolean; imageId: string | null } }) {
+function CategoryFields({ c }: { c?: { id: string; name: string; nameAr: string | null; headline: string | null; headlineAr: string | null; slug: string; sort: number; active: boolean; imageId: string | null } }) {
   return (
     <ActionForm action={saveCategory}>
       <input type="hidden" name="id" value={c?.id ?? ""} />
       <div className="grid grid-cols-2 gap-2">
         <label className={label}>Nom<input name="name" defaultValue={c?.name} className={input} required /></label>
         <label className={label}>Nom arabe<input name="nameAr" dir="rtl" defaultValue={c?.nameAr ?? ""} className={input} /></label>
+        <label className={label}>Titre de la carte d&apos;accueil<input name="headline" defaultValue={c?.headline ?? ""} placeholder="Tout pour la cuisine" className={input} /></label>
+        <label className={label}>Titre (arabe)<input name="headlineAr" dir="rtl" defaultValue={c?.headlineAr ?? ""} className={input} /></label>
         <label className={label}>Adresse<input name="slug" defaultValue={c?.slug} className={input} /></label>
         <label className={label}>Ordre<input name="sort" type="number" defaultValue={c?.sort ?? 0} className={input} /></label>
       </div>

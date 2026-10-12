@@ -19,6 +19,18 @@ const variant = z.object({
   available: z.boolean(),
 });
 
+const offer = z.object({
+  id: z.string().max(40).optional(),
+  label: z.string().trim().min(2).max(80),
+  labelAr: z.string().trim().max(80),
+  quantity: z.number().int().min(1).max(50),
+  price: z.number().int().min(1).max(100_000_000),
+  freeDelivery: z.boolean(),
+  /** YYYY-MM-DD, the last day the offer can be bought; empty = no end. */
+  endsOn: z.union([z.literal(""), z.string().regex(/^\d{4}-\d{2}-\d{2}$/)]),
+  active: z.boolean(),
+});
+
 const product = z.object({
   name: z.string().trim().min(2).max(140),
   nameAr: z.string().trim().max(140),
@@ -38,6 +50,7 @@ const product = z.object({
   active: z.boolean(),
   featured: z.boolean(),
   variants: z.array(variant).max(60),
+  offers: z.array(offer).max(8),
 });
 export type ProductInput = z.infer<typeof product>;
 
@@ -71,6 +84,16 @@ export async function saveProduct(id: string | null, raw: ProductInput): Promise
       const vd = { name: v.name, sku: v.sku || null, price: v.price, stockQty: v.stockQty, available: v.available, sort: i };
       if (v.id) await tx.productVariant.updateMany({ where: { id: v.id, productId: p.id }, data: vd });
       else await tx.productVariant.create({ data: { ...vd, productId: p.id } });
+    }
+    // Offers: past orders keep their own copy of the label and price, so removing one is safe.
+    const keepOffers = d.offers.filter((o) => o.id).map((o) => o.id!);
+    await tx.productOffer.deleteMany({ where: { productId: p.id, id: { notIn: keepOffers } } });
+    for (const [i, o] of d.offers.entries()) {
+      // The end date is the last day, in Tunis: the offer stops at midnight after it.
+      const endsAt = o.endsOn ? new Date(Date.parse(`${o.endsOn}T00:00:00Z`) + 23 * 3_600_000) : null;
+      const od = { label: o.label, labelAr: o.labelAr || null, quantity: o.quantity, price: o.price, freeDelivery: o.freeDelivery, endsAt, active: o.active, sort: i };
+      if (o.id) await tx.productOffer.updateMany({ where: { id: o.id, productId: p.id }, data: od });
+      else await tx.productOffer.create({ data: { ...od, productId: p.id } });
     }
     return p;
   });

@@ -39,7 +39,7 @@ export default async function SearchRoute({ params, searchParams }: PageProps<"/
       )}
       {q && results.length === 0 && (
         <div className="flex flex-col items-center gap-4 py-16 text-center">
-          <h1 className="font-display text-2xl">{t.search.none(q)}</h1>
+          <h1 className="text-2xl">{t.search.none(q)}</h1>
           <p className="max-w-sm text-sm text-muted">{t.search.noneHelp}</p>
           {settings.contact.whatsapp && (
             <a

@@ -123,7 +123,7 @@ export default async function AnalyticsPage({ searchParams }: PageProps<"/admin/
         </Card>
       )}
 
-      <Card title="Produits" hint="Fiches vues (visites uniques), ajouts au panier, commandes et CA sur la période.">
+      <Card title="Produits" hint="Fiches vues (visites uniques), formulaires de commande commencés, commandes et CA sur la période.">
         <ProductTable rows={a.products} />
       </Card>
 
@@ -159,9 +159,9 @@ export default async function AnalyticsPage({ searchParams }: PageProps<"/admin/
           <ColumnChart points={a.hours.map((h) => ({ x: `${h.hour}h`, y: h.orders }))} unit="int" name="Commandes" days={false} highlightMax />
           <TableView head={["Heure", "Commandes"]} rows={a.hours.map((h) => [`${h.hour}h`, h.orders])} />
         </Card>
-        <Card title="Paniers abandonnés" aside={<Link href="/admin/paniers" className="text-sm text-sea underline">Relancer</Link>}>
+        <Card title="Commandes non terminées" hint="Formulaires commencés sans commande depuis plus d'une heure." aside={<Link href="/admin/paniers" className="text-sm text-sea underline">Relancer</Link>}>
           <dl className="grid grid-cols-3 gap-3 text-sm">
-            <div><dt className="text-xs text-muted">Paniers</dt><dd className="text-xl font-semibold">{a.abandoned.count}</dd></div>
+            <div><dt className="text-xs text-muted">Formulaires</dt><dd className="text-xl font-semibold">{a.abandoned.count}</dd></div>
             <div><dt className="text-xs text-muted">Valeur</dt><dd className="text-xl font-semibold">{fmt(a.abandoned.value, "tnd", true)}</dd></div>
             <div><dt className="text-xs text-muted">Avec numéro</dt><dd className="text-xl font-semibold">{a.abandoned.withPhone}</dd></div>
           </dl>
@@ -281,7 +281,7 @@ function ProductTable({ rows }: { rows: import("@/lib/analytics").ProductRow[] }
           <tr className="border-b border-line">
             <th className="py-2 text-start font-medium">Produit</th>
             <th className="text-end font-medium">Vues</th>
-            <th className="text-end font-medium">Paniers</th>
+            <th className="text-end font-medium">Formulaires</th>
             <th className="text-end font-medium">Commandes</th>
             <th className="text-end font-medium">Vue → commande</th>
             <th className="text-end font-medium">Unités</th>
@@ -299,7 +299,7 @@ function ProductTable({ rows }: { rows: import("@/lib/analytics").ProductRow[] }
                   {flag && <span className="ms-2 rounded-full bg-[#fff3d6] px-1.5 py-0.5 text-[11px] text-[#8a5a00]">⚠ vu sans être acheté</span>}
                 </td>
                 <td className="text-end">{p.views}</td>
-                <td className="text-end">{p.carts}</td>
+                <td className="text-end">{p.forms}</td>
                 <td className="text-end">{p.orders}</td>
                 <td className="text-end">{fmt(c, "pct")}</td>
                 <td className="text-end">{p.units}</td>
@@ -413,7 +413,7 @@ function buildInsights(a: import("@/lib/analytics").Analytics): string[] {
   if (a.searches.none.length > 0) out.push(`${a.searches.none.length} recherche(s) n'ont rien trouvé, dont « ${a.searches.none[0].q} » (${a.searches.none[0].count} fois) : produits à sourcer.`);
   const viewedNotBought = a.products.filter((p) => p.views >= 20 && p.orders === 0);
   if (viewedNotBought.length > 0) out.push(`${viewedNotBought.length} produit(s) très vus sans aucune commande (ex. « ${viewedNotBought[0].name} ») : vérifiez prix, photos et description.`);
-  if (a.abandoned.withPhone > 0) out.push(`${a.abandoned.withPhone} panier(s) abandonné(s) avec un numéro, pour ${fmt(a.abandoned.value, "tnd")} : relancez-les sur WhatsApp.`);
+  if (a.abandoned.withPhone > 0) out.push(`${a.abandoned.withPhone} commande(s) commencée(s) et non terminée(s) avec un numéro, pour ${fmt(a.abandoned.value, "tnd")} : rappelez-les une fois sur WhatsApp.`);
   if (a.kpis.pending > 0) out.push(`${a.kpis.pending} commande(s) attendent encore leur appel de confirmation.`);
   return out;
 }

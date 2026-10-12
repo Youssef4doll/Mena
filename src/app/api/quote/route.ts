@@ -5,7 +5,7 @@ import { publicQuote, quoteCart } from "@/lib/quote-server";
 import { normalizePhone } from "@/lib/phone";
 
 const body = z.object({
-  lines: z.array(z.object({ productId: z.string().max(40), variantId: z.string().max(40).nullish(), qty: z.number().int().min(1).max(10) })).max(30),
+  lines: z.array(z.object({ productId: z.string().max(40), variantId: z.string().max(40).nullish(), offerId: z.string().max(40).nullish(), qty: z.number().int().min(1).max(10) })).max(30),
   governorate: z.string().max(40).nullish(),
   promoCode: z.string().max(40).nullish(),
   phone: z.string().max(30).nullish(),

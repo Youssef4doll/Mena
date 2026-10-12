@@ -14,7 +14,7 @@ export function Listing({ lang, title, path, sort, products, emptyText }: { lang
   return (
     <div className="mx-auto max-w-6xl px-4 pt-6">
       <div className="mb-4 flex flex-col gap-1">
-        <h1 className="font-display text-[34px] leading-tight">{title}</h1>
+        <h1 className="text-[34px] leading-tight">{title}</h1>
         <p className="text-sm text-muted">{t.category.count(products.length)}</p>
       </div>
       <div className="-mx-4 mb-5 flex gap-2 overflow-x-auto px-4 no-scrollbar" role="tablist" aria-label={t.category.sort}>
@@ -23,7 +23,7 @@ export function Listing({ lang, title, path, sort, products, emptyText }: { lang
             key={s}
             href={href(lang, s === "new" ? path : `${path}?tri=${s}`)}
             scroll={false}
-            className={`shrink-0 rounded-full border px-3.5 py-1.5 text-[13px] ${s === sort ? "border-ink bg-ink text-white" : "border-line bg-white text-ink-2"}`}
+            className={`shrink-0 rounded-full border px-3.5 py-1.5 text-[15px] ${s === sort ? "border-sea bg-sea text-white" : "border-line bg-white text-ink-2"}`}
             aria-selected={s === sort}
             role="tab"
           >

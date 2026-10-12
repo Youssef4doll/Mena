@@ -1,16 +1,14 @@
 import { test, expect, type Page } from "@playwright/test";
 
 async function placeOrder(page: Page, phone: string) {
-  // Arrives from an ad and taps "Commander" at once: the ad must still get the credit.
-  await page.goto("/produit/set-6-verres-ambres?utm_source=facebook&utm_medium=paid&utm_campaign=e2e-oct");
-  await page.getByTestId("buy-now").click();
-  await expect(page).toHaveURL(/\/commande$/);
-  await page.getByTestId("phone").fill(phone);
+  // Arrives from an ad and orders at once: the ad must still get the credit.
+  await page.goto("/produit/diffuseur-huiles-essentielles?utm_source=facebook&utm_medium=paid&utm_campaign=e2e-oct");
   await page.getByTestId("name").fill("Sami Trabelsi");
+  await page.getByTestId("phone").fill(phone);
   await page.getByTestId("governorate").selectOption("Tunis");
-  await page.getByTestId("city").fill("La Marsa");
-  await page.getByTestId("address").fill("Rue Habib Bourguiba 5");
-  await expect(page.getByTestId("total")).toHaveText("52,500 DT");
+  await page.getByTestId("address").fill("La Marsa, rue Habib Bourguiba 5");
+  // First offer, "1 unité" at 69,000, plus 7,000 to Tunis. (Supplier stock: never runs out between runs.)
+  await expect(page.getByTestId("total")).toHaveText("76,000 DT");
   await page.getByTestId("place-order").click();
   await expect(page).toHaveURL(/\/commande\/merci\/MN-/);
   return (await page.getByTestId("order-ref").textContent())!.trim();
@@ -19,7 +17,7 @@ async function placeOrder(page: Page, phone: string) {
 test("the back office takes an order from call to verified review", async ({ page, browser }) => {
   const phone = `9${String(Date.now()).slice(-7)}`;
   const ref = await placeOrder(page, phone);
-  const reviewText = `Verres solides, bien emballés (${ref}).`;
+  const reviewText = `Diffuseur silencieux, bien emballé (${ref}).`;
 
   const admin = await (await browser.newContext()).newPage();
   await admin.goto("/admin");
@@ -51,7 +49,7 @@ test("the back office takes an order from call to verified review", async ({ pag
   await expect(page.getByText("Merci pour votre avis.")).toBeVisible();
 
   // Not public until approved.
-  await page.goto("/produit/set-6-verres-ambres");
+  await page.goto("/produit/diffuseur-huiles-essentielles");
   await expect(page.getByText(reviewText)).toHaveCount(0);
 
   await admin.goto("/admin/avis");
@@ -59,7 +57,7 @@ test("the back office takes an order from call to verified review", async ({ pag
   await mine.getByRole("button", { name: "Publier" }).click();
   await expect(mine).toHaveCount(0);
 
-  await page.goto("/produit/set-6-verres-ambres");
+  await page.goto("/produit/diffuseur-huiles-essentielles");
   await expect(page.getByText(reviewText)).toBeVisible();
   await expect(page.getByText("Client livré").first()).toBeVisible();
 

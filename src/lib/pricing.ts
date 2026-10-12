@@ -6,14 +6,30 @@ import { evaluatePromo, type PromoInput, type PromoResult } from "./promo";
  * the server just read, never anything the browser said about prices.
  *
  * The browser sends ids and quantities. Everything else — unit prices, what
- * is in stock, the delivery fee for the governorate, what a code is worth —
- * is decided here, from the database, every time.
+ * is in stock, the delivery fee for the governorate, what a code is worth,
+ * what an offer contains and costs — is decided here, from the database,
+ * every time.
  */
 
 export const MAX_QTY_PER_LINE = 10;
 export const MAX_LINES = 30;
 
-export type CartLineInput = { productId: string; variantId?: string | null; qty: number };
+/**
+ * One line of an order. With an offer, the offer decides the quantity and the
+ * price; the qty sent alongside is ignored.
+ */
+export type CartLineInput = { productId: string; variantId?: string | null; offerId?: string | null; qty: number };
+
+export type CatalogOffer = {
+  id: string;
+  label: string;
+  labelAr: string | null;
+  quantity: number;
+  price: number;
+  freeDelivery: boolean;
+  active: boolean;
+  endsAt: Date | null;
+};
 
 export type CatalogVariant = {
   id: string;
@@ -36,6 +52,7 @@ export type CatalogProduct = {
   available: boolean;
   imageId: string | null;
   variants: CatalogVariant[];
+  offers?: CatalogOffer[];
 };
 
 export type PricedLine = {
@@ -46,16 +63,22 @@ export type PricedLine = {
   nameAr: string | null;
   variantName: string | null;
   imageId: string | null;
+  /** With an offer: the line total spread over the units, rounded (display and analytics only). */
   unitPrice: number;
   unitCost: number | null;
   qty: number;
   lineTotal: number;
+  offerId: string | null;
+  offerLabel: string | null;
+  offerLabelAr: string | null;
+  /** The offer includes delivery. */
+  freeDelivery: boolean;
 };
 
 export type LineProblem = {
   productId: string;
   variantId: string | null;
-  kind: "not_found" | "unavailable" | "variant_required" | "qty_reduced";
+  kind: "not_found" | "unavailable" | "variant_required" | "qty_reduced" | "offer_unavailable";
   /** For qty_reduced: what is left. */
   available?: number;
 };
@@ -88,14 +111,27 @@ export function sellable(p: CatalogProduct, v: CatalogVariant | null): number {
   return Math.max(0, v ? v.stockQty : p.stockQty);
 }
 
-/** Same product + variant twice in a basket counts once, quantities added. */
+/** An offer can be bought while it is switched on and its end date (if any) has not passed. */
+export function offerLive(o: CatalogOffer, now: Date): boolean {
+  return o.active && (!o.endsAt || o.endsAt > now);
+}
+
+/**
+ * Same product + variant twice counts once, quantities added. An offer line
+ * stands on its own and is taken once: "2 + 1 offert" twice is not a thing
+ * the page lets anyone ask for.
+ */
 export function mergeLines(lines: CartLineInput[]): CartLineInput[] {
   const map = new Map<string, CartLineInput>();
   for (const l of lines) {
     if (!l.productId || !Number.isInteger(l.qty) || l.qty <= 0) continue;
-    const key = `${l.productId}|${l.variantId ?? ""}`;
+    const key = `${l.productId}|${l.variantId ?? ""}|${l.offerId ?? ""}`;
     const prev = map.get(key);
-    map.set(key, { productId: l.productId, variantId: l.variantId ?? null, qty: (prev?.qty ?? 0) + l.qty });
+    if (l.offerId) {
+      if (!prev) map.set(key, { productId: l.productId, variantId: l.variantId ?? null, offerId: l.offerId, qty: 1 });
+      continue;
+    }
+    map.set(key, { productId: l.productId, variantId: l.variantId ?? null, offerId: null, qty: (prev?.qty ?? 0) + l.qty });
   }
   return [...map.values()].slice(0, MAX_LINES);
 }
@@ -129,6 +165,39 @@ export function priceCart(args: {
         continue;
       }
     }
+    if (l.offerId) {
+      const offer = (p.offers ?? []).find((o) => o.id === l.offerId);
+      if (!offer || !offerLive(offer, args.now) || offer.quantity < 1) {
+        problems.push({ productId: p.id, variantId: v?.id ?? null, kind: "offer_unavailable" });
+        continue;
+      }
+      // An offer is all or nothing: never a smaller quantity at the offer's price.
+      if (sellable(p, v) < offer.quantity) {
+        problems.push({ productId: p.id, variantId: v?.id ?? null, kind: "unavailable" });
+        continue;
+      }
+      if (p.cost == null) costKnown = false;
+      else costTotal += p.cost * offer.quantity;
+      priced.push({
+        productId: p.id,
+        variantId: v?.id ?? null,
+        slug: p.slug,
+        name: p.name,
+        nameAr: p.nameAr,
+        variantName: v?.name ?? null,
+        imageId: p.imageId,
+        unitPrice: Math.round(offer.price / offer.quantity),
+        unitCost: p.cost,
+        qty: offer.quantity,
+        lineTotal: offer.price,
+        offerId: offer.id,
+        offerLabel: offer.label,
+        offerLabelAr: offer.labelAr,
+        freeDelivery: offer.freeDelivery,
+      });
+      continue;
+    }
+
     const max = Math.min(MAX_QTY_PER_LINE, sellable(p, v));
     if (max <= 0) {
       problems.push({ productId: p.id, variantId: v?.id ?? null, kind: "unavailable" });
@@ -154,6 +223,10 @@ export function priceCart(args: {
       unitCost: p.cost,
       qty,
       lineTotal: unitPrice * qty,
+      offerId: null,
+      offerLabel: null,
+      offerLabelAr: null,
+      freeDelivery: false,
     });
   }
 
@@ -175,7 +248,7 @@ export function priceCart(args: {
   const zone = args.governorate ? args.zones[args.governorate] : undefined;
   const deliveryUnavailable = Boolean(args.governorate) && (!zone || !zone.enabled);
   const thresholdMet = args.freeThreshold != null && afterDiscount >= args.freeThreshold;
-  const free = promoFreeDelivery || thresholdMet;
+  const free = promoFreeDelivery || thresholdMet || priced.some((l) => l.freeDelivery);
 
   let delivery: Quote["delivery"] = null;
   let deliveryFee = 0;

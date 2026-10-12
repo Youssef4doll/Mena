@@ -37,7 +37,7 @@ export function Footer({ lang, settings, categories }: { lang: Lang; settings: S
         </FooterCol>
       </div>
       <div className="border-t border-line">
-        <div className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-2 px-4 py-5 text-xs text-muted">
+        <div className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-2 px-4 py-5 text-sm text-muted">
           <span>
             © {year} {s.name}. {t.footer.rights}
             {s.legalId && <span className="ltr-nums"> · MF {s.legalId}</span>}
@@ -52,7 +52,7 @@ export function Footer({ lang, settings, categories }: { lang: Lang; settings: S
 function FooterCol({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <div>
-      <p className="mb-3 text-[11px] font-semibold uppercase tracking-[0.14em] text-muted">{title}</p>
+      <p className="mb-3 text-[15px] font-semibold uppercase tracking-[0.14em] text-muted">{title}</p>
       <div className="flex flex-col gap-2 text-sm text-ink-2 [&_a:hover]:text-sea">{children}</div>
     </div>
   );

@@ -34,7 +34,7 @@ export function LookupForm({ lang }: { lang: Lang }) {
         <input value={phone} onChange={(e) => setPhone(e.target.value)} inputMode="tel" placeholder="22 123 456" className="h-12 rounded-xl border border-line bg-white px-3 outline-none focus:border-sea" dir="ltr" required data-testid="lookup-phone" />
       </label>
       {err && <p className="text-sm text-danger" role="alert">{err}</p>}
-      <button type="submit" disabled={busy} className="h-12 rounded-full bg-ink font-medium text-white disabled:opacity-60">
+      <button type="submit" disabled={busy} className="h-12 rounded-full bg-sea font-medium text-white disabled:opacity-60">
         {t.track.submit}
       </button>
     </form>

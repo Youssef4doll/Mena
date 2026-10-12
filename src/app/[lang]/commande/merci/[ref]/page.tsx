@@ -24,10 +24,10 @@ export default async function ThanksRoute({ params }: PageProps<"/[lang]/command
         <span className="flex h-16 w-16 items-center justify-center rounded-full bg-olive-soft text-olive">
           <IconCheck className="h-8 w-8" />
         </span>
-        <h1 className="font-display text-[30px] leading-tight">{t.thanks.title}</h1>
+        <h1 className="text-[30px] leading-tight">{t.thanks.title}</h1>
         <div className="rounded-2xl border border-line bg-white px-6 py-3">
-          <p className="text-xs uppercase tracking-[0.14em] text-muted">{t.thanks.ref}</p>
-          <p className="mt-1 font-display text-2xl tracking-wider ltr-nums" data-testid="order-ref">{ref}</p>
+          <p className="text-sm uppercase tracking-[0.14em] text-muted">{t.thanks.ref}</p>
+          <p className="mt-1 text-2xl tracking-wider ltr-nums" data-testid="order-ref">{ref}</p>
         </div>
       </div>
 
@@ -61,8 +61,9 @@ export default async function ThanksRoute({ params }: PageProps<"/[lang]/command
                     <span className="ltr-nums">{i.qty} × </span>
                     {pick(lang, i.name, i.product?.nameAr)}
                     {i.variantName && <span className="text-muted"> · {i.variantName}</span>}
+                    {i.offerLabel && <span className="text-muted"> · {i.offerLabel}</span>}
                   </span>
-                  <span className="ltr-nums">{formatTND(i.unitPrice * i.qty, lang)}</span>
+                  <span className="ltr-nums">{formatTND(i.lineTotal, lang)}</span>
                 </li>
               ))}
             </ul>
@@ -88,7 +89,7 @@ export default async function ThanksRoute({ params }: PageProps<"/[lang]/command
       </div>
 
       <div className="flex flex-col gap-2">
-        <Link href={href(lang, o ? `/suivi/${o.ref}` : "/suivi")} className="flex h-12 items-center justify-center rounded-full bg-ink font-medium text-white">
+        <Link href={href(lang, o ? `/suivi/${o.ref}` : "/suivi")} className="flex h-12 items-center justify-center rounded-full bg-sea font-medium text-white">
           {t.thanks.track}
         </Link>
         <Link href={href(lang, "/boutique")} className="flex h-12 items-center justify-center rounded-full border border-line font-medium">

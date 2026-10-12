@@ -61,12 +61,33 @@ type Demo = {
 };
 
 const CATS = [
-  { slug: "maison", name: "Maison", nameAr: "الدار", shape: "lamp" as const },
-  { slug: "beaute", name: "Beauté", nameAr: "الجمال", shape: "bottle" as const },
-  { slug: "accessoires", name: "Accessoires", nameAr: "إكسسوارات", shape: "bag" as const },
-  { slug: "cuisine", name: "Cuisine", nameAr: "الكوجينة", shape: "glass" as const },
-  { slug: "high-tech", name: "High-tech", nameAr: "تكنولوجيا", shape: "buds" as const },
+  { slug: "maison", name: "Maison", nameAr: "الدار", headline: "Pour une maison douce", headlineAr: "لدار مريحة", shape: "lamp" as const },
+  { slug: "beaute", name: "Beauté", nameAr: "الجمال", headline: "Prendre soin de soi", headlineAr: "اعتني بروحك", shape: "bottle" as const },
+  { slug: "accessoires", name: "Accessoires", nameAr: "إكسسوارات", headline: "Les petits plus", headlineAr: "تفاصيل تفرق", shape: "bag" as const },
+  { slug: "cuisine", name: "Cuisine", nameAr: "الكوجينة", headline: "Tout pour la cuisine", headlineAr: "كل شي للكوجينة", shape: "glass" as const },
+  { slug: "high-tech", name: "High-tech", nameAr: "تكنولوجيا", headline: "Écouter, recharger", headlineAr: "اسمع واشحن", shape: "buds" as const },
 ];
+
+/** Demo offers: one unit, two, and "2 + 1" with delivery included, at real totals. */
+function demoOffers(price: number) {
+  const round = (m: number) => Math.round(m / 1000) * 1000 - 100;
+  return [
+    { label: "1 unité", labelAr: "حبة وحدة", quantity: 1, price, freeDelivery: false, sort: 0 },
+    { label: "2 unités", labelAr: "زوز حبات", quantity: 2, price: round(price * 2 * 0.9), freeDelivery: false, sort: 1 },
+    { label: "Achetez 2, la 3e offerte", labelAr: "اشري 2 والثالثة هدية", quantity: 3, price: price * 2, freeDelivery: true, sort: 2 },
+  ];
+}
+const WITH_OFFERS = new Set(["diffuseur-huiles-essentielles", "set-6-verres-ambres", "brosse-soufflante-3-en-1", "lampe-de-chevet-tactile"]);
+
+/** Brings an older demo catalogue up to date (offers, card titles). Safe to run again. */
+async function upgrade() {
+  for (const c of CATS) await prisma.category.updateMany({ where: { slug: c.slug, headline: null }, data: { headline: c.headline, headlineAr: c.headlineAr } });
+  for (const p of PRODUCTS) {
+    if (!WITH_OFFERS.has(p.slug)) continue;
+    const row = await prisma.product.findFirst({ where: { slug: p.slug, isDemo: true }, select: { id: true, price: true, _count: { select: { offers: true } } } });
+    if (row && row._count.offers === 0) await prisma.productOffer.createMany({ data: demoOffers(row.price).map((o) => ({ ...o, productId: row.id })) });
+  }
+}
 
 const PRODUCTS: Demo[] = [
   { slug: "lampe-de-chevet-tactile", name: "Lampe de chevet tactile", nameAr: "لمبة سرير باللمس", cat: "maison", price: 59_900, cost: 27_000, shape: "lamp", featured: true,
@@ -98,13 +119,14 @@ const PRODUCTS: Demo[] = [
 async function main() {
   const existing = await prisma.product.count({ where: { isDemo: true } });
   if (existing > 0) {
-    console.log("Demo catalogue already there.");
+    await upgrade();
+    console.log("Demo catalogue already there (brought up to date).");
     return;
   }
   const cats = new Map<string, string>();
   for (const [i, c] of CATS.entries()) {
     const img = await picture(i, SHAPES[c.shape], c.name);
-    const row = await prisma.category.upsert({ where: { slug: c.slug }, create: { slug: c.slug, name: c.name, nameAr: c.nameAr, sort: i, imageId: img.id }, update: {} });
+    const row = await prisma.category.upsert({ where: { slug: c.slug }, create: { slug: c.slug, name: c.name, nameAr: c.nameAr, headline: c.headline, headlineAr: c.headlineAr, sort: i, imageId: img.id }, update: {} });
     cats.set(c.slug, row.id);
   }
   for (const [i, p] of PRODUCTS.entries()) {
@@ -116,6 +138,7 @@ async function main() {
         stockMode: p.tracked != null ? "TRACKED" : "SUPPLIER", stockQty: p.tracked ?? 0, available: true,
         images: { create: imgs.map((m, n) => ({ mediaId: m.id, sort: n })) },
         variants: p.variants ? { create: p.variants.map((v, n) => ({ name: v.name, price: v.price ?? null, stockQty: v.stock ?? 0, available: true, sort: n })) } : undefined,
+        offers: WITH_OFFERS.has(p.slug) ? { create: demoOffers(p.price) } : undefined,
       },
     });
   }

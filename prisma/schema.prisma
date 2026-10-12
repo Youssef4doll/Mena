@@ -24,6 +24,9 @@ model Category {
   slug      String    @unique
   name      String
   nameAr    String?
+  /// The title on the home page card ("Tout pour la cuisine"); the name when empty.
+  headline   String?
+  headlineAr String?
   imageId   String?
   sort      Int       @default(0)
   active    Boolean   @default(true)
@@ -85,6 +88,7 @@ model Product {
   weight        Int?
   images        ProductImage[]
   variants      ProductVariant[]
+  offers        ProductOffer[]
   orderItems    OrderItem[]
   reviews       Review[]
   /// Seeded demo data, so the shop can delete it in one click before launch.
@@ -123,6 +127,30 @@ model ProductVariant {
   available  Boolean     @default(true)
   sort       Int         @default(0)
   orderItems OrderItem[]
+
+  @@index([productId])
+}
+
+/// A quantity sold at a set price: "1 unité", "2 + 1 offert". The customer
+/// picks one on the product page; the server prices the line from it.
+model ProductOffer {
+  id           String      @id @default(cuid())
+  productId    String
+  product      Product     @relation(fields: [productId], references: [id], onDelete: Cascade)
+  /// "Achetez 2, le 3e offert"
+  label        String
+  labelAr      String?
+  /// Units the customer receives.
+  quantity     Int
+  /// Total price for those units, millimes.
+  price        Int
+  freeDelivery Boolean     @default(false)
+  /// A real end date, shown to the customer. No date, no countdown.
+  endsAt       DateTime?
+  active       Boolean     @default(true)
+  sort         Int         @default(0)
+  orderItems   OrderItem[]
+  createdAt    DateTime    @default(now())
 
   @@index([productId])
 }
@@ -214,7 +242,8 @@ model Order {
   phoneAlt        String?
   email           String?
   governorate     String
-  city            String
+  /// May be empty: the one-step form asks for a single address line.
+  city            String          @default("")
   address         String
   note            String?
   /// All amounts in millimes, computed by the server.
@@ -292,6 +321,12 @@ model OrderItem {
   unitPrice Int
   unitCost  Int?
   qty       Int
+  /// What the line costs, millimes. Equal to unitPrice × qty, except for an
+  /// offer ("3 pour 99 DT"), whose price is not a multiple of a unit price.
+  lineTotal Int
+  offerId   String?
+  offer     ProductOffer?   @relation(fields: [offerId], references: [id], onDelete: SetNull)
+  offerLabel String?
   review    Review?
 
   @@index([orderId])

@@ -94,6 +94,40 @@ async function cards(where: Prisma.ProductWhereInput, orderBy: Prisma.ProductOrd
   return rows.map((r) => toCard(r, ratings));
 }
 
+/**
+ * The home page's category boxes: each category with up to four of its
+ * products (the shop's selection first), like Amazon's "2 × 2" cards.
+ */
+export const getHomeCategories = unstable_cache(
+  async () => {
+    const cats = await prisma.category.findMany({
+      where: { active: true, products: { some: { active: true } } },
+      orderBy: [{ sort: "asc" }, { name: "asc" }],
+      select: {
+        id: true,
+        slug: true,
+        name: true,
+        nameAr: true,
+        headline: true,
+        headlineAr: true,
+        imageId: true,
+        products: {
+          where: { active: true },
+          orderBy: [{ featured: "desc" }, { createdAt: "desc" }],
+          take: 4,
+          select: { id: true, slug: true, name: true, nameAr: true, price: true, images: { orderBy: { sort: "asc" }, take: 1, select: { mediaId: true } } },
+        },
+      },
+    });
+    return cats.map((c) => ({
+      ...c,
+      products: c.products.map((p) => ({ id: p.id, slug: p.slug, name: p.name, nameAr: p.nameAr, price: p.price, imageId: p.images[0]?.mediaId ?? null })),
+    }));
+  },
+  ["home-categories-v1"],
+  { tags: [CATALOG_TAG], revalidate: TTL },
+);
+
 export const getCategories = unstable_cache(
   async () =>
     prisma.category.findMany({
@@ -195,10 +229,15 @@ export const getProduct = unstable_cache(
         category: { select: { slug: true, name: true, nameAr: true } },
         images: { orderBy: { sort: "asc" }, select: { mediaId: true, alt: true, media: { select: { width: true, height: true, blur: true } } } },
         variants: { orderBy: { sort: "asc" }, select: { id: true, name: true, price: true, stockQty: true, available: true } },
+        offers: {
+          where: { active: true, OR: [{ endsAt: null }, { endsAt: { gt: new Date() } }] },
+          orderBy: [{ sort: "asc" }, { quantity: "asc" }],
+          select: { id: true, label: true, labelAr: true, quantity: true, price: true, freeDelivery: true, endsAt: true },
+        },
       },
     });
     if (!p) return null;
-    const [reviews, agg, related] = await Promise.all([
+    const [reviews, agg, related, offerSales] = await Promise.all([
       prisma.review.findMany({
         where: { productId: p.id, status: "APPROVED" },
         orderBy: { createdAt: "desc" },
@@ -207,7 +246,18 @@ export const getProduct = unstable_cache(
       }),
       prisma.review.aggregate({ where: { productId: p.id, status: "APPROVED" }, _avg: { rating: true }, _count: { _all: true } }),
       cards({ id: { not: p.id }, ...(p.category ? { category: { slug: p.category.slug } } : {}) }, [{ featured: "desc" }, { createdAt: "desc" }], 8),
+      p.offers.length > 1
+        ? prisma.orderItem.groupBy({
+            by: ["offerId"],
+            where: { offerId: { in: p.offers.map((o) => o.id) }, order: { status: { not: "CANCELLED" }, createdAt: { gte: new Date(Date.now() - 60 * 86_400_000) } } },
+            _count: { _all: true },
+          })
+        : Promise.resolve([] as { offerId: string | null; _count: { _all: number } }[]),
     ]);
+    // "Le plus choisi" is a fact or it is not shown: the offer ordered most in
+    // 60 days, with at least 3 orders and clearly ahead of the next one.
+    const ranked = [...offerSales].sort((a, b) => b._count._all - a._count._all);
+    const mostChosen = ranked[0] && ranked[0]._count._all >= 3 && ranked[0]._count._all > (ranked[1]?._count._all ?? 0) ? ranked[0].offerId : null;
     const variants = p.variants.map((v) => ({
       id: v.id,
       name: v.name,
@@ -231,6 +281,7 @@ export const getProduct = unstable_cache(
       updatedAt: p.updatedAt.toISOString(),
       reviews: reviews.map((r) => ({ ...r, createdAt: r.createdAt.toISOString() })),
       rating: agg._count._all > 0 ? { avg: agg._avg.rating ?? 0, count: agg._count._all } : null,
+      offers: p.offers.map((o) => ({ ...o, endsAt: o.endsAt?.toISOString() ?? null, mostChosen: o.id === mostChosen })),
       related,
     };
   },
@@ -298,6 +349,7 @@ export async function loadCatalog(ids: string[]): Promise<Map<string, CatalogPro
       available: true,
       images: { orderBy: { sort: "asc" }, take: 1, select: { mediaId: true } },
       variants: { select: { id: true, name: true, price: true, stockQty: true, available: true } },
+      offers: { select: { id: true, label: true, labelAr: true, quantity: true, price: true, freeDelivery: true, active: true, endsAt: true } },
     },
   });
   return new Map(
@@ -316,6 +368,7 @@ export async function loadCatalog(ids: string[]): Promise<Map<string, CatalogPro
         available: r.available,
         imageId: r.images[0]?.mediaId ?? null,
         variants: r.variants,
+        offers: r.offers,
       },
     ]),
   );

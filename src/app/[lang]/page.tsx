@@ -1,115 +1,120 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { dict, href, isLang, pick } from "@/i18n";
-import { getCategories, getHome } from "@/lib/catalog";
+import { dict, href, isLang, pick, type Lang } from "@/i18n";
+import { getHome, getHomeCategories } from "@/lib/catalog";
 import { getSettings } from "@/lib/settings";
-import { ProductGrid } from "@/components/shop/ProductCard";
+import { formatTND } from "@/lib/money";
+import { governorateLabel } from "@/lib/governorates";
+import { ProductRow } from "@/components/shop/ProductCard";
 import { TrustBar } from "@/components/shop/TrustBar";
 import { Stars } from "@/components/shop/Stars";
-import { Img } from "@/components/shop/Img";
+import { Img, Placeholder } from "@/components/shop/Img";
 import { IconChevron } from "@/components/shop/Icons";
-import { governorateLabel } from "@/lib/governorates";
 import { JsonLd, organizationLd } from "@/lib/seo";
 
 export const revalidate = 60;
 
+/** Soft card backgrounds, in order: one per category, never a colour that shouts. */
+const TINTS = ["bg-tint-1", "bg-tint-2", "bg-tint-3", "bg-tint-4", "bg-tint-5", "bg-tint-6"];
+
+/**
+ * Laid out like Amazon's home page, which most shoppers already know how to
+ * read: big category cards first, then "four products per card" boxes, then
+ * shelves of products. Calm colours, large type, every card one tap.
+ */
 export default async function Home({ params }: PageProps<"/[lang]">) {
   const { lang } = await params;
   if (!isLang(lang)) notFound();
   const t = dict(lang);
-  const [settings, home, categories] = await Promise.all([getSettings(), getHome(), getCategories()]);
+  const [settings, home, cats] = await Promise.all([getSettings(), getHome(), getHomeCategories()]);
   const hero = settings.hero;
-  const lead = home.featured.length > 0 ? home.featured : home.newest;
   const empty = home.newest.length === 0;
 
   return (
     <>
       <JsonLd data={organizationLd(settings)} />
-      {/* ------------------------------------------------------------ hero */}
-      <section className="relative overflow-hidden">
-        <div className="mx-auto grid max-w-6xl items-center gap-8 px-4 pb-10 pt-8 md:grid-cols-2 md:pb-16 md:pt-14">
-          <div className="flex flex-col items-start gap-5">
-            <span className="rounded-full border border-line bg-white/70 px-3 py-1 text-[12px] font-medium text-sea">{t.trust.cod}</span>
-            <h1 className="font-display text-[40px] font-medium leading-[1.04] tracking-tight text-ink sm:text-[52px]">{pick(lang, hero.title, hero.titleAr)}</h1>
-            <p className="max-w-md text-[15px] leading-relaxed text-muted">{pick(lang, hero.subtitle, hero.subtitleAr)}</p>
-            <div className="flex flex-wrap gap-3">
-              <Link href={href(lang, "/boutique")} className="inline-flex h-12 items-center gap-2 rounded-full bg-sea px-6 text-[15px] font-semibold text-white shadow-soft transition active:scale-[.98]">
-                {t.home.shopNow}
-                <IconChevron />
-              </Link>
-            </div>
+
+      {/* ---------------------------------------------------- welcome */}
+      <section className="bg-gradient-to-b from-sea-soft to-cream">
+        <div className="mx-auto flex max-w-6xl flex-col gap-5 px-4 pb-6 pt-6 md:flex-row md:items-center md:gap-10 md:pb-10 md:pt-10">
+          <div className="flex flex-1 flex-col items-start gap-3">
+            <h1 className="text-[30px] font-bold leading-tight text-ink sm:text-[40px]">{pick(lang, hero.title, hero.titleAr)}</h1>
+            <p className="max-w-xl text-[18px] leading-relaxed text-ink-2">{pick(lang, hero.subtitle, hero.subtitleAr)}</p>
           </div>
-          <div className="relative mx-auto aspect-[4/5] w-full max-w-[420px]">
-            <div className="arch absolute inset-0 overflow-hidden bg-sand">
-              {hero.imageId ? (
-                <Img image={{ id: hero.imageId, blur: null, width: 1200, height: 1500 }} alt="" sizes="(min-width: 768px) 420px, 90vw" priority />
-              ) : lead[0]?.images[0] ? (
-                <Img image={lead[0].images[0]} alt={pick(lang, lead[0].name, lead[0].nameAr)} sizes="(min-width: 768px) 420px, 90vw" priority />
-              ) : (
-                <HeroPattern />
-              )}
+          {hero.imageId && (
+            <div className="relative aspect-[16/9] w-full overflow-hidden rounded-3xl md:w-[45%]">
+              <Img image={{ id: hero.imageId, blur: null, width: 1600, height: 900 }} alt="" sizes="(min-width: 768px) 45vw, 100vw" priority />
             </div>
-            <div className="arch absolute -inset-3 -z-10 border border-line" aria-hidden />
-          </div>
+          )}
         </div>
       </section>
 
-      <section className="mx-auto max-w-6xl px-4">
-        <TrustBar lang={lang} returnDays={settings.returns.days} whatsapp={Boolean(settings.contact.whatsapp)} />
-      </section>
+      {empty && <p className="mx-auto max-w-6xl px-4 py-16 text-center text-[18px] text-muted">{t.home.empty}</p>}
 
-      {empty && <p className="mx-auto max-w-6xl px-4 py-16 text-center text-muted">{t.home.empty}</p>}
-
-      {/* ------------------------------------------------------ categories */}
-      {categories.length > 1 && (
-        <section className="mx-auto mt-14 max-w-6xl px-4">
-          <SectionTitle title={t.home.categories} />
-          <div className="-mx-4 flex gap-3 overflow-x-auto px-4 pb-1 no-scrollbar">
-            {categories.map((c) => (
-              <Link key={c.slug} href={href(lang, `/categorie/${c.slug}`)} className="group flex w-[42%] shrink-0 flex-col gap-2 sm:w-44">
-                <span className="arch relative block aspect-[4/5] overflow-hidden bg-sand">
-                  {c.imageId ? <Img image={{ id: c.imageId, blur: null, width: 800, height: 1000 }} alt="" sizes="180px" className="transition duration-500 group-hover:scale-105" /> : <HeroPattern small />}
-                </span>
-                <span className="text-center text-sm font-medium text-ink">{pick(lang, c.name, c.nameAr)}</span>
-              </Link>
-            ))}
+      {/* ------------------------------------------ big category cards */}
+      {cats.length > 0 && (
+        <section className="mx-auto max-w-6xl px-4" aria-label={t.home.categories}>
+          <div className="-mx-4 flex snap-x gap-3 overflow-x-auto px-4 pb-2 no-scrollbar lg:mx-0 lg:grid lg:grid-cols-4 lg:overflow-visible lg:px-0">
+            {cats.slice(0, 8).map((c, i) => {
+              const image = c.imageId ?? c.products[0]?.imageId ?? null;
+              return (
+                <Link
+                  key={c.slug}
+                  href={href(lang, `/categorie/${c.slug}`)}
+                  className={`group flex w-[72%] shrink-0 snap-start flex-col overflow-hidden rounded-3xl sm:w-[44%] lg:w-auto ${TINTS[i % TINTS.length]}`}
+                >
+                  <span className="px-4 pb-2 pt-4 text-[22px] font-bold leading-tight text-ink">{pick(lang, c.headline || c.name, c.headlineAr || c.nameAr)}</span>
+                  <span className="relative mx-4 mb-4 aspect-[4/3] overflow-hidden rounded-2xl bg-white/60">
+                    {image ? <Img image={{ id: image, blur: null, width: 800, height: 600 }} alt="" sizes="(min-width: 1024px) 25vw, 72vw" className="transition duration-500 group-hover:scale-[1.03]" priority={i < 2} /> : <Placeholder />}
+                  </span>
+                </Link>
+              );
+            })}
           </div>
         </section>
       )}
 
-      {/* --------------------------------------------------------- products */}
+      <section className="mx-auto mt-6 max-w-6xl px-4">
+        <TrustBar lang={lang} returnDays={settings.returns.days} whatsapp={Boolean(settings.contact.whatsapp)} />
+      </section>
+
+      {/* --------------------------------------- four products per card */}
+      {cats.length > 0 && (
+        <section className="mx-auto mt-8 grid max-w-6xl gap-4 px-4 sm:grid-cols-2 lg:grid-cols-4">
+          {cats.map((c) => (
+            <CategoryBox key={c.slug} c={c} lang={lang} />
+          ))}
+        </section>
+      )}
+
+      {/* --------------------------------------------------- shelves */}
       {home.featured.length > 0 && (
-        <section className="mx-auto mt-14 max-w-6xl px-4">
-          <SectionTitle title={t.home.featured} link={{ href: href(lang, "/boutique"), label: t.home.shopNow }} />
-          <ProductGrid products={home.featured} lang={lang} priorityFirst={2} />
-        </section>
+        <Shelf title={t.home.featured} link={{ href: href(lang, "/boutique"), label: t.home.shopNow }}>
+          <ProductRow products={home.featured} lang={lang} />
+        </Shelf>
       )}
-
       {home.bestsellers.length > 0 && (
-        <section className="mx-auto mt-14 max-w-6xl px-4">
-          <SectionTitle title={t.home.bestsellers} sub={t.home.bestsellersSub} />
-          <ProductGrid products={home.bestsellers.slice(0, 8)} lang={lang} />
-        </section>
+        <Shelf title={t.home.bestsellers} sub={t.home.bestsellersSub}>
+          <ProductRow products={home.bestsellers.slice(0, 8)} lang={lang} />
+        </Shelf>
       )}
-
       {home.newest.length > 0 && (
-        <section className="mx-auto mt-14 max-w-6xl px-4">
-          <SectionTitle title={t.home.newest} link={{ href: href(lang, "/boutique"), label: t.home.shopNow }} />
-          <ProductGrid products={home.newest} lang={lang} priorityFirst={home.featured.length ? 0 : 2} />
-        </section>
+        <Shelf title={t.home.newest} link={{ href: href(lang, "/boutique"), label: t.home.shopNow }}>
+          <ProductRow products={home.newest} lang={lang} />
+        </Shelf>
       )}
 
-      {/* ------------------------------------------------------ how it works */}
-      <section className="mx-auto mt-16 max-w-6xl px-4">
-        <div className="rounded-[28px] bg-ink px-6 py-10 text-white sm:px-10">
-          <h2 className="font-display text-[28px] leading-tight">{t.home.howTitle}</h2>
-          <ol className="mt-6 grid gap-6 sm:grid-cols-3">
+      {/* --------------------------------------------- how to order */}
+      <section className="mx-auto mt-10 max-w-6xl px-4">
+        <div className="rounded-3xl border border-line bg-white px-5 py-7 sm:px-8">
+          <h2 className="text-[24px] font-bold leading-tight text-ink">{t.home.howTitle}</h2>
+          <ol className="mt-5 grid gap-5 sm:grid-cols-3">
             {t.home.how.map(([title, sub], i) => (
               <li key={title} className="flex gap-4">
-                <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-white/10 font-display text-lg ltr-nums">{i + 1}</span>
+                <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-sea text-[20px] font-bold text-white ltr-nums">{i + 1}</span>
                 <span>
-                  <span className="block font-semibold">{title}</span>
-                  <span className="mt-1 block text-sm leading-relaxed text-white/70">{sub}</span>
+                  <span className="block text-[18px] font-bold text-ink">{title}</span>
+                  <span className="mt-1 block text-[16px] leading-relaxed text-ink-2">{sub}</span>
                 </span>
               </li>
             ))}
@@ -117,17 +122,16 @@ export default async function Home({ params }: PageProps<"/[lang]">) {
         </div>
       </section>
 
-      {/* --------------------------------------------- reviews (real only) */}
+      {/* ------------------------------------- reviews (real buyers only) */}
       {home.reviews.length > 0 && (
-        <section className="mx-auto mt-16 max-w-6xl px-4">
-          <SectionTitle title={t.home.reviews} sub={t.home.reviewsSub} />
+        <Shelf title={t.home.reviews} sub={t.home.reviewsSub}>
           <div className="-mx-4 flex snap-x gap-3 overflow-x-auto px-4 pb-2 no-scrollbar">
             {home.reviews.map((r) => (
-              <figure key={r.id} className="w-[80%] shrink-0 snap-start rounded-2xl border border-line bg-white p-5 sm:w-80">
-                <Stars value={r.rating} />
-                <blockquote className="mt-3 line-clamp-5 text-[14px] leading-relaxed text-ink-2">{r.text}</blockquote>
-                <figcaption className="mt-4 text-xs text-muted">
-                  <span className="font-semibold text-ink">{r.authorName}</span>
+              <figure key={r.id} className="w-[82%] shrink-0 snap-start rounded-2xl border border-line bg-white p-5 sm:w-80">
+                <Stars value={r.rating} size={18} />
+                <blockquote className="mt-3 line-clamp-5 text-[17px] leading-relaxed text-ink-2">{r.text}</blockquote>
+                <figcaption className="mt-4 text-[14px] text-muted">
+                  <span className="font-bold text-ink">{r.authorName}</span>
                   {r.governorate && ` · ${governorateLabel(r.governorate, lang)}`}
                   {" · "}
                   <Link href={href(lang, `/produit/${r.product.slug}`)} className="underline underline-offset-2">
@@ -137,41 +141,58 @@ export default async function Home({ params }: PageProps<"/[lang]">) {
               </figure>
             ))}
           </div>
-        </section>
+        </Shelf>
       )}
     </>
   );
 }
 
-function SectionTitle({ title, sub, link }: { title: string; sub?: string; link?: { href: string; label: string } }) {
+type HomeCategory = Awaited<ReturnType<typeof getHomeCategories>>[number];
+
+/** Amazon's box: a title, four products with their names and prices, and "see more". */
+function CategoryBox({ c, lang }: { c: HomeCategory; lang: Lang }) {
+  const t = dict(lang);
+  const title = pick(lang, c.headline || c.name, c.headlineAr || c.nameAr);
   return (
-    <div className="mb-5 flex items-end justify-between gap-4">
-      <div>
-        <h2 className="font-display text-[26px] leading-tight text-ink">{title}</h2>
-        {sub && <p className="mt-1 text-sm text-muted">{sub}</p>}
+    <div className="flex flex-col rounded-3xl border border-line bg-white p-4">
+      <Link href={href(lang, `/categorie/${c.slug}`)} className="mb-3 flex items-start justify-between gap-2">
+        <h2 className="text-[21px] font-bold leading-tight text-ink">{title}</h2>
+        <IconChevron className="mt-1 h-5 w-5 shrink-0 text-muted" />
+      </Link>
+      <div className="grid grid-cols-2 gap-3">
+        {c.products.map((p) => (
+          <Link key={p.id} href={href(lang, `/produit/${p.slug}`)} className="flex flex-col gap-1.5" prefetch={false}>
+            <span className="relative aspect-square overflow-hidden rounded-xl bg-sand">
+              {p.imageId ? <Img image={{ id: p.imageId, blur: null, width: 400, height: 400 }} alt="" sizes="(min-width: 1024px) 12vw, 45vw" /> : <Placeholder />}
+            </span>
+            <span className="line-clamp-2 text-[15px] leading-snug text-ink-2">{pick(lang, p.name, p.nameAr)}</span>
+            <span className="text-[16px] font-bold text-ink ltr-nums">{formatTND(p.price, lang)}</span>
+          </Link>
+        ))}
       </div>
-      {link && (
-        <Link href={link.href} className="flex shrink-0 items-center gap-1 text-sm font-medium text-sea">
-          {link.label}
-          <IconChevron />
-        </Link>
-      )}
+      <Link href={href(lang, `/categorie/${c.slug}`)} className="mt-auto pt-4 text-[16px] font-bold text-sea underline-offset-4 hover:underline">
+        {t.home.seeMore}
+      </Link>
     </div>
   );
 }
 
-/** A zellige-like pattern for when there is no picture yet. */
-function HeroPattern({ small = false }: { small?: boolean }) {
+function Shelf({ title, sub, link, children }: { title: string; sub?: string; link?: { href: string; label: string }; children: React.ReactNode }) {
   return (
-    <svg className="absolute inset-0 h-full w-full" aria-hidden>
-      <defs>
-        <pattern id={small ? "zs" : "zl"} width={small ? 28 : 48} height={small ? 28 : 48} patternUnits="userSpaceOnUse">
-          <rect width="100%" height="100%" fill="var(--color-sand)" />
-          <path d={small ? "M14 2 26 14 14 26 2 14Z" : "M24 4 44 24 24 44 4 24Z"} fill="none" stroke="var(--color-sea)" strokeOpacity=".18" strokeWidth="1.5" />
-          <circle cx={small ? 14 : 24} cy={small ? 14 : 24} r={small ? 2.5 : 4} fill="var(--color-clay)" fillOpacity=".35" />
-        </pattern>
-      </defs>
-      <rect width="100%" height="100%" fill={`url(#${small ? "zs" : "zl"})`} />
-    </svg>
+    <section className="mx-auto mt-10 max-w-6xl px-4">
+      <div className="mb-4 flex items-end justify-between gap-4">
+        <div>
+          <h2 className="text-[24px] font-bold leading-tight text-ink">{title}</h2>
+          {sub && <p className="mt-1 text-[16px] text-muted">{sub}</p>}
+        </div>
+        {link && (
+          <Link href={link.href} className="flex shrink-0 items-center gap-1 text-[16px] font-bold text-sea">
+            {link.label}
+            <IconChevron className="h-5 w-5" />
+          </Link>
+        )}
+      </div>
+      {children}
+    </section>
   );
 }

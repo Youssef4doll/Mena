@@ -101,20 +101,18 @@ async function daily(r: Range): Promise<DayRow[]> {
 
 export type FunnelStep = { key: string; step: string; count: number };
 
-/** Visits → product → basket → checkout (sessions, from events) → order → confirmed → delivered (orders). */
+/** Visits → product page → order form started → phone typed (sessions, from events) → order → confirmed → delivered (orders). */
 async function funnel(from: Date, to: Date, k: Kpis): Promise<FunnelStep[]> {
-  const [f] = await prisma.$queryRaw<{ visits: bigint; product: bigint; cart: bigint; checkout: bigint; phone: bigint }[]>`
+  const [f] = await prisma.$queryRaw<{ visits: bigint; product: bigint; checkout: bigint; phone: bigint }[]>`
     SELECT COUNT(DISTINCT "sessionId") FILTER (WHERE name = 'page_view') AS visits,
       COUNT(DISTINCT "sessionId") FILTER (WHERE name = 'product_viewed') AS product,
-      COUNT(DISTINCT "sessionId") FILTER (WHERE name = 'add_to_cart') AS cart,
       COUNT(DISTINCT "sessionId") FILTER (WHERE name = 'checkout_started') AS checkout,
       COUNT(DISTINCT "sessionId") FILTER (WHERE name = 'checkout_phone_entered') AS phone
     FROM "AnalyticsEvent" WHERE "createdAt" >= ${from} AND "createdAt" < ${to} AND "sessionId" <> 'server'`;
   return [
     { key: "visits", step: "Visites", count: n(f.visits) },
     { key: "product", step: "Fiche produit vue", count: n(f.product) },
-    { key: "cart", step: "Ajout au panier", count: n(f.cart) },
-    { key: "checkout", step: "Commande commencée", count: n(f.checkout) },
+    { key: "checkout", step: "Formulaire commencé", count: n(f.checkout) },
     { key: "phone", step: "Téléphone saisi", count: n(f.phone) },
     { key: "order", step: "Commande passée", count: k.orders },
     { key: "confirmed", step: "Confirmée", count: k.confirmed },
@@ -177,30 +175,30 @@ async function byDevice(from: Date, to: Date): Promise<DeviceRow[]> {
   return [...rows.values()].sort((a, b) => order.indexOf(a.device) - order.indexOf(b.device));
 }
 
-export type ProductRow = { id: string; name: string; views: number; carts: number; units: number; orders: number; revenue: number };
+export type ProductRow = { id: string; name: string; views: number; forms: number; units: number; orders: number; revenue: number };
 
 async function products(from: Date, to: Date): Promise<ProductRow[]> {
-  const rows = await prisma.$queryRaw<{ id: string; name: string; views: bigint; carts: bigint; units: bigint; orders: bigint; revenue: bigint }[]>`
+  const rows = await prisma.$queryRaw<{ id: string; name: string; views: bigint; forms: bigint; units: bigint; orders: bigint; revenue: bigint }[]>`
     WITH ev AS (
       SELECT "productId" AS id,
         COUNT(DISTINCT "sessionId") FILTER (WHERE name = 'product_viewed') AS views,
-        COUNT(DISTINCT "sessionId") FILTER (WHERE name = 'add_to_cart') AS carts
+        COUNT(DISTINCT "sessionId") FILTER (WHERE name = 'checkout_started') AS forms
       FROM "AnalyticsEvent"
-      WHERE "productId" IS NOT NULL AND name IN ('product_viewed', 'add_to_cart') AND "createdAt" >= ${from} AND "createdAt" < ${to}
+      WHERE "productId" IS NOT NULL AND name IN ('product_viewed', 'checkout_started') AND "createdAt" >= ${from} AND "createdAt" < ${to}
       GROUP BY 1
     ), sold AS (
-      SELECT i."productId" AS id, SUM(i.qty) AS units, COUNT(DISTINCT i."orderId") AS orders, SUM(i."unitPrice" * i.qty) AS revenue
+      SELECT i."productId" AS id, SUM(i.qty) AS units, COUNT(DISTINCT i."orderId") AS orders, SUM(i."lineTotal") AS revenue
       FROM "OrderItem" i JOIN "Order" o ON o.id = i."orderId"
       WHERE i."productId" IS NOT NULL AND o.status <> 'CANCELLED' AND o."createdAt" >= ${from} AND o."createdAt" < ${to}
       GROUP BY 1
     )
-    SELECT p.id, p.name, COALESCE(ev.views, 0) AS views, COALESCE(ev.carts, 0) AS carts,
+    SELECT p.id, p.name, COALESCE(ev.views, 0) AS views, COALESCE(ev.forms, 0) AS forms,
       COALESCE(sold.units, 0) AS units, COALESCE(sold.orders, 0) AS orders, COALESCE(sold.revenue, 0) AS revenue
     FROM "Product" p LEFT JOIN ev ON ev.id = p.id LEFT JOIN sold ON sold.id = p.id
     WHERE ev.id IS NOT NULL OR sold.id IS NOT NULL
     ORDER BY revenue DESC, views DESC
     LIMIT 100`;
-  return rows.map((r) => ({ id: r.id, name: r.name, views: n(r.views), carts: n(r.carts), units: n(r.units), orders: n(r.orders), revenue: n(r.revenue) }));
+  return rows.map((r) => ({ id: r.id, name: r.name, views: n(r.views), forms: n(r.forms), units: n(r.units), orders: n(r.orders), revenue: n(r.revenue) }));
 }
 
 export type SearchRow = { q: string; count: number; results: number };
@@ -356,10 +354,10 @@ export async function getLive() {
   const since5 = new Date(Date.now() - 5 * 60_000);
   const since30 = new Date(Date.now() - 30 * 60_000);
   const [[a], pages, perMinute, orders, sources] = await Promise.all([
-    prisma.$queryRaw<{ visitors: bigint; carts: bigint; checkouts: bigint }[]>`
+    prisma.$queryRaw<{ visitors: bigint; forms: bigint; phones: bigint }[]>`
       SELECT COUNT(DISTINCT "visitorId") AS visitors,
-        COUNT(DISTINCT "sessionId") FILTER (WHERE name = 'add_to_cart') AS carts,
-        COUNT(DISTINCT "sessionId") FILTER (WHERE name = 'checkout_started') AS checkouts
+        COUNT(DISTINCT "sessionId") FILTER (WHERE name = 'checkout_started') AS forms,
+        COUNT(DISTINCT "sessionId") FILTER (WHERE name = 'checkout_phone_entered') AS phones
       FROM "AnalyticsEvent" WHERE "createdAt" >= ${since5} AND "sessionId" <> 'server'`,
     prisma.$queryRaw<{ path: string; visitors: bigint }[]>`
       SELECT path, COUNT(DISTINCT "visitorId") AS visitors FROM "AnalyticsEvent"
@@ -375,8 +373,8 @@ export async function getLive() {
   const pm = new Map(perMinute.map((x) => [x.m, n(x.visitors)]));
   return {
     visitors: n(a.visitors),
-    carts: n(a.carts),
-    checkouts: n(a.checkouts),
+    forms: n(a.forms),
+    phones: n(a.phones),
     pages: pages.map((p) => ({ path: p.path, visitors: n(p.visitors) })),
     sources: sources.map((s) => ({ source: s.source, visitors: n(s.visitors) })),
     minutes: Array.from({ length: 30 }, (_, i) => ({ ago: 29 - i, visitors: pm.get(29 - i) ?? 0 })),

@@ -51,7 +51,7 @@ export default async function ProductPageRoute({ params }: PageProps<"/[lang]/pr
           { name: pick(lang, p.name, p.nameAr), url },
         ])}
       />
-      <nav className="mx-auto hidden max-w-6xl px-4 pt-5 text-xs text-muted md:block" aria-label="breadcrumb">
+      <nav className="mx-auto hidden max-w-6xl px-4 pt-5 text-sm text-muted md:block" aria-label="breadcrumb">
         <Link href={href(lang, "/")}>{t.nav.home}</Link>
         {p.category && (
           <>
@@ -63,7 +63,7 @@ export default async function ProductPageRoute({ params }: PageProps<"/[lang]/pr
       <ProductView p={product} lang={lang} settings={publicSettings(settings)} url={url} />
       {related.length > 0 && (
         <section className="mx-auto max-w-6xl px-4">
-          <h2 className="mb-5 font-display text-[24px]">{t.product.related}</h2>
+          <h2 className="mb-5 text-[24px]">{t.product.related}</h2>
           <ProductGrid products={related.slice(0, 8)} lang={lang} />
         </section>
       )}

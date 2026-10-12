@@ -1,18 +1,8 @@
-import type { Metadata } from "next";
-import { notFound } from "next/navigation";
-import { isLang, dict } from "@/i18n";
-import { getSettings } from "@/lib/settings";
-import { publicSettings } from "@/lib/settings-schema";
-import { Checkout } from "@/components/shop/Checkout";
+import { redirect } from "next/navigation";
+import { href, isLang } from "@/i18n";
 
-export async function generateMetadata({ params }: PageProps<"/[lang]/commande">): Promise<Metadata> {
-  const { lang } = await params;
-  return { title: isLang(lang) ? dict(lang).checkout.title : "Commande", robots: { index: false } };
-}
-
+/** There is no basket any more: every product is ordered from its own page. Old links land in the shop. */
 export default async function CheckoutRoute({ params }: PageProps<"/[lang]/commande">) {
   const { lang } = await params;
-  if (!isLang(lang)) notFound();
-  const settings = await getSettings();
-  return <Checkout lang={lang} settings={publicSettings(settings)} />;
+  redirect(href(isLang(lang) ? lang : "fr", "/boutique"));
 }

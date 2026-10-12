@@ -40,7 +40,7 @@ export async function GET(request: Request) {
     case "devices":
       return csvResponse(`appareils_${tag}.csv`, toCsv(["appareil", "visites", "commandes", "conversion_pct", "ca_dt"], a.devices.map((d) => [d.device, d.sessions, d.orders, pct(ratio(d.orders, d.sessions)), dt(d.revenue)])));
     case "products":
-      return csvResponse(`produits_${tag}.csv`, toCsv(["produit", "vues", "paniers", "commandes", "vue_commande_pct", "unites", "ca_dt"], a.products.map((p) => [p.name, p.views, p.carts, p.orders, pct(ratio(p.orders, p.views)), p.units, dt(p.revenue)])));
+      return csvResponse(`produits_${tag}.csv`, toCsv(["produit", "vues", "formulaires", "commandes", "vue_commande_pct", "unites", "ca_dt"], a.products.map((p) => [p.name, p.views, p.forms, p.orders, pct(ratio(p.orders, p.views)), p.units, dt(p.revenue)])));
     case "searches":
       return csvResponse(`recherches_${tag}.csv`, toCsv(["recherche", "nombre", "resultats"], [...a.searches.top, ...a.searches.none].map((s) => [s.q, s.count, s.results])));
     case "governorates":

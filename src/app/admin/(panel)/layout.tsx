@@ -19,7 +19,7 @@ export default async function PanelLayout({ children }: { children: React.ReactN
     { href: "/admin", label: "Tableau de bord" },
     { href: "/admin/commandes", label: "Commandes", badge: pending },
     { href: "/admin/analytics", label: "Analytics" },
-    { href: "/admin/paniers", label: "Paniers abandonnés" },
+    { href: "/admin/paniers", label: "Non terminées" },
     { href: "/admin/produits", label: "Produits" },
     { href: "/admin/categories", label: "Catégories" },
     { href: "/admin/fournisseurs", label: "Fournisseurs" },

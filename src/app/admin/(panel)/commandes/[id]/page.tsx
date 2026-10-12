@@ -94,7 +94,8 @@ export default async function OrderPage({ params }: PageProps<"/admin/commandes/
                       {i.variantName && <span className="text-muted"> · {i.variantName}</span>}
                     </span>
                     <span className="block text-xs text-muted">
-                      {formatTND(i.unitPrice)} l&apos;unité{i.unitCost != null && ` · coût ${formatTND(i.unitCost)}`}
+                      {i.offerLabel ? <>Offre « {i.offerLabel} »</> : <>{formatTND(i.unitPrice)} l&apos;unité</>}
+                      {i.unitCost != null && ` · coût ${formatTND(i.unitCost * i.qty)}`}
                     </span>
                     {i.product?.supplier && (
                       <span className="mt-1 block text-xs text-ink-2">
@@ -110,7 +111,7 @@ export default async function OrderPage({ params }: PageProps<"/admin/commandes/
                       </span>
                     )}
                   </span>
-                  <span className="text-sm font-medium tabular-nums">{formatTND(i.unitPrice * i.qty)}</span>
+                  <span className="text-sm font-medium tabular-nums">{formatTND(i.lineTotal)}</span>
                 </li>
               ))}
             </ul>

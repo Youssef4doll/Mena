@@ -34,7 +34,7 @@ export function ReviewForm({ lang, orderRef, itemId, productName, defaultName, a
       <textarea value={text} onChange={(e) => setText(e.target.value)} rows={3} maxLength={800} placeholder={t.track.reviewText} className="rounded-xl border border-line bg-white px-3 py-2.5 outline-none focus:border-sea" />
       <input value={name} onChange={(e) => setName(e.target.value)} maxLength={40} placeholder={t.track.reviewName} aria-label={t.track.reviewName} className="h-11 rounded-xl border border-line bg-white px-3 outline-none focus:border-sea" />
       {state === "error" && <p className="text-sm text-danger">{t.checkout.errors.server}</p>}
-      <button type="submit" disabled={!rating || state === "busy"} className="h-11 self-start rounded-full bg-ink px-5 text-sm font-medium text-white disabled:opacity-40">
+      <button type="submit" disabled={!rating || state === "busy"} className="h-11 self-start rounded-full bg-sea px-5 text-sm font-medium text-white disabled:opacity-40">
         {t.track.reviewSend}
       </button>
     </form>
@@ -76,7 +76,7 @@ export function ReturnForm({ lang, orderRef, days }: { lang: Lang; orderRef: str
       </label>
       <textarea value={details} onChange={(e) => setDetails(e.target.value)} rows={3} maxLength={600} placeholder={t.track.returnDetails} className="rounded-xl border border-line bg-white px-3 py-2.5" />
       {state === "error" && <p className="text-sm text-danger">{t.checkout.errors.server}</p>}
-      <button type="submit" disabled={state === "busy"} className="h-11 self-start rounded-full bg-ink px-5 text-sm font-medium text-white">
+      <button type="submit" disabled={state === "busy"} className="h-11 self-start rounded-full bg-sea px-5 text-sm font-medium text-white">
         {t.track.returnSend}
       </button>
     </form>

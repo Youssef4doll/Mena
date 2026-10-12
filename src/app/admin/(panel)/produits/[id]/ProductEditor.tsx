@@ -12,7 +12,7 @@ type Img = { id: string; mediaId: string; alt: string };
 
 const EMPTY: ProductInput = {
   name: "", nameAr: "", slug: "", description: "", descriptionAr: "", price: 0, compareAt: null, cost: null, categoryId: null, supplierId: null,
-  supplierRef: "", supplierUrl: "", stockMode: "SUPPLIER", stockQty: 0, available: true, active: false, featured: false, variants: [],
+  supplierRef: "", supplierUrl: "", stockMode: "SUPPLIER", stockQty: 0, available: true, active: false, featured: false, variants: [], offers: [],
 };
 
 export function ProductEditor({ id, initial, images, categories, suppliers }: { id: string | null; initial: ProductInput | null; images: Img[]; categories: Opt[]; suppliers: Opt[] }) {
@@ -20,6 +20,7 @@ export function ProductEditor({ id, initial, images, categories, suppliers }: { 
   const [p, setP] = useState<ProductInput>(initial ?? EMPTY);
   const [money, setMoney] = useState({ price: toInputTND(initial?.price || null), compareAt: toInputTND(initial?.compareAt), cost: toInputTND(initial?.cost) });
   const [vPrices, setVPrices] = useState<string[]>((initial?.variants ?? []).map((v) => toInputTND(v.price)));
+  const [oPrices, setOPrices] = useState<string[]>((initial?.offers ?? []).map((o) => toInputTND(o.price)));
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
   const [pending, start] = useTransition();
   const set = <K extends keyof ProductInput>(k: K, v: ProductInput[K]) => setP((x) => ({ ...x, [k]: v }));
@@ -37,8 +38,11 @@ export function ProductEditor({ id, initial, images, categories, suppliers }: { 
     if (money.cost.trim() && costM == null) return setMsg({ ok: false, text: "Coût invalide." });
     const variants = p.variants.map((v, i) => ({ ...v, price: vPrices[i]?.trim() ? parseTND(vPrices[i]) : null }));
     if (variants.some((v, i) => vPrices[i]?.trim() && v.price == null)) return setMsg({ ok: false, text: "Prix de variante invalide." });
+    const offers = p.offers.map((o, i) => ({ ...o, price: parseTND(oPrices[i] ?? "") ?? 0 }));
+    const badOffer = offers.findIndex((o) => !o.label.trim() || o.price <= 0 || o.quantity < 1);
+    if (badOffer >= 0) return setMsg({ ok: false, text: `Offre ${badOffer + 1} : nom, quantité et prix total sont obligatoires.` });
     start(async () => {
-      const r = await saveProduct(id, { ...p, price: priceM, compareAt: compareM, cost: costM, variants });
+      const r = await saveProduct(id, { ...p, price: priceM, compareAt: compareM, cost: costM, variants, offers });
       if (!r.ok) return setMsg({ ok: false, text: r.error });
       setMsg({ ok: true, text: r.message ?? "Enregistré." });
       if (!id && r.id) router.replace(`/admin/produits/${r.id}`);
@@ -63,6 +67,65 @@ export function ProductEditor({ id, initial, images, categories, suppliers }: { 
         </Card>
 
         {id ? <Images productId={id} images={images} /> : <Card title="Photos"><p className="text-sm text-muted">Enregistrez le produit une première fois pour ajouter des photos.</p></Card>}
+
+        <Card title="Offres" hint="Ce que le client choisit en haut du formulaire de commande : « 1 unité », « 2 unités », « Achetez 2, la 3e offerte »… Le prix est le total pour la quantité. Sans offre, le client choisit simplement une quantité. L'économie affichée est calculée sur le prix unitaire réel, et une date de fin n'est montrée que si vous la fixez.">
+          <div className="flex flex-col gap-2">
+            {p.offers.map((o, i) => {
+              const total = parseTND(oPrices[i] ?? "");
+              const unitNow = price ?? 0;
+              const separately = unitNow * o.quantity;
+              const setO = (patch: Partial<typeof o>) => set("offers", p.offers.map((x, j) => (j === i ? { ...x, ...patch } : x)));
+              return (
+                <div key={o.id ?? `n${i}`} className="flex flex-col gap-2 rounded-xl border border-line p-3">
+                  <div className="grid gap-2 sm:grid-cols-[1fr_1fr]">
+                    <input className={input} placeholder="Nom (ex. Achetez 2, la 3e offerte)" value={o.label} onChange={(e) => setO({ label: e.target.value })} />
+                    <input className={input} dir="rtl" placeholder="الاسم بالعربي (اختياري)" value={o.labelAr} onChange={(e) => setO({ labelAr: e.target.value })} />
+                  </div>
+                  <div className="grid grid-cols-2 gap-2 sm:grid-cols-[100px_140px_1fr]">
+                    <label className={label}>Quantité<input type="number" min={1} max={50} className={input} value={o.quantity} onChange={(e) => setO({ quantity: Math.max(1, Math.min(50, Number(e.target.value) || 1)) })} /></label>
+                    <label className={label}>Prix total (DT)<input className={input} inputMode="decimal" placeholder="99,000" value={oPrices[i] ?? ""} onChange={(e) => setOPrices(oPrices.map((x, j) => (j === i ? e.target.value : x)))} /></label>
+                    <label className={label}>Dernier jour (facultatif)<input type="date" className={input} value={o.endsOn} onChange={(e) => setO({ endsOn: e.target.value })} /></label>
+                  </div>
+                  <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm">
+                    <label className="flex items-center gap-1.5"><input type="checkbox" checked={o.freeDelivery} onChange={(e) => setO({ freeDelivery: e.target.checked })} />Livraison offerte</label>
+                    <label className="flex items-center gap-1.5"><input type="checkbox" checked={o.active} onChange={(e) => setO({ active: e.target.checked })} />Active</label>
+                    {total != null && total > 0 && (
+                      <span className="text-muted">
+                        {formatTND(Math.round(total / o.quantity))} l&apos;unité
+                        {separately > total && <span className="text-olive"> · économie client {formatTND(separately - total)}</span>}
+                        {cost != null && <span className={total - cost * o.quantity > 0 ? "text-olive" : "text-danger"}> · marge {formatTND(total - cost * o.quantity)}</span>}
+                      </span>
+                    )}
+                    <span className="ms-auto flex gap-3">
+                      <button type="button" className="text-muted" onClick={() => { if (i === 0) return; const a = [...p.offers]; [a[i - 1], a[i]] = [a[i], a[i - 1]]; const b = [...oPrices]; [b[i - 1], b[i]] = [b[i], b[i - 1]]; set("offers", a); setOPrices(b); }} aria-label="Monter">↑</button>
+                      <button type="button" className="text-clay" onClick={() => { set("offers", p.offers.filter((_, j) => j !== i)); setOPrices(oPrices.filter((_, j) => j !== i)); }}>Retirer</button>
+                    </span>
+                  </div>
+                </div>
+              );
+            })}
+            <div className="flex flex-wrap gap-2">
+              <button type="button" className={btn.ghost} onClick={() => { set("offers", [...p.offers, { label: "", labelAr: "", quantity: p.offers.length + 1, price: 0, freeDelivery: false, endsOn: "", active: true }]); setOPrices([...oPrices, ""]); }}>
+                + Ajouter une offre
+              </button>
+              {p.offers.length === 0 && price ? (
+                <button
+                  type="button"
+                  className={btn.ghost}
+                  onClick={() => {
+                    set("offers", [
+                      { label: "1 unité", labelAr: "حبة وحدة", quantity: 1, price: 0, freeDelivery: false, endsOn: "", active: true },
+                      { label: "Achetez 2, la 3e offerte", labelAr: "اشري 2 والثالثة هدية", quantity: 3, price: 0, freeDelivery: true, endsOn: "", active: true },
+                    ]);
+                    setOPrices([toInputTND(price), toInputTND(price * 2)]);
+                  }}
+                >
+                  Proposer « 1 » et « 2 + 1 offerte »
+                </button>
+              ) : null}
+            </div>
+          </div>
+        </Card>
 
         <Card title="Variantes" hint="Taille, couleur… Laissez vide si le produit n'a pas d'option. Le prix d'une variante remplace celui du produit s'il est rempli.">
           <div className="flex flex-col gap-2">

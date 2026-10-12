@@ -33,7 +33,7 @@ export function LivePanel({ initial }: { initial: Live }) {
             En ce moment · 5 dernières minutes
           </p>
           <p className="mt-1 text-[44px] font-semibold leading-none text-ink">{d.visitors}</p>
-          <p className="mt-1 text-sm text-ink-2">visiteur{d.visitors > 1 ? "s" : ""} · {d.carts} panier(s) · {d.checkouts} en commande</p>
+          <p className="mt-1 text-sm text-ink-2">visiteur{d.visitors > 1 ? "s" : ""} · {d.forms} formulaire(s) commencé(s) · {d.phones} numéro(s) saisi(s)</p>
         </div>
         <div className="min-w-[200px] flex-1">
           <div className="flex h-14 items-end gap-[2px]" role="img" aria-label="Visiteurs par minute, 30 dernières minutes">

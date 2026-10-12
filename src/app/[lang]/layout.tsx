@@ -1,20 +1,19 @@
 import type { Metadata, Viewport } from "next";
 import { notFound } from "next/navigation";
-import { Fraunces, Inter, IBM_Plex_Sans_Arabic } from "next/font/google";
+import { Atkinson_Hyperlegible_Next, IBM_Plex_Sans_Arabic } from "next/font/google";
 import "../globals.css";
 import { dict, isLang, LOCALES, type Lang } from "@/i18n";
 import { getSettings } from "@/lib/settings";
 import { getCategories } from "@/lib/catalog";
 import { Header } from "@/components/shop/Header";
-import { CartDrawer } from "@/components/shop/CartDrawer";
 import { Footer } from "@/components/shop/Footer";
-import { HideOnCheckout } from "@/components/shop/HideOn";
 import { ConsentAndPixels } from "@/components/shop/Consent";
 import { WhatsAppFloat } from "@/components/shop/WhatsAppButton";
 import { SITE_URL } from "@/lib/site";
+import { normalizePhone } from "@/lib/phone";
 
-const fraunces = Fraunces({ subsets: ["latin"], variable: "--font-fraunces", display: "swap", axes: ["opsz"] });
-const inter = Inter({ subsets: ["latin"], variable: "--font-inter", display: "swap" });
+// Atkinson Hyperlegible: letters that cannot be mistaken for one another (I/l/1, O/0), for readers with low vision.
+const body = Atkinson_Hyperlegible_Next({ subsets: ["latin"], variable: "--font-body", display: "swap" });
 const plexAr = IBM_Plex_Sans_Arabic({ subsets: ["arabic"], weight: ["400", "600"], variable: "--font-plex-ar", display: "swap", preload: false });
 
 export function generateStaticParams() {
@@ -35,7 +34,7 @@ export async function generateMetadata({ params }: LayoutProps<"/[lang]">): Prom
 }
 
 export const viewport: Viewport = {
-  themeColor: "#f7f3ec",
+  themeColor: "#f5f7fa",
   width: "device-width",
   initialScale: 1,
   viewportFit: "cover",
@@ -51,14 +50,11 @@ export default async function ShopLayout({ children, params }: LayoutProps<"/[la
   const announcement = [t.trust.cod, t.trust.delivery, t.trust.returns(settings.returns.days)];
 
   return (
-    <html lang={lang === "ar" ? "ar-TN" : "fr-TN"} dir={t.dir} className={`${fraunces.variable} ${inter.variable} ${plexAr.variable}`}>
+    <html lang={lang === "ar" ? "ar-TN" : "fr-TN"} dir={t.dir} className={`shop-root ${body.variable} ${plexAr.variable}`}>
       <body className="min-h-dvh">
-        <Header lang={lang} categories={cats} announcement={announcement} />
+        <Header lang={lang} categories={cats} announcement={announcement} phone={normalizePhone(settings.shop.phone)} />
         <main>{children}</main>
-        <HideOnCheckout>
-          <Footer lang={lang} settings={settings} categories={cats} />
-        </HideOnCheckout>
-        <CartDrawer lang={lang} />
+        <Footer lang={lang} settings={settings} categories={cats} />
         <WhatsAppFloat lang={lang} phone={settings.contact.whatsapp} />
         <ConsentAndPixels lang={lang} ids={{ metaPixelId: settings.tracking.metaPixelId, ga4Id: settings.tracking.ga4Id, tiktokPixelId: settings.tracking.tiktokPixelId }} />
       </body>

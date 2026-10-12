@@ -24,7 +24,15 @@ export async function saveCategory(_: unknown, f: FormData): Promise<Result> {
   if (!slug) return { ok: false, error: "Adresse invalide." };
   const clash = await prisma.category.findFirst({ where: { slug, ...(id ? { id: { not: id } } : {}) } });
   if (clash) return { ok: false, error: "Adresse déjà utilisée." };
-  const data = { name, nameAr: str(f, "nameAr") || null, slug, sort: Number(str(f, "sort")) || 0, active: f.get("active") === "on" };
+  const data = {
+    name,
+    nameAr: str(f, "nameAr") || null,
+    headline: str(f, "headline").slice(0, 60) || null,
+    headlineAr: str(f, "headlineAr").slice(0, 60) || null,
+    slug,
+    sort: Number(str(f, "sort")) || 0,
+    active: f.get("active") === "on",
+  };
   const file = f.get("image");
   let imageId: string | undefined;
   if (file instanceof File && file.size > 0) {

@@ -3,165 +3,152 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
-import { useHydrated } from "@/lib/client/hydrated";
 import { dict, href, pick, switchHref, type Lang } from "@/i18n";
-import { useCart, cartCount } from "@/lib/client/cart-store";
 import { track } from "@/lib/client/track";
+import { pixelContact } from "@/lib/client/pixels";
 import { formatTND } from "@/lib/money";
+import { formatPhone } from "@/lib/phone";
 import { Logo } from "./Logo";
-import { IconBag, IconChevron, IconClose, IconMenu, IconSearch } from "./Icons";
+import { IconChevron, IconClose, IconMenu, IconSearch } from "./Icons";
 
 type Cat = { slug: string; name: string; nameAr: string | null };
 
-export function Header({ lang, categories, announcement }: { lang: Lang; categories: Cat[]; announcement: string[] }) {
+/**
+ * Amazon's arrangement, in a calmer palette: the logo, one wide search box,
+ * and a row of categories underneath. No basket — every product is ordered
+ * from its own page.
+ */
+export function Header({ lang, categories, announcement, phone }: { lang: Lang; categories: Cat[]; announcement: string[]; phone: string | null }) {
   const t = dict(lang);
   const pathname = usePathname();
-  // Sheets remember the page they were opened on: navigating closes them.
+  // The menu remembers the page it was opened on: navigating closes it.
   const [menuOn, setMenuOn] = useState<string | null>(null);
-  const [searchOn, setSearchOn] = useState<string | null>(null);
   const menu = menuOn === pathname;
-  const search = searchOn === pathname;
   const setMenu = (o: boolean) => setMenuOn(o ? pathname : null);
-  const setSearch = (o: boolean) => setSearchOn(o ? pathname : null);
-  const lines = useCart((s) => s.lines);
-  const setOpen = useCart((s) => s.setOpen);
-  const hydrated = useHydrated();
-  const count = hydrated ? cartCount(lines) : 0;
 
   return (
     <>
-      <div className="bg-ink text-[12px] text-white/85">
-        <div className="mx-auto flex h-8 max-w-6xl items-center justify-center gap-4 overflow-hidden px-4 no-scrollbar">
+      <div className="border-b border-sea/10 bg-sea-soft text-[14px] text-ink">
+        <div className="mx-auto flex min-h-9 max-w-6xl items-center justify-center gap-6 px-4 py-1.5 text-center">
           {announcement.map((a, i) => (
-            <span key={a} className={`whitespace-nowrap ${i > 0 ? "max-sm:hidden" : ""}`}>
+            <span key={a} className={i > 0 ? "max-md:hidden" : ""}>
               {a}
             </span>
           ))}
         </div>
       </div>
-      <header className="sticky top-0 z-30 border-b border-line/70 bg-cream/90 backdrop-blur-md">
-        <div className="mx-auto flex h-14 max-w-6xl items-center gap-2 px-4">
-          <button type="button" onClick={() => setMenu(true)} className="-ms-2 rounded-full p-2 text-ink lg:hidden" aria-label={t.nav.menu}>
-            <IconMenu />
+      <header className="sticky top-0 z-30 border-b border-line bg-white">
+        <div className="mx-auto flex max-w-6xl flex-wrap items-center gap-x-3 gap-y-2 px-4 py-2.5">
+          <button type="button" onClick={() => setMenu(true)} className="-ms-2 flex h-11 w-11 items-center justify-center rounded-xl text-ink" aria-label={t.nav.menu}>
+            <IconMenu className="h-6 w-6" />
           </button>
           <Link href={href(lang, "/")} className="flex items-center" aria-label="Mena">
             <Logo />
           </Link>
-          <nav className="ms-8 hidden items-center gap-6 text-sm text-ink-2 lg:flex">
-            {categories.slice(0, 6).map((c) => (
-              <Link key={c.slug} href={href(lang, `/categorie/${c.slug}`)} className="hover:text-sea">
-                {pick(lang, c.name, c.nameAr)}
-              </Link>
-            ))}
-          </nav>
-          <div className="ms-auto flex items-center gap-1">
-            <Link href={switchHref(lang, pathname)} className="rounded-full px-2.5 py-1.5 text-[13px] font-medium text-ink-2 hover:bg-sand" hrefLang={lang === "fr" ? "ar" : "fr"} prefetch={false}>
+          <div className="order-last w-full md:order-none md:ms-4 md:w-auto md:flex-1">
+            <SearchBox lang={lang} />
+          </div>
+          <div className="ms-auto flex items-center gap-1 md:ms-0">
+            {phone && (
+              <a
+                href={`tel:+216${phone}`}
+                onClick={() => {
+                  track("phone_clicked", { props: { where: "header" } });
+                  pixelContact();
+                }}
+                className="hidden flex-col items-end rounded-xl px-3 py-1 leading-tight lg:flex"
+              >
+                <span className="text-[13px] text-muted">{t.trust.support}</span>
+                <span className="text-[16px] font-bold text-ink ltr-nums">{formatPhone(phone)}</span>
+              </a>
+            )}
+            <Link href={switchHref(lang, pathname)} className="flex h-11 items-center rounded-xl px-3 text-[16px] font-bold text-sea" hrefLang={lang === "fr" ? "ar" : "fr"} prefetch={false}>
               {t.nav.language}
             </Link>
-            <button type="button" onClick={() => setSearch(true)} className="rounded-full p-2 text-ink hover:bg-sand" aria-label={t.nav.search}>
-              <IconSearch />
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                setOpen(true);
-                track("cart_viewed");
-              }}
-              className="relative -me-2 rounded-full p-2 text-ink hover:bg-sand"
-              aria-label={`${t.nav.cart} (${count})`}
-              data-testid="cart-button"
-            >
-              <IconBag className="h-[22px] w-[22px]" />
-              {count > 0 && (
-                // Keyed on the count, so each change replays the little pop.
-                <span key={count} className="absolute end-0.5 top-0.5 flex h-[18px] min-w-[18px] animate-pop items-center justify-center rounded-full bg-sea px-1 text-[11px] font-semibold text-white ltr-nums">
-                  {count}
-                </span>
-              )}
-            </button>
           </div>
         </div>
+        {categories.length > 0 && (
+          <nav className="border-t border-line bg-white" aria-label={t.nav.categories}>
+            <div className="mx-auto flex max-w-6xl gap-1 overflow-x-auto px-2 no-scrollbar">
+              <Link href={href(lang, "/boutique")} className="shrink-0 whitespace-nowrap rounded-lg px-3 py-2.5 text-[16px] font-bold text-ink hover:bg-sand">
+                {t.nav.shop}
+              </Link>
+              {categories.map((c) => {
+                const active = pathname.endsWith(`/categorie/${c.slug}`);
+                return (
+                  <Link
+                    key={c.slug}
+                    href={href(lang, `/categorie/${c.slug}`)}
+                    className={`shrink-0 whitespace-nowrap rounded-lg px-3 py-2.5 text-[16px] ${active ? "bg-sea-soft font-bold text-sea-2" : "text-ink-2 hover:bg-sand"}`}
+                  >
+                    {pick(lang, c.name, c.nameAr)}
+                  </Link>
+                );
+              })}
+            </div>
+          </nav>
+        )}
       </header>
 
       {menu && (
-        <Sheet side="start" onClose={() => setMenu(false)} label={t.nav.menu}>
-          <div className="flex items-center justify-between border-b border-line px-5 py-4">
-            <Logo />
-            <button type="button" onClick={() => setMenu(false)} className="rounded-full p-2" aria-label={t.nav.close}>
-              <IconClose />
-            </button>
+        <div className="fixed inset-0 z-50" role="dialog" aria-modal="true" aria-label={t.nav.menu}>
+          <button type="button" className="absolute inset-0 animate-fade bg-ink/40" onClick={() => setMenu(false)} aria-label={t.nav.close} tabIndex={-1} />
+          <div className="absolute inset-y-0 start-0 flex w-[86%] max-w-sm animate-sheet-side flex-col overflow-y-auto bg-white shadow-lift [--sheet-from:-100%] rtl:[--sheet-from:100%]">
+            <div className="flex items-center justify-between border-b border-line px-5 py-4">
+              <Logo />
+              <button type="button" onClick={() => setMenu(false)} className="flex h-11 w-11 items-center justify-center rounded-xl" aria-label={t.nav.close}>
+                <IconClose className="h-6 w-6" />
+              </button>
+            </div>
+            <nav className="flex flex-col px-2 py-3">
+              <MenuLink href={href(lang, "/")}>{t.nav.home}</MenuLink>
+              <MenuLink href={href(lang, "/boutique")}>{t.nav.shop}</MenuLink>
+              <p className="px-3 pb-1 pt-4 text-[14px] font-bold text-muted">{t.nav.categories}</p>
+              {categories.map((c) => (
+                <MenuLink key={c.slug} href={href(lang, `/categorie/${c.slug}`)}>
+                  {pick(lang, c.name, c.nameAr)}
+                </MenuLink>
+              ))}
+              <div className="my-3 border-t border-line" />
+              <MenuLink href={href(lang, "/suivi")}>{t.nav.track}</MenuLink>
+              <MenuLink href={href(lang, "/livraison-retours")}>{t.footer.deliveryReturns}</MenuLink>
+              <MenuLink href={href(lang, "/contact")}>{t.footer.contact}</MenuLink>
+              {phone && (
+                <a href={`tel:+216${phone}`} className="mx-3 mt-4 flex min-h-12 items-center justify-center rounded-xl bg-sea-soft text-[17px] font-bold text-sea-2 ltr-nums">
+                  {formatPhone(phone)}
+                </a>
+              )}
+            </nav>
           </div>
-          <nav className="flex flex-col px-2 py-3">
-            <MenuLink href={href(lang, "/")}>{t.nav.home}</MenuLink>
-            <MenuLink href={href(lang, "/boutique")}>{t.nav.shop}</MenuLink>
-            <p className="px-3 pb-1 pt-4 text-[11px] font-semibold uppercase tracking-[0.14em] text-muted">{t.nav.categories}</p>
-            {categories.map((c) => (
-              <MenuLink key={c.slug} href={href(lang, `/categorie/${c.slug}`)}>
-                {pick(lang, c.name, c.nameAr)}
-              </MenuLink>
-            ))}
-            <div className="my-3 border-t border-line" />
-            <MenuLink href={href(lang, "/suivi")}>{t.nav.track}</MenuLink>
-            <MenuLink href={href(lang, "/livraison-retours")}>{t.footer.deliveryReturns}</MenuLink>
-            <MenuLink href={href(lang, "/contact")}>{t.footer.contact}</MenuLink>
-          </nav>
-        </Sheet>
+        </div>
       )}
-
-      {search && <SearchSheet lang={lang} onClose={() => setSearch(false)} />}
     </>
   );
 }
 
 function MenuLink({ href, children }: { href: string; children: React.ReactNode }) {
   return (
-    <Link href={href} className="flex items-center justify-between rounded-xl px-3 py-3 text-[15px] text-ink hover:bg-sand">
+    <Link href={href} className="flex min-h-12 items-center justify-between rounded-xl px-3 text-[17px] text-ink hover:bg-sand">
       {children}
-      <IconChevron className="h-4 w-4 text-muted" />
+      <IconChevron className="h-5 w-5 text-muted" />
     </Link>
-  );
-}
-
-export function Sheet({ side, onClose, label, children, wide = false }: { side: "start" | "end" | "bottom" | "top"; onClose: () => void; label: string; children: React.ReactNode; wide?: boolean }) {
-  useEffect(() => {
-    const prev = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-    const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
-    addEventListener("keydown", onKey);
-    return () => {
-      document.body.style.overflow = prev;
-      removeEventListener("keydown", onKey);
-    };
-  }, [onClose]);
-  const pos =
-    side === "start"
-      ? "inset-y-0 start-0 w-[86%] max-w-sm animate-sheet-side [--sheet-from:-100%] rtl:[--sheet-from:100%]"
-      : side === "end"
-        ? `inset-y-0 end-0 w-full ${wide ? "max-w-md" : "max-w-sm"} animate-sheet-side [--sheet-from:100%] rtl:[--sheet-from:-100%]`
-        : side === "top"
-          ? "inset-x-0 top-0 animate-fade"
-          : "inset-x-0 bottom-0 max-h-[90dvh] rounded-t-3xl animate-sheet-up";
-  return (
-    <div className="fixed inset-0 z-50" role="dialog" aria-modal="true" aria-label={label}>
-      <button type="button" className="absolute inset-0 animate-fade bg-ink/40" onClick={onClose} aria-label="×" tabIndex={-1} />
-      <div className={`absolute flex flex-col overflow-y-auto bg-cream shadow-lift ${pos}`}>{children}</div>
-    </div>
   );
 }
 
 type Suggestion = { products: { slug: string; name: string; nameAr: string | null; price: number; imageId: string | null }[]; categories: Cat[] };
 
-function SearchSheet({ lang, onClose }: { lang: Lang; onClose: () => void }) {
+/** One wide search box, with suggestions under it as soon as two letters are typed. */
+function SearchBox({ lang }: { lang: Lang }) {
   const t = dict(lang);
   const router = useRouter();
   const [q, setQ] = useState("");
   const [s, setS] = useState<Suggestion | null>(null);
-  const input = useRef<HTMLInputElement>(null);
-
-  useEffect(() => input.current?.focus(), []);
+  const [open, setOpen] = useState(false);
+  const box = useRef<HTMLDivElement>(null);
   const term = q.trim();
   // Suggestions only for a real term; a stale answer for a shorter one is never shown.
-  const shown = term.length >= 2 ? s : null;
+  const shown = open && term.length >= 2 ? s : null;
+
   useEffect(() => {
     if (term.length < 2) return;
     const ctrl = new AbortController();
@@ -170,74 +157,79 @@ function SearchSheet({ lang, onClose }: { lang: Lang; onClose: () => void }) {
         .then((r) => (r.ok ? r.json() : null))
         .then((d) => d && setS(d))
         .catch(() => {});
-    }, 160);
+    }, 180);
     return () => {
       clearTimeout(id);
       ctrl.abort();
     };
   }, [term]);
 
+  useEffect(() => {
+    const close = (e: PointerEvent) => {
+      if (box.current && !box.current.contains(e.target as Node)) setOpen(false);
+    };
+    addEventListener("pointerdown", close);
+    return () => removeEventListener("pointerdown", close);
+  }, []);
+
   return (
-    <Sheet side="top" onClose={onClose} label={t.nav.search}>
+    <div ref={box} className="relative">
       <form
-        className="mx-auto flex w-full max-w-2xl items-center gap-2 px-4 py-3"
+        role="search"
         onSubmit={(e) => {
           e.preventDefault();
-          const term = q.trim();
+          setOpen(false);
           if (term) router.push(href(lang, `/recherche?q=${encodeURIComponent(term)}`));
         }}
-        role="search"
+        className="flex h-12 items-stretch overflow-hidden rounded-xl border-2 border-sea/40 bg-white focus-within:border-sea"
       >
-        <div className="flex flex-1 items-center gap-2 rounded-full border border-line bg-white px-4">
-          <IconSearch className="h-5 w-5 text-muted" />
-          <input
-            ref={input}
-            value={q}
-            onChange={(e) => setQ(e.target.value)}
-            placeholder={t.nav.searchPlaceholder}
-            className="h-11 flex-1 bg-transparent outline-none placeholder:text-muted"
-            enterKeyHint="search"
-            name="q"
-            autoComplete="off"
-          />
-        </div>
-        <button type="button" onClick={onClose} className="rounded-full p-2" aria-label={t.nav.close}>
-          <IconClose />
+        <input
+          value={q}
+          onChange={(e) => {
+            setQ(e.target.value);
+            setOpen(true);
+          }}
+          onFocus={() => setOpen(true)}
+          placeholder={t.nav.searchPlaceholder}
+          className="min-w-0 flex-1 bg-transparent px-4 text-[17px] text-ink outline-none placeholder:text-[#8a95a3]"
+          enterKeyHint="search"
+          name="q"
+          autoComplete="off"
+          aria-label={t.nav.search}
+        />
+        <button type="submit" className="flex w-14 items-center justify-center bg-sea text-white" aria-label={t.nav.search}>
+          <IconSearch className="h-6 w-6" />
         </button>
       </form>
       {shown && (shown.products.length > 0 || shown.categories.length > 0) && (
-        <div className="mx-auto w-full max-w-2xl px-4 pb-5">
-          {shown.categories.length > 0 && (
-            <div className="mb-3 flex flex-wrap gap-2">
-              {shown.categories.map((c) => (
-                <Link key={c.slug} href={href(lang, `/categorie/${c.slug}`)} className="rounded-full bg-sand px-3 py-1.5 text-sm" onClick={() => track("search_suggestion_clicked", { props: { q, kind: "category" } })}>
-                  {pick(lang, c.name, c.nameAr)}
-                </Link>
-              ))}
-            </div>
-          )}
-          <ul className="divide-y divide-line">
-            {shown.products.map((p) => (
-              <li key={p.slug}>
-                <Link
-                  href={href(lang, `/produit/${p.slug}`)}
-                  className="flex items-center gap-3 py-2.5"
-                  onClick={() => track("search_suggestion_clicked", { props: { q, kind: "product" } })}
-                >
-                  <span className="relative h-12 w-12 shrink-0 overflow-hidden rounded-lg bg-sand">
-                    {p.imageId && (
-                      // eslint-disable-next-line @next/next/no-img-element
-                      <img src={`/api/img/${p.imageId}/96`} alt="" className="h-full w-full object-cover" />
-                    )}
-                  </span>
-                  <span className="flex-1 text-sm">{pick(lang, p.name, p.nameAr)}</span>
-                  <span className="text-sm font-semibold ltr-nums">{formatTND(p.price, lang)}</span>
-                </Link>
-              </li>
-            ))}
-          </ul>
+        <div className="absolute inset-x-0 top-full z-40 mt-1 max-h-[70vh] overflow-y-auto rounded-xl border border-line bg-white p-2 shadow-lift">
+          {shown.categories.map((c) => (
+            <Link key={c.slug} href={href(lang, `/categorie/${c.slug}`)} onClick={() => { setOpen(false); track("search_suggestion_clicked", { props: { q: term, kind: "category" } }); }} className="flex min-h-11 items-center rounded-lg px-3 text-[16px] font-bold text-sea-2 hover:bg-sand">
+              {pick(lang, c.name, c.nameAr)}
+            </Link>
+          ))}
+          {shown.products.map((p) => (
+            <Link
+              key={p.slug}
+              href={href(lang, `/produit/${p.slug}`)}
+              onClick={() => {
+                setOpen(false);
+                track("search_suggestion_clicked", { props: { q: term, kind: "product" } });
+              }}
+              className="flex items-center gap-3 rounded-lg px-2 py-2 hover:bg-sand"
+            >
+              <span className="relative h-12 w-12 shrink-0 overflow-hidden rounded-lg bg-sand">
+                {p.imageId && (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img src={`/api/img/${p.imageId}/96`} alt="" className="h-full w-full object-cover" />
+                )}
+              </span>
+              <span className="flex-1 text-[16px] text-ink">{pick(lang, p.name, p.nameAr)}</span>
+              <span className="text-[16px] font-bold ltr-nums">{formatTND(p.price, lang)}</span>
+            </Link>
+          ))}
         </div>
       )}
-    </Sheet>
+    </div>
   );
 }

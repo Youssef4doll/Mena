@@ -9,7 +9,7 @@ import { isBot } from "@/lib/device";
 
 const body = z.object({
   token: z.string().regex(/^[A-Za-z0-9-]{8,64}$/),
-  lines: z.array(z.object({ productId: z.string().max(40), variantId: z.string().max(40).nullish(), qty: z.number().int().min(1).max(10) })).max(30),
+  lines: z.array(z.object({ productId: z.string().max(40), variantId: z.string().max(40).nullish(), offerId: z.string().max(40).nullish(), qty: z.number().int().min(1).max(10) })).max(30),
   phone: z.string().max(30).optional(),
   name: z.string().max(80).optional(),
   governorate: z.string().max(40).optional(),
@@ -32,7 +32,7 @@ export async function POST(request: Request) {
   const d = parsed.data;
   const tokenHash = hashToken(d.token);
   const phone = d.phone ? normalizePhone(d.phone) : null;
-  const lines = d.lines.map((l) => ({ productId: l.productId, variantId: l.variantId ?? null, qty: l.qty }));
+  const lines = d.lines.map((l) => ({ productId: l.productId, variantId: l.variantId ?? null, offerId: l.offerId ?? null, qty: l.qty }));
   const existing = await prisma.cart.findUnique({ where: { tokenHash }, select: { status: true } });
   if (existing?.status === "CONVERTED") return json({ ok: true });
   await prisma.cart.upsert({

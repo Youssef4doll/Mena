@@ -9,7 +9,7 @@ export default async function ProductEditPage({ params }: PageProps<"/admin/prod
   const { id } = await params;
   const isNew = id === "nouveau";
   const [p, categories, suppliers] = await Promise.all([
-    isNew ? null : prisma.product.findUnique({ where: { id }, include: { images: { orderBy: { sort: "asc" } }, variants: { orderBy: { sort: "asc" } } } }),
+    isNew ? null : prisma.product.findUnique({ where: { id }, include: { images: { orderBy: { sort: "asc" } }, variants: { orderBy: { sort: "asc" } }, offers: { orderBy: { sort: "asc" } } } }),
     prisma.category.findMany({ orderBy: [{ sort: "asc" }, { name: "asc" }], select: { id: true, name: true } }),
     prisma.supplier.findMany({ orderBy: { name: "asc" }, select: { id: true, name: true } }),
   ]);
@@ -37,6 +37,11 @@ export default async function ProductEditPage({ params }: PageProps<"/admin/prod
                 supplierRef: p.supplierRef ?? "", supplierUrl: p.supplierUrl ?? "", stockMode: p.stockMode, stockQty: p.stockQty,
                 available: p.available, active: p.active, featured: p.featured,
                 variants: p.variants.map((v) => ({ id: v.id, name: v.name, sku: v.sku ?? "", price: v.price, stockQty: v.stockQty, available: v.available })),
+                offers: p.offers.map((o) => ({
+                  id: o.id, label: o.label, labelAr: o.labelAr ?? "", quantity: o.quantity, price: o.price, freeDelivery: o.freeDelivery, active: o.active,
+                  // Stored as midnight in Tunis after the last day; shown as that last day.
+                  endsOn: o.endsAt ? new Date(o.endsAt.getTime() - 23 * 3_600_000).toISOString().slice(0, 10) : "",
+                })),
               }
             : null
         }
