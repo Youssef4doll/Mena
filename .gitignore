@@ -7,8 +7,8 @@ next-env.d.ts
 *.tsbuildinfo
 test-results
 playwright-report
-screenshots/tmp
+/screenshots/tmp
 .pgdata
 .next-e2e
 .next-build
-screenshots/
+/screenshots/
