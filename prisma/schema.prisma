@@ -1,0 +1,527 @@
+// Mena — one database for the storefront and the back office.
+//
+// Money is stored in **millimes** (Int): 1 DT = 1 000 millimes, the way
+// Tunisian prices are written (89,900 DT). Integers, never floats, so a total
+// is always the exact sum of its lines.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  // Pooled connection for app traffic (serverless opens many short ones).
+  url       = env("DATABASE_URL")
+  // Direct connection for migrations. scripts/prisma.mjs fills it in when
+  // DATABASE_URL is already direct.
+  directUrl = env("DATABASE_URL_UNPOOLED")
+}
+
+// ------------------------------------------------------------------ catalog
+
+model Category {
+  id        String    @id @default(cuid())
+  slug      String    @unique
+  name      String
+  nameAr    String?
+  imageId   String?
+  sort      Int       @default(0)
+  active    Boolean   @default(true)
+  products  Product[]
+  createdAt DateTime  @default(now())
+}
+
+/// Who actually ships the goods. Mena is a dropshipping shop: every product
+/// can name the supplier it is bought from, at what cost, under which ref.
+model Supplier {
+  id        String    @id @default(cuid())
+  name      String
+  phone     String?
+  contact   String?
+  notes     String?
+  /// Days the supplier usually needs before the parcel leaves. Shown nowhere
+  /// to customers; used to warn the shop about late orders.
+  prepDays  Int       @default(1)
+  products  Product[]
+  createdAt DateTime  @default(now())
+}
+
+enum StockMode {
+  /// A counted quantity: decremented by orders, edited in the back office.
+  TRACKED
+  /// Supplier stock the shop does not count. The product is sold while
+  /// `available` is true; no quantity is ever shown.
+  SUPPLIER
+}
+
+model Product {
+  id            String           @id @default(cuid())
+  slug          String           @unique
+  name          String
+  nameAr        String?
+  description   String           @default("")
+  descriptionAr String?
+  /// Selling price, millimes.
+  price         Int
+  /// A real previous price. Shown struck through only when higher than
+  /// `price` — the back office says so when it is set.
+  compareAt     Int?
+  /// What the supplier charges, millimes. Back office only (margin).
+  cost          Int?
+  supplierId    String?
+  supplier      Supplier?        @relation(fields: [supplierId], references: [id], onDelete: SetNull)
+  supplierRef   String?
+  supplierUrl   String?
+  categoryId    String?
+  category      Category?        @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  stockMode     StockMode        @default(SUPPLIER)
+  /// TRACKED: the count. SUPPLIER: ignored.
+  stockQty      Int              @default(0)
+  /// SUPPLIER: whether the supplier can ship it now.
+  available     Boolean          @default(true)
+  active        Boolean          @default(false)
+  featured      Boolean          @default(false)
+  /// Grams, for carriers that price by weight.
+  weight        Int?
+  images        ProductImage[]
+  variants      ProductVariant[]
+  orderItems    OrderItem[]
+  reviews       Review[]
+  /// Seeded demo data, so the shop can delete it in one click before launch.
+  isDemo        Boolean          @default(false)
+  createdAt     DateTime         @default(now())
+  updatedAt     DateTime         @updatedAt
+
+  @@index([active, categoryId])
+  @@index([featured])
+}
+
+model ProductImage {
+  id        String  @id @default(cuid())
+  productId String
+  product   Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+  mediaId   String
+  media     Media   @relation(fields: [mediaId], references: [id], onDelete: Cascade)
+  alt       String?
+  sort      Int     @default(0)
+
+  @@index([productId, sort])
+}
+
+/// A size, a colour — whatever the customer must choose. A product with no
+/// variants is bought as itself.
+model ProductVariant {
+  id         String      @id @default(cuid())
+  productId  String
+  product    Product     @relation(fields: [productId], references: [id], onDelete: Cascade)
+  /// "Noir / M", as the customer reads it.
+  name       String
+  sku        String?
+  /// Overrides the product price when set, millimes.
+  price      Int?
+  stockQty   Int         @default(0)
+  available  Boolean     @default(true)
+  sort       Int         @default(0)
+  orderItems OrderItem[]
+
+  @@index([productId])
+}
+
+/// Uploaded images live in the database, so the shop has nothing else to
+/// configure. Served resized and cached by /api/img/[id]/[w].
+model Media {
+  id        String         @id @default(cuid())
+  mime      String
+  width     Int
+  height    Int
+  bytes     Bytes
+  /// A tiny blurred preview (data URL) shown while the image loads.
+  blur      String?
+  images    ProductImage[]
+  createdAt DateTime       @default(now())
+}
+
+// ---------------------------------------------------------------- customers
+
+/// One customer per phone number — the identity that matters for cash on
+/// delivery. No password: Mena has no customer accounts.
+model Customer {
+  id              String     @id @default(cuid())
+  /// 8 digits, no +216.
+  phone           String     @unique
+  name            String?
+  email           String?
+  /// Set by the shop. A blacklisted number can still order; its orders are
+  /// held for a call and flagged, never silently dropped.
+  blacklisted     Boolean    @default(false)
+  blacklistReason String?
+  notes           String?
+  orders          Order[]
+  createdAt       DateTime   @default(now())
+  updatedAt       DateTime   @updatedAt
+}
+
+// ------------------------------------------------------------------- orders
+
+enum OrderStatus {
+  /// Placed, waiting for the phone confirmation.
+  PENDING
+  /// The customer confirmed by phone/WhatsApp.
+  CONFIRMED
+  /// Dropship: ordered from the supplier.
+  SUPPLIER_ORDERED
+  /// Handed to the carrier.
+  SHIPPED
+  DELIVERED
+  /// Refused at the door (or never collected).
+  REFUSED
+  /// Came back after delivery (return request).
+  RETURNED
+  CANCELLED
+}
+
+enum PaymentMethod {
+  COD
+  CARD
+}
+
+enum PaymentStatus {
+  UNPAID
+  PENDING
+  PAID
+  FAILED
+  REFUNDED
+}
+
+/// The outcome of one confirmation call.
+enum CallOutcome {
+  CONFIRMED
+  NO_ANSWER
+  CALL_BACK
+  WRONG_NUMBER
+  CANCELLED_BY_CUSTOMER
+}
+
+model Order {
+  id              String          @id @default(cuid())
+  /// "MN-7K3Q9P", what the customer reads and says on the phone.
+  ref             String          @unique
+  customerId      String
+  customer        Customer        @relation(fields: [customerId], references: [id])
+  status          OrderStatus     @default(PENDING)
+  name            String
+  phone           String
+  phoneAlt        String?
+  email           String?
+  governorate     String
+  city            String
+  address         String
+  note            String?
+  /// All amounts in millimes, computed by the server.
+  subtotal        Int
+  discount        Int             @default(0)
+  deliveryFee     Int
+  total           Int
+  /// Supplier cost of the lines at order time (margin).
+  costTotal       Int?
+  promoCodeId     String?
+  promoCode       PromoCode?      @relation(fields: [promoCodeId], references: [id], onDelete: SetNull)
+  promoCodeText   String?
+  paymentMethod   PaymentMethod   @default(COD)
+  paymentStatus   PaymentStatus   @default(UNPAID)
+  paymentRef      String?
+  /// "24–48h" as quoted at checkout, from the shop's settings.
+  deliveryQuote   String?
+  carrier         String?
+  trackingNumber  String?
+  /// Fraud and quality flags computed at checkout ("blacklisted",
+  /// "duplicate", "past_refusals:2").
+  flags           String[]
+  confirmAttempts Int             @default(0)
+  confirmedAt     DateTime?
+  shippedAt       DateTime?
+  deliveredAt     DateTime?
+  refusedAt       DateTime?
+  refusalReason   String?
+  cancelledAt     DateTime?
+  /// The customer's tracking link is HMAC(APP_SECRET, accessSalt): it can be
+  /// re-sent any time, yet a database copy alone cannot produce it.
+  accessSalt      String
+  /// Keyed hash of that link's token, to find the order from it.
+  accessHash      String          @unique
+  /// Attribution (first touch) and context, for the analytics.
+  source          String?
+  medium          String?
+  campaign        String?
+  content         String?
+  landing         String?
+  device          String?
+  visitorId       String?
+  sessionId       String?
+  locale          String          @default("fr")
+  ipHash          String?
+  /// The customer accepted ad cookies: only then are fbp/fbc/ttclid, the
+  /// user agent and the IP kept (in adContext) for the Conversions APIs.
+  consentAds      Boolean         @default(false)
+  adContext       Json?
+  items           OrderItem[]
+  history         OrderEvent[]
+  calls           OrderCall[]
+  returns         ReturnRequest[]
+  notifications   Notification[]
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+
+  @@index([status, createdAt])
+  @@index([createdAt])
+  @@index([phone])
+  @@index([governorate])
+}
+
+model OrderItem {
+  id        String          @id @default(cuid())
+  orderId   String
+  order     Order           @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  productId String?
+  product   Product?        @relation(fields: [productId], references: [id], onDelete: SetNull)
+  variantId String?
+  variant   ProductVariant? @relation(fields: [variantId], references: [id], onDelete: SetNull)
+  /// Snapshots: what was bought, at what price, whatever the catalog says later.
+  name      String
+  variantName String?
+  unitPrice Int
+  unitCost  Int?
+  qty       Int
+  review    Review?
+
+  @@index([orderId])
+  @@index([productId])
+}
+
+model OrderEvent {
+  id        String       @id @default(cuid())
+  orderId   String
+  order     Order        @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  from      OrderStatus?
+  to        OrderStatus
+  by        String
+  note      String?
+  createdAt DateTime     @default(now())
+
+  @@index([orderId, createdAt])
+}
+
+model OrderCall {
+  id        String      @id @default(cuid())
+  orderId   String
+  order     Order       @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  outcome   CallOutcome
+  note      String?
+  by        String
+  createdAt DateTime    @default(now())
+
+  @@index([orderId])
+}
+
+// ------------------------------------------------------------------- carts
+
+enum CartStatus {
+  ACTIVE
+  CONVERTED
+}
+
+/// The server's copy of a basket, so an abandoned one can be followed up.
+/// Lines are re-priced from the catalog every time they are read.
+model Cart {
+  id         String     @id @default(cuid())
+  /// sha256 of the browser's cart token.
+  tokenHash  String     @unique
+  visitorId  String?
+  status     CartStatus @default(ACTIVE)
+  /// [{productId, variantId, qty}] — ids and quantities only, never prices.
+  lines      Json
+  /// Typed in the checkout form; a cart with a phone can be followed up.
+  phone      String?
+  name       String?
+  governorate String?
+  source     String?
+  campaign   String?
+  orderId    String?
+  remindedAt DateTime?
+  remindCount Int       @default(0)
+  createdAt  DateTime   @default(now())
+  updatedAt  DateTime   @updatedAt
+
+  @@index([status, updatedAt])
+}
+
+// ------------------------------------------------------------------- promo
+
+enum PromoKind {
+  PERCENT
+  FIXED
+  FREE_DELIVERY
+}
+
+model PromoCode {
+  id          String    @id @default(cuid())
+  code        String    @unique
+  kind        PromoKind
+  /// PERCENT: 1–90. FIXED: millimes. FREE_DELIVERY: ignored.
+  value       Int       @default(0)
+  minSubtotal Int       @default(0)
+  maxUses     Int?
+  usedCount   Int       @default(0)
+  /// One use per phone number.
+  oncePerPhone Boolean  @default(true)
+  startsAt    DateTime?
+  endsAt      DateTime?
+  active      Boolean   @default(true)
+  orders      Order[]
+  createdAt   DateTime  @default(now())
+}
+
+// ----------------------------------------------------------------- reviews
+
+enum ReviewStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+/// Only a delivered order line can be reviewed — one review per line — so
+/// every review on the site comes from someone who received the product.
+model Review {
+  id          String       @id @default(cuid())
+  productId   String
+  product     Product      @relation(fields: [productId], references: [id], onDelete: Cascade)
+  orderItemId String       @unique
+  orderItem   OrderItem    @relation(fields: [orderItemId], references: [id], onDelete: Cascade)
+  rating      Int
+  text        String?
+  /// First name + initial, as the customer chose to sign.
+  authorName  String
+  governorate String?
+  status      ReviewStatus @default(PENDING)
+  createdAt   DateTime     @default(now())
+
+  @@index([productId, status])
+}
+
+// ----------------------------------------------------------------- returns
+
+enum ReturnStatus {
+  REQUESTED
+  ACCEPTED
+  REJECTED
+  RECEIVED
+  REFUNDED
+}
+
+model ReturnRequest {
+  id        String       @id @default(cuid())
+  orderId   String
+  order     Order        @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  reason    String
+  details   String?
+  status    ReturnStatus @default(REQUESTED)
+  adminNote String?
+  refundAmount Int?
+  createdAt DateTime     @default(now())
+  updatedAt DateTime     @updatedAt
+
+  @@index([status])
+}
+
+// ----------------------------------------------------------- notifications
+
+enum Channel {
+  SMS
+  EMAIL
+  WHATSAPP
+}
+
+enum NotificationStatus {
+  QUEUED
+  SENT
+  FAILED
+  /// No provider configured: the message is kept so the shop can send it by hand.
+  NOT_CONFIGURED
+}
+
+model Notification {
+  id        String             @id @default(cuid())
+  orderId   String?
+  order     Order?             @relation(fields: [orderId], references: [id], onDelete: SetNull)
+  channel   Channel
+  to        String
+  kind      String
+  body      String
+  status    NotificationStatus @default(QUEUED)
+  error     String?
+  createdAt DateTime           @default(now())
+
+  @@index([createdAt])
+}
+
+// ---------------------------------------------------------------- settings
+
+model Setting {
+  key       String   @id
+  value     Json
+  updatedAt DateTime @updatedAt
+}
+
+// ------------------------------------------------------------------- admin
+
+model AdminUser {
+  id           String         @id @default(cuid())
+  email        String         @unique
+  name         String
+  passwordHash String
+  sessions     AdminSession[]
+  createdAt    DateTime       @default(now())
+}
+
+model AdminSession {
+  id        String    @id @default(cuid())
+  tokenHash String    @unique
+  userId    String
+  user      AdminUser @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expiresAt DateTime
+  createdAt DateTime  @default(now())
+}
+
+// --------------------------------------------------------------- analytics
+
+/// First-party analytics: no external service needed to read the funnel.
+/// Append-only, no relations. Hot dimensions are real columns (indexed,
+/// groupable in SQL); the rest sits in `props`.
+model AnalyticsEvent {
+  id        String   @id @default(cuid())
+  /// snake_case: page_view, product_viewed, add_to_cart, checkout_started,
+  /// order_placed, order_confirmed, order_delivered, order_refused, search…
+  name      String
+  /// Persistent anonymous id (one browser).
+  visitorId String
+  /// One visit: renewed after 30 minutes without activity.
+  sessionId String
+  path      String?
+  productId String?
+  /// First-touch attribution.
+  source    String?
+  medium    String?
+  campaign  String?
+  device    String?
+  /// Millimes, for revenue-bearing events.
+  value     Int?
+  orderId   String?
+  props     Json?
+  createdAt DateTime @default(now())
+
+  @@index([name, createdAt])
+  @@index([createdAt])
+  @@index([sessionId])
+  @@index([visitorId])
+  @@index([productId, name])
+}
