@@ -48,7 +48,7 @@ export default async function AnalyticsPage({ searchParams }: PageProps<"/admin/
           <div className="absolute end-0 z-20 mt-1 flex w-56 flex-col rounded-xl border border-line bg-white p-1 text-sm shadow-lift">
             {[
               ["daily", "Jour par jour"], ["funnel", "Entonnoir"], ["sources", "Sources"], ["campaigns", "Campagnes"], ["devices", "Appareils"],
-              ["products", "Produits"], ["searches", "Recherches"], ["governorates", "Gouvernorats"], ["customers", "Clients"], ["cohorts", "Cohortes"],
+              ["products", "Produits"], ["searches", "Recherches"], ["governorates", "Gouvernorats"], ["customers", "Clients"], ["cohorts", "Cohortes"], ["contacts", "Clics WhatsApp et téléphone"],
             ].map(([key, label]) => (
               <a key={key} href={`/admin/analytics/export?report=${key}&${qs}`} className="rounded-lg px-3 py-2 hover:bg-cream">{label}</a>
             ))}
@@ -148,8 +148,9 @@ export default async function AnalyticsPage({ searchParams }: PageProps<"/admin/
           <dl className="grid grid-cols-2 gap-3 text-sm">
             <div><dt className="text-xs text-muted">Délai médian de confirmation</dt><dd className="text-xl font-semibold">{a.confirmation.medianHours == null ? "—" : a.confirmation.medianHours < 1 ? `${Math.round(a.confirmation.medianHours * 60)} min` : `${a.confirmation.medianHours.toFixed(1)} h`}</dd></div>
             <div><dt className="text-xs text-muted">Appels par commande appelée</dt><dd className="text-xl font-semibold">{a.confirmation.avgCalls == null ? "—" : a.confirmation.avgCalls.toFixed(1)}</dd></div>
-            <div><dt className="text-xs text-muted">Annulées avant confirmation</dt><dd className="text-xl font-semibold">{a.confirmation.cancelledBeforeConfirm}</dd></div>
+            <div className="col-span-2"><dt className="text-xs text-muted">Annulées avant confirmation</dt><dd className="text-xl font-semibold">{a.confirmation.cancelledBeforeConfirm}</dd></div>
             <div><dt className="text-xs text-muted">Clics WhatsApp sur le site</dt><dd className="text-xl font-semibold">{a.contacts.whatsapp}</dd></div>
+            <div><dt className="text-xs text-muted">Clics téléphone sur le site</dt><dd className="text-xl font-semibold">{a.contacts.phone}</dd></div>
           </dl>
         </Card>
       </div>
@@ -399,7 +400,9 @@ function CohortTable({ cohorts }: { cohorts: import("@/lib/analytics").Cohort[] 
 function buildInsights(a: import("@/lib/analytics").Analytics): string[] {
   const out: string[] = [];
   const f = a.funnel;
-  const leaks = f.slice(1, 6).map((s, i) => ({ from: f[i].step, to: s.step, drop: f[i].count >= 20 ? 1 - s.count / f[i].count : 0 }));
+  // Leaks the site can fix stop at the order: confirmation and delivery happen by phone, after it.
+  const order = f.findIndex((s) => s.key === "order");
+  const leaks = f.slice(1, order + 1).map((s, i) => ({ from: f[i].step, to: s.step, drop: f[i].count >= 20 ? 1 - s.count / f[i].count : 0 }));
   const worst = leaks.reduce((x, y) => (y.drop > x.drop ? y : x), leaks[0]);
   if (worst && worst.drop > 0.5) out.push(`La plus grosse perte est entre « ${worst.from} » et « ${worst.to} » : ${fmt(worst.drop, "pct")} des visiteurs s'arrêtent là.`);
   const srcs = a.sources.filter((s) => s.sessions >= 50);

@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { dict, href, pick, type Lang } from "@/i18n";
@@ -15,6 +16,7 @@ import { formatTND } from "@/lib/money";
 import { formatPhone, normalizePhone } from "@/lib/phone";
 import { GOVERNORATES, governorateLabel } from "@/lib/governorates";
 import { deliveryRangeLabel } from "@/lib/delivery";
+import { formatDay } from "@/lib/offer-display";
 import { IconCheck, IconMinus, IconPlus, IconTruck, IconWhatsApp } from "./Icons";
 
 type P = Omit<ProductPage, "related">;
@@ -22,32 +24,80 @@ type Offer = P["offers"][number];
 type Form = { name: string; phone: string; governorate: string; address: string };
 
 const noopSubscribe = () => () => {};
+const readSearch = () => location.search;
 
 /** What a returning customer does not type twice. Kept in this browser only. */
 const SAVED = "mena_details";
 /** Ties an unfinished form to the back office's "commandes non terminées". Renewed after each order. */
 const FORM_TOKEN = "mena_form_token";
+const ADDRESS_MAX = 300;
+
+/**
+ * What the customer picked: offer, option, quantity. Held by the product page
+ * so the price at the top follows the form. A reminder link or an ad can
+ * preselect them (?offre=, ?option=, ?qte=); the URL is read in the browser,
+ * so the page itself stays static.
+ */
+export function useBuyChoice(p: P) {
+  const search = useSyncExternalStore(noopSubscribe, readSearch, () => "");
+  const url = useMemo(() => new URLSearchParams(search), [search]);
+  const [pickedOffer, setOffer] = useState<string | null>(null);
+  const [pickedVariant, setVariant] = useState<string | null>(null);
+  const [pickedQty, setQty] = useState<number | null>(null);
+  // What the server said at the last price check: offers that are gone, and units left per option.
+  const [gone, setGone] = useState<string[]>([]);
+  const [left, setLeft] = useState<Record<string, number>>({});
+
+  const urlVariant = p.variants.find((v) => v.id === url.get("option") && !v.soldOut)?.id ?? null;
+  const only = p.variants.length === 1 && !p.variants[0].soldOut ? p.variants[0].id : null;
+  const variantId = pickedVariant ?? urlVariant ?? only;
+  const variant = p.variants.find((v) => v.id === variantId) ?? null;
+  const known = variant ? variant.maxUnits : p.maxUnits;
+  const serverLeft = left[variantId ?? ""];
+  const cap = serverLeft != null ? Math.min(serverLeft, known ?? Infinity) : known;
+  const fits = (o: Offer) => !gone.includes(o.id) && (cap == null || o.quantity <= cap);
+  const usable = p.offers.filter(fits);
+  // With no pack that the stock can fill, the product is sold by the unit at its own price.
+  const hasOffers = usable.length > 0;
+  const offer = hasOffers ? (usable.find((o) => o.id === pickedOffer) ?? usable.find((o) => o.id === url.get("offre")) ?? usable[0]) : null;
+  const maxQty = Math.max(1, Math.min(10, cap ?? 10));
+  const urlQty = Number.parseInt(url.get("qte") ?? "", 10);
+  const qty = Math.min(pickedQty ?? (urlQty > 0 ? urlQty : 1), maxQty);
+  const relance = url.get("relance");
+
+  return {
+    variant,
+    offer,
+    hasOffers,
+    fits,
+    qty,
+    maxQty,
+    restoredCartId: relance && /^[a-z0-9]{20,40}$/.test(relance) ? relance : null,
+    setOffer,
+    setVariant: (id: string) => {
+      setVariant(id);
+      setQty(null);
+    },
+    setQty,
+    offerGone: (id: string) => setGone((g) => [...g, id]),
+    unitsLeft: (variantId: string | null, n: number) => setLeft((l) => ({ ...l, [variantId ?? ""]: n })),
+  };
+}
+export type BuyChoice = ReturnType<typeof useBuyChoice>;
 
 /**
  * The whole purchase, on the product page: choose (offer or quantity, and
  * the option), give a name, a phone, a governorate and an address, confirm.
  * No basket, no second page. Every price shown is the server's answer for
- * exactly this choice and this governorate.
+ * exactly this choice and this governorate, or the page's own price while
+ * that answer is on its way.
  */
-/** "?offre=<id>": the offer a reminder link or an ad points to. Read on the client, so the page stays static. */
-const offerFromUrl = () => new URLSearchParams(location.search).get("offre") ?? "";
-
-export function BuyBox({ p, lang, settings, url }: { p: P; lang: Lang; settings: PublicSettings; url: string }) {
+export function BuyBox({ p, lang, settings, url, choice }: { p: P; lang: Lang; settings: PublicSettings; url: string; choice: BuyChoice }) {
   const t = dict(lang);
   const router = useRouter();
   const hydrated = useHydrated();
-  const hasOffers = p.offers.length > 0;
-  const firstAvailable = p.variants.find((v) => !v.soldOut);
-  const urlOffer = useSyncExternalStore(noopSubscribe, offerFromUrl, () => "");
-  const [pickedOffer, setOfferId] = useState<string | null>(null);
-  const offerId = hasOffers ? (pickedOffer ?? p.offers.find((o) => o.id === urlOffer)?.id ?? p.offers[0].id) : null;
-  const [qty, setQty] = useState(1);
-  const [variantId, setVariantId] = useState<string | null>(p.variants.length === 1 && firstAvailable ? firstAvailable.id : null);
+  const { variant, offer, hasOffers, qty, maxQty } = choice;
+  const offerId = offer?.id ?? null;
   // A returning customer's details, read from this browser once the page is live
   // (the server renders the form empty, so hydration never disagrees).
   const savedRaw = useSyncExternalStore(noopSubscribe, () => store.get(SAVED) ?? "", () => "");
@@ -71,34 +121,62 @@ export function BuyBox({ p, lang, settings, url }: { p: P; lang: Lang; settings:
   const [showPromo, setShowPromo] = useState(false);
   const [promoInput, setPromoInput] = useState("");
   const [promo, setPromo] = useState<string | null>(null);
-  const [quote, setQuote] = useState<PublicQuote | null>(null);
+  const [answer, setAnswer] = useState<{ key: string; q: PublicQuote } | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-  const started = useRef(false);
+  // The visitor has used the form itself (not just looked at the page with saved details).
+  const [engaged, setEngaged] = useState(false);
   const phoneLogged = useRef(false);
 
-  const variant = p.variants.find((v) => v.id === variantId) ?? null;
   const unit = variant?.price ?? p.price;
   const out = p.stock.kind === "out" || (variant?.soldOut ?? false);
   const needsVariant = p.variants.length > 0 && !variant;
-  const maxQty = p.stock.kind === "low" ? p.stock.qty : (variant?.lowQty ?? 10);
   const phone = normalizePhone(f.phone);
-  const line = useMemo(() => ({ productId: p.id, variantId, offerId, qty: offerId ? 1 : qty }), [p.id, variantId, offerId, qty]);
+  const line = useMemo(() => ({ productId: p.id, variantId: variant?.id ?? null, offerId, qty: offerId ? 1 : qty }), [p.id, variant?.id, offerId, qty]);
+  // A price answer counts only for the exact choice it was asked for.
+  const quoteKey = JSON.stringify([line, f.governorate, promo, promo ? phone : null]);
+  const quote = answer?.key === quoteKey ? answer.q : null;
 
-  // The server's price for this exact choice. A product with variants is
-  // priced once the option is chosen; before that the page shows the offer's own price.
+  /** Takes the server's answer, and turns what it refused into a plain sentence next to the choice. */
+  function absorb(q: PublicQuote, key: string) {
+    setAnswer({ key, q });
+    const pr = q.problems.find((x) => x.productId === p.id);
+    if (!pr) return;
+    if (pr.kind === "qty_reduced" && pr.available != null) {
+      choice.unitsLeft(pr.variantId, pr.available);
+      setNotice(t.buy.onlyLeft(pr.available));
+    } else if (pr.kind === "unavailable" && offerId && pr.available) {
+      choice.unitsLeft(pr.variantId, pr.available);
+      setNotice(t.buy.packTooBig);
+    } else if (pr.kind === "offer_unavailable" && offerId) {
+      choice.offerGone(offerId);
+      setNotice(t.buy.offerGone);
+      router.refresh();
+    } else if (pr.kind === "unavailable" || pr.kind === "not_found") {
+      setNotice(t.buy.gone);
+      router.refresh();
+    }
+  }
+
+  // The server's price for this exact choice. A product with options is
+  // priced once the option is chosen; before that the page shows its own price.
   useEffect(() => {
     if (!hydrated || needsVariant || out) return;
     const ctrl = new AbortController();
+    const key = quoteKey;
     fetchQuote({ lines: [line], governorate: f.governorate || null, promoCode: promo, phone }, ctrl.signal).then((q) => {
-      if (!ctrl.signal.aborted && q) setQuote(q);
+      if (!ctrl.signal.aborted && q) absorb(q, key);
     });
     return () => ctrl.abort();
-  }, [hydrated, line, f.governorate, promo, phone, needsVariant, out]);
+    // absorb only reads values that are part of quoteKey.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [hydrated, quoteKey, needsVariant, out]);
 
   // An unfinished form with a valid phone shows up in the back office, to be called once.
+  // Only once the visitor has used the form: a phone saved from an earlier order is not a new start.
   useEffect(() => {
-    if (!phone || out) return;
+    if (!engaged || !phone || out) return;
     if (!phoneLogged.current) {
       phoneLogged.current = true;
       track("checkout_phone_entered", { productId: p.id });
@@ -118,14 +196,15 @@ export function BuyBox({ p, lang, settings, url }: { p: P; lang: Lang; settings:
       }).catch(() => {});
     }, 900);
     return () => clearTimeout(id);
-  }, [phone, f.name, f.governorate, line, out, p.id]);
+  }, [engaged, phone, f.name, f.governorate, line, out, p.id]);
+
+  const pageTotal = offer ? offer.price : unit * qty;
 
   function start() {
-    if (started.current) return;
-    started.current = true;
-    const value = quote?.subtotal ?? (offerId ? (p.offers.find((o) => o.id === offerId)?.price ?? unit) : unit * qty);
-    track("checkout_started", { productId: p.id, value });
-    pixelInitiateCheckout([{ id: p.id, name: p.name, price: unit, qty: offerId ? (p.offers.find((o) => o.id === offerId)?.quantity ?? 1) : qty }], value);
+    if (engaged) return;
+    setEngaged(true);
+    track("checkout_started", { productId: p.id, value: pageTotal });
+    pixelInitiateCheckout([{ id: p.id, name: p.name, price: offer ? Math.round(offer.price / offer.quantity) : unit, qty: offer ? offer.quantity : qty }], pageTotal);
   }
 
   function update(k: keyof Form, v: string) {
@@ -135,6 +214,16 @@ export function BuyBox({ p, lang, settings, url }: { p: P; lang: Lang; settings:
     setServerBad((b) => b.filter((x) => x !== k));
   }
   const blur = (k: keyof Form) => () => setTouched((x) => ({ ...x, [k]: true }));
+  /** Enter moves to the next field instead of sending a half-filled order. */
+  const next = (id: string) => (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key !== "Enter" || e.nativeEvent.isComposing) return;
+    e.preventDefault();
+    document.getElementById(id)?.focus();
+  };
+  const chose = () => {
+    setNotice(null);
+    setError(null);
+  };
 
   const problems = {
     variant: needsVariant,
@@ -150,18 +239,30 @@ export function BuyBox({ p, lang, settings, url }: { p: P; lang: Lang; settings:
     if (busy || out) return;
     start();
     const bad = (Object.keys(problems) as (keyof typeof problems)[]).filter((k) => problems[k]);
-    if (bad.length || !quote) {
-      setTouched(Object.fromEntries((bad.length ? bad : ["governorate"]).map((k) => [k, true])));
-      const first = bad[0];
-      if (first === "variant") document.getElementById("variants")?.scrollIntoView({ behavior: "smooth", block: "center" });
-      else if (first) document.getElementById(`bb-${first}`)?.focus();
+    if (bad.length) {
+      setTouched(Object.fromEntries(bad.map((k) => [k, true])));
+      if (bad[0] === "variant") {
+        document.getElementById("variants")?.scrollIntoView({ behavior: "smooth", block: "center" });
+        document.querySelector<HTMLButtonElement>("#variants button:not(:disabled)")?.focus({ preventScroll: true });
+      } else document.getElementById(`bb-${bad[0]}`)?.focus();
       return;
     }
+    const honeypot = (e.currentTarget.elements.namedItem("website") as HTMLInputElement | null)?.value ?? "";
     setBusy(true);
     setError(null);
-    const a = currentAttribution();
-    const honeypot = (e.currentTarget.elements.namedItem("website") as HTMLInputElement | null)?.value ?? "";
     try {
+      // The price check may still be on its way (slow network) or may have failed: ask again now.
+      let q = quote;
+      if (!q) {
+        q = await fetchQuote({ lines: [line], governorate: f.governorate, promoCode: promo, phone });
+        if (!q) {
+          setError(t.checkout.errors.server);
+          return;
+        }
+        absorb(q, quoteKey);
+        if (q.lines.length === 0 || q.problems.some((x) => x.productId === p.id)) return;
+      }
+      const a = currentAttribution();
       const res = await fetch("/api/orders", {
         method: "POST",
         headers: { "content-type": "application/json" },
@@ -173,8 +274,9 @@ export function BuyBox({ p, lang, settings, url }: { p: P; lang: Lang; settings:
           address: f.address,
           promoCode: promo ?? undefined,
           payment: "COD",
-          expectedTotal: quote.total,
+          expectedTotal: q.total,
           cartToken: store.get(FORM_TOKEN) ?? undefined,
+          restoredCartId: choice.restoredCartId ?? undefined,
           visitorId: a.visitorId,
           sessionId: a.sessionId,
           attribution: a.attribution,
@@ -192,11 +294,10 @@ export function BuyBox({ p, lang, settings, url }: { p: P; lang: Lang; settings:
         return;
       }
       trackNow("checkout_failed", { productId: p.id, props: { error: data.error } });
-      if (data.quote) setQuote(data.quote);
+      if (data.quote) absorb(data.quote, quoteKey);
       if (data.error === "invalid") setServerBad(data.fields ?? []);
       const offerGone = data.quote?.problems?.some((x: { kind: string }) => x.kind === "offer_unavailable");
       setError(offerGone ? t.buy.offerGone : (t.checkout.errors[data.error] ?? t.checkout.errors.server));
-      if (offerGone) router.refresh();
     } catch {
       setError(t.checkout.errors.server);
     } finally {
@@ -204,29 +305,42 @@ export function BuyBox({ p, lang, settings, url }: { p: P; lang: Lang; settings:
     }
   }
 
-  const chosenOffer = p.offers.find((o) => o.id === offerId) ?? null;
-  // Before the server answers (or before an option is chosen), the page's own figures.
-  const price = quote?.subtotal ?? (chosenOffer ? chosenOffer.price : unit * qty);
-  const delivery = quote?.delivery ?? null;
+  // Before the server answers (or before an option is chosen), the page's own figures; never a 0 for a refused line.
+  const priced = quote != null && quote.lines.length > 0;
+  const price = priced ? quote.subtotal : pageTotal;
+  const delivery = priced ? quote.delivery : null;
   const promoError = quote?.promo && !quote.promo.result.ok ? t.checkout.promoErrors[quote.promo.result.reason] : null;
   const shopPhone = normalizePhone(settings.shop.phone);
-  const waText = t.product.whatsappText(pick(lang, p.name, p.nameAr), [variant?.name, chosenOffer ? pick(lang, chosenOffer.label, chosenOffer.labelAr) : null].filter(Boolean).join(" — ") || null, formatTND(price, lang), url);
+  const waText = t.product.whatsappText(pick(lang, p.name, p.nameAr), [variant?.name, offer ? pick(lang, offer.label, offer.labelAr) : null].filter(Boolean).join(" — ") || null, formatTND(price, lang), url);
+  const locale = lang === "ar" ? "ar-TN" : "fr-FR";
 
   return (
-    <form id="commander" onSubmit={submit} noValidate className="scroll-mt-20 flex flex-col gap-5 rounded-3xl border border-line bg-white p-4 shadow-soft sm:p-6">
+    <form id="commander" onSubmit={submit} noValidate className="flex flex-col gap-5 rounded-3xl border border-line bg-white p-4 shadow-soft sm:p-6">
       {/* ------------------------------------------------------ 1. choose */}
-      {hasOffers && (
-        <fieldset className="flex flex-col gap-3">
+      {p.offers.length > 0 && (
+        <fieldset className="flex min-w-0 flex-col gap-3">
           <legend className="mb-2 text-[17px] font-bold text-ink">{t.buy.step1}</legend>
           {p.offers.map((o) => (
-            <OfferCard key={o.id} o={o} lang={lang} unit={unit} imageId={p.images[0]?.id ?? null} checked={offerId === o.id} onSelect={() => { setOfferId(o.id); start(); }} />
+            <OfferCard
+              key={o.id}
+              o={o}
+              lang={lang}
+              locale={locale}
+              imageId={p.images[0]?.id ?? null}
+              checked={offerId === o.id}
+              disabled={!choice.fits(o)}
+              onSelect={() => {
+                choice.setOffer(o.id);
+                chose();
+              }}
+            />
           ))}
         </fieldset>
       )}
 
       {p.variants.length > 0 && (
-        <div id="variants" className="flex flex-col gap-2.5 scroll-mt-24">
-          <p className={`text-[17px] font-bold ${show("variant") ? "text-danger" : "text-ink"}`}>
+        <div id="variants" className="flex flex-col gap-2.5" role="group" aria-labelledby="bb-variants-label">
+          <p id="bb-variants-label" className={`text-[17px] font-bold ${show("variant") ? "text-danger" : "text-ink"}`} aria-live="polite">
             {show("variant") ? t.buy.variantError : t.product.choose}
             {variant && <span className="font-normal text-muted"> · {variant.name}</span>}
           </p>
@@ -237,14 +351,13 @@ export function BuyBox({ p, lang, settings, url }: { p: P; lang: Lang; settings:
                 type="button"
                 disabled={v.soldOut}
                 onClick={() => {
-                  setVariantId(v.id);
-                  setQty(1);
-                  start();
+                  choice.setVariant(v.id);
+                  chose();
                 }}
-                aria-pressed={variantId === v.id}
+                aria-pressed={variant?.id === v.id}
                 className={`min-h-12 rounded-xl border-2 px-4 text-[16px] transition ${
-                  variantId === v.id ? "border-sea bg-sea-soft font-bold text-sea-2" : "border-line bg-white text-ink hover:border-sea/50"
-                } disabled:cursor-not-allowed disabled:border-dashed disabled:text-muted disabled:line-through`}
+                  variant?.id === v.id ? "border-sea bg-sea-soft font-bold text-sea-2" : "border-field bg-white text-ink hover:border-sea/60"
+                } disabled:cursor-not-allowed disabled:border-dashed disabled:border-line disabled:text-muted disabled:line-through`}
               >
                 {v.name}
                 {!hasOffers && v.price !== p.price && <span className="ms-1.5 text-[14px] opacity-80 ltr-nums">{formatTND(v.price, lang)}</span>}
@@ -256,17 +369,23 @@ export function BuyBox({ p, lang, settings, url }: { p: P; lang: Lang; settings:
 
       {!hasOffers && !out && (
         <div className="flex items-center justify-between gap-3">
-          <span className="text-[17px] font-bold text-ink">{t.buy.quantity}</span>
-          <div className="inline-flex h-12 items-center rounded-xl border-2 border-line bg-white">
-            <button type="button" className="flex h-12 w-12 items-center justify-center disabled:opacity-30" onClick={() => setQty((x) => Math.max(1, x - 1))} disabled={qty <= 1} aria-label="−">
+          <span className="text-[17px] font-bold text-ink" id="bb-qty-label">{t.buy.quantity}</span>
+          <div className="inline-flex h-12 items-center rounded-xl border-2 border-field bg-white" role="group" aria-labelledby="bb-qty-label">
+            <button type="button" className="flex h-12 w-12 items-center justify-center disabled:opacity-30" onClick={() => { choice.setQty(Math.max(1, qty - 1)); chose(); }} disabled={qty <= 1} aria-label={t.buy.qtyLess}>
               <IconMinus className="h-5 w-5" />
             </button>
             <span className="w-8 text-center text-[18px] font-bold ltr-nums" aria-live="polite">{qty}</span>
-            <button type="button" className="flex h-12 w-12 items-center justify-center disabled:opacity-30" onClick={() => setQty((x) => Math.min(maxQty, x + 1))} disabled={qty >= maxQty} aria-label="+">
+            <button type="button" className="flex h-12 w-12 items-center justify-center disabled:opacity-30" onClick={() => { choice.setQty(Math.min(maxQty, qty + 1)); chose(); }} disabled={qty >= maxQty} aria-label={t.buy.qtyMore}>
               <IconPlus className="h-5 w-5" />
             </button>
           </div>
         </div>
+      )}
+
+      {notice && (
+        <p className="rounded-xl bg-clay-soft px-4 py-3 text-[16px] text-clay" role="status">
+          {notice}
+        </p>
       )}
 
       {out ? (
@@ -274,19 +393,19 @@ export function BuyBox({ p, lang, settings, url }: { p: P; lang: Lang; settings:
       ) : (
         <>
           {/* -------------------------------------------- 2. details */}
-          <fieldset className="flex flex-col gap-4" onFocus={start}>
+          <fieldset className="flex min-w-0 flex-col gap-4" onFocus={start}>
             <legend className="mb-2 text-[17px] font-bold text-ink">{t.buy.step2}</legend>
             <Field id="name" label={t.buy.name} error={show("name") ? t.buy.nameError : null}>
-              <input id="bb-name" value={f.name} onChange={(e) => update("name", e.target.value)} onBlur={blur("name")} autoComplete="name" placeholder={t.buy.namePh} className={inputCls(show("name"))} data-testid="name" />
+              <input id="bb-name" value={f.name} onChange={(e) => update("name", e.target.value)} onBlur={blur("name")} onKeyDown={next("bb-phone")} enterKeyHint="next" autoComplete="name" placeholder={t.buy.namePh} className={inputCls(show("name"))} aria-invalid={show("name")} aria-describedby={show("name") ? "bb-name-msg" : undefined} data-testid="name" />
             </Field>
-            <Field id="phone" label={t.buy.phone} error={show("phone") ? t.checkout.phoneInvalid : null} hint={t.buy.phoneHint}>
-              <div className={`flex h-14 items-stretch overflow-hidden rounded-xl border-2 bg-white focus-within:border-sea ${show("phone") ? "border-danger" : "border-line"}`} dir="ltr">
+            <Field id="phone" label={t.buy.phone} error={show("phone") ? (f.phone.trim() ? t.checkout.phoneInvalid : t.buy.phoneRequired) : null} hint={t.buy.phoneHint}>
+              <div className={`flex h-14 items-stretch overflow-hidden rounded-xl border-2 bg-white focus-within:border-sea ${show("phone") ? "border-danger" : "border-field"}`} dir="ltr">
                 <span className="flex items-center border-e-2 border-line bg-sand px-3 text-[18px] text-ink-2">+216</span>
-                <input id="bb-phone" value={f.phone} onChange={(e) => update("phone", e.target.value)} onBlur={blur("phone")} inputMode="tel" autoComplete="tel-national" placeholder="22 123 456" maxLength={16} className="min-w-0 flex-1 bg-transparent px-3 text-[19px] tracking-wide outline-none" aria-invalid={show("phone")} data-testid="phone" />
+                <input id="bb-phone" value={f.phone} onChange={(e) => update("phone", e.target.value)} onBlur={blur("phone")} onKeyDown={next("bb-governorate")} enterKeyHint="next" inputMode="tel" autoComplete="tel-national" placeholder="22 123 456" maxLength={16} className="min-w-0 flex-1 bg-transparent px-3 text-[19px] tracking-wide outline-none placeholder:text-placeholder" aria-invalid={show("phone")} aria-describedby="bb-phone-msg" data-testid="phone" />
               </div>
             </Field>
             <Field id="governorate" label={t.buy.governorate} error={show("governorate") ? t.buy.govError : null}>
-              <select id="bb-governorate" value={f.governorate} onChange={(e) => update("governorate", e.target.value)} onBlur={blur("governorate")} autoComplete="address-level1" className={inputCls(show("governorate"))} data-testid="governorate">
+              <select id="bb-governorate" value={f.governorate} onChange={(e) => update("governorate", e.target.value)} onBlur={blur("governorate")} autoComplete="address-level1" className={inputCls(show("governorate"))} aria-invalid={show("governorate")} aria-describedby={show("governorate") ? "bb-governorate-msg" : undefined} data-testid="governorate">
                 <option value="">{t.buy.chooseGov}</option>
                 {GOVERNORATES.map((g) => (
                   <option key={g.id} value={g.id} disabled={settings.delivery.zones[g.id]?.enabled === false}>
@@ -295,41 +414,47 @@ export function BuyBox({ p, lang, settings, url }: { p: P; lang: Lang; settings:
                 ))}
               </select>
             </Field>
-            <Field id="address" label={t.buy.address} error={show("address") ? t.buy.addressError : null}>
-              <textarea id="bb-address" value={f.address} onChange={(e) => update("address", e.target.value)} onBlur={blur("address")} autoComplete="street-address" rows={2} placeholder={t.buy.addressPh} className={`${inputCls(show("address"))} h-auto py-3 leading-snug`} data-testid="address" />
+            <Field id="address" label={t.buy.address} error={show("address") ? t.buy.addressError : null} hint={t.buy.addressHint}>
+              <textarea id="bb-address" value={f.address} onChange={(e) => update("address", e.target.value)} onBlur={blur("address")} autoComplete="street-address" rows={2} maxLength={ADDRESS_MAX} className={`${inputCls(show("address"))} h-auto py-3 leading-snug`} aria-invalid={show("address")} aria-describedby="bb-address-msg" data-testid="address" />
             </Field>
           </fieldset>
 
           {/* ------------------------------------------------ summary */}
           <dl className="flex flex-col gap-2 rounded-2xl bg-sand/70 p-4 text-[16px]">
             <div className="flex justify-between gap-3 text-ink-2">
-              <dt>{t.buy.price}{chosenOffer && <span className="text-muted"> · {pick(lang, chosenOffer.label, chosenOffer.labelAr)}</span>}</dt>
-              <dd className="ltr-nums">{formatTND(price, lang)}</dd>
+              <dt>
+                {t.buy.price}
+                {offer && <span className="text-muted"> · {pick(lang, offer.label, offer.labelAr)}</span>}
+              </dt>
+              <dd className="shrink-0 whitespace-nowrap ltr-nums">{formatTND(price, lang)}</dd>
             </div>
-            {quote && quote.discount > 0 && (
+            {priced && quote.discount > 0 && (
               <div className="flex justify-between gap-3 text-olive">
                 <dt>{t.checkout.discount}</dt>
-                <dd className="ltr-nums">−{formatTND(quote.discount, lang)}</dd>
+                <dd className="shrink-0 whitespace-nowrap ltr-nums">−{formatTND(quote.discount, lang)}</dd>
               </div>
             )}
             <div className="flex justify-between gap-3 text-ink-2">
-              <dt>{t.buy.delivery}{f.governorate && <span className="text-muted"> · {governorateLabel(f.governorate, lang)}</span>}</dt>
-              <dd className="ltr-nums">{delivery ? (delivery.free ? <span className="font-bold text-olive">{t.product.free}</span> : formatTND(delivery.fee, lang)) : <span className="text-muted">{t.buy.deliveryChoose}</span>}</dd>
+              <dt>
+                {t.buy.delivery}
+                {f.governorate && <span className="text-muted"> · {governorateLabel(f.governorate, lang)}</span>}
+              </dt>
+              <dd className="shrink-0 whitespace-nowrap ltr-nums">{delivery ? delivery.free ? <span className="font-bold text-olive">{t.product.free}</span> : formatTND(delivery.fee, lang) : <span className="text-muted">{t.buy.deliveryChoose}</span>}</dd>
             </div>
             <div className="mt-1 flex items-baseline justify-between gap-3 border-t border-sand-2 pt-3">
               <dt className="font-bold text-ink">{t.buy.total}</dt>
-              <dd className="text-[24px] font-bold text-ink ltr-nums" data-testid="total">
-                {quote && delivery ? formatTND(quote.total, lang) : "—"}
+              <dd className="shrink-0 whitespace-nowrap text-[24px] font-bold text-ink ltr-nums" data-testid="total">
+                {priced && delivery ? formatTND(quote.total, lang) : "—"}
               </dd>
             </div>
             {delivery && (
-              <p className="flex items-center gap-2 text-[14px] text-muted">
+              <p className="flex items-center gap-2 text-[15px] text-muted">
                 <IconTruck className="h-4 w-4" />
                 {t.checkout.deliveryDelay(deliveryRangeLabel(delivery.minDays, delivery.maxDays, lang))}
               </p>
             )}
-            {quote?.deliveryUnavailable && <p className="text-[14px] text-danger">{t.checkout.errors.delivery_unavailable}</p>}
-            {!delivery && settings.delivery.freeThreshold != null && <p className="text-[14px] text-muted">{t.product.freeFrom(formatTND(settings.delivery.freeThreshold, lang))}</p>}
+            {quote?.deliveryUnavailable && <p className="text-[15px] text-danger">{t.checkout.errors.delivery_unavailable}</p>}
+            {!delivery && settings.delivery.freeThreshold != null && <p className="text-[15px] text-muted">{t.product.freeFrom(formatTND(settings.delivery.freeThreshold, lang))}</p>}
           </dl>
 
           {!showPromo && !promo ? (
@@ -345,13 +470,28 @@ export function BuyBox({ p, lang, settings, url }: { p: P; lang: Lang; settings:
             </div>
           ) : (
             <div className="-mt-2 flex gap-2">
-              <input value={promoInput} onChange={(e) => setPromoInput(e.target.value.toUpperCase())} placeholder={t.checkout.promo} className="h-12 min-w-0 flex-1 rounded-xl border-2 border-line px-3 text-[17px] uppercase outline-none focus:border-sea" dir="ltr" autoCapitalize="characters" />
+              <input
+                value={promoInput}
+                onChange={(e) => setPromoInput(e.target.value.toUpperCase())}
+                onKeyDown={(e) => {
+                  // "OK" on the phone keyboard applies the code; it never sends the order without it.
+                  if (e.key !== "Enter" || e.nativeEvent.isComposing) return;
+                  e.preventDefault();
+                  if (promoInput.trim()) setPromo(promoInput.trim());
+                }}
+                enterKeyHint="done"
+                placeholder={t.checkout.promo}
+                aria-label={t.checkout.promo}
+                className="h-12 min-w-0 flex-1 rounded-xl border-2 border-field px-3 text-[17px] uppercase outline-none placeholder:text-placeholder focus:border-sea"
+                dir="ltr"
+                autoCapitalize="characters"
+              />
               <button type="button" onClick={() => promoInput.trim() && setPromo(promoInput.trim())} className="h-12 rounded-xl bg-ink px-4 text-[16px] font-bold text-white">
                 {t.checkout.apply}
               </button>
             </div>
           )}
-          {promo && promoError && <p className="-mt-3 text-[14px] text-danger">{promoError}</p>}
+          {promo && promoError && <p className="-mt-3 text-[15px] text-danger">{promoError}</p>}
 
           {error && (
             <p className="rounded-xl bg-clay-soft px-4 py-3 text-[16px] text-clay" role="alert">
@@ -359,16 +499,32 @@ export function BuyBox({ p, lang, settings, url }: { p: P; lang: Lang; settings:
             </p>
           )}
 
-          <button type="submit" disabled={busy} className="flex min-h-16 w-full flex-col items-center justify-center rounded-2xl bg-sea px-4 py-3 text-white shadow-soft transition hover:bg-sea-2 active:scale-[.99] disabled:opacity-60" data-testid="place-order">
+          <button type="submit" disabled={busy} className="flex min-h-16 w-full flex-col items-center justify-center rounded-2xl bg-sea px-4 py-3 text-white shadow-soft transition hover:bg-sea-2 active:scale-[.99] disabled:bg-sea-2" data-testid="place-order">
             <span className="text-[19px] font-bold leading-tight">{busy ? t.buy.sending : t.buy.submit}</span>
             {!busy && <span className="text-[14px] leading-tight text-white/90">{t.buy.submitSub}</span>}
           </button>
-          <p className="-mt-2 text-center text-[14px] leading-relaxed text-muted">{t.buy.reassure}</p>
+          <div className="-mt-2 flex flex-col gap-2 text-center text-[15px] leading-relaxed text-muted">
+            <p>{t.buy.reassure}</p>
+            <p>
+              {t.buy.consentPhone} {t.buy.consentTerms}{" "}
+              <Link href={href(lang, "/conditions")} className="underline underline-offset-2" prefetch={false}>
+                {t.buy.termsLink}
+              </Link>
+              .
+            </p>
+          </div>
 
           {(shopPhone || settings.contact.whatsapp) && (
             <div className="flex flex-col gap-2 border-t border-line pt-4">
               {shopPhone && (
-                <a href={`tel:+216${shopPhone}`} className="flex min-h-12 items-center justify-center gap-2 rounded-xl border-2 border-line text-[16px] text-ink" onClick={() => { track("phone_clicked", { productId: p.id }); pixelContact(); }}>
+                <a
+                  href={`tel:+216${shopPhone}`}
+                  className="flex min-h-12 items-center justify-center gap-2 rounded-xl border-2 border-field text-[16px] text-ink"
+                  onClick={() => {
+                    track("phone_clicked", { productId: p.id, props: { where: "product" } });
+                    pixelContact();
+                  }}
+                >
                   {t.buy.callUs} : <strong className="ltr-nums">{formatPhone(shopPhone)}</strong>
                 </a>
               )}
@@ -389,7 +545,6 @@ export function BuyBox({ p, lang, settings, url }: { p: P; lang: Lang; settings:
               )}
             </div>
           )}
-          <p className="text-center text-[13px] leading-relaxed text-muted">{t.checkout.consent}</p>
           {/* Honeypot: invisible to people, irresistible to bots. */}
           <input type="text" name="website" tabIndex={-1} autoComplete="off" className="absolute -start-[9999px] h-0 w-0 opacity-0" aria-hidden />
         </>
@@ -398,38 +553,47 @@ export function BuyBox({ p, lang, settings, url }: { p: P; lang: Lang; settings:
   );
 }
 
-function OfferCard({ o, lang, unit, imageId, checked, onSelect }: { o: Offer; lang: Lang; unit: number; imageId: string | null; checked: boolean; onSelect: () => void }) {
+function OfferCard({ o, lang, locale, imageId, checked, disabled, onSelect }: { o: Offer; lang: Lang; locale: string; imageId: string | null; checked: boolean; disabled: boolean; onSelect: () => void }) {
   const t = dict(lang);
-  // "Instead of" is what the same units cost one by one: a real price, never an invented one.
-  const separately = unit * o.quantity;
-  const saving = separately > o.price ? separately - o.price : 0;
+  // "Instead of" comes from the server: the same units at the shop's own one-unit offer, or nothing.
+  const saving = o.compareAt != null ? o.compareAt - o.price : 0;
   return (
-    <label className={`relative flex cursor-pointer items-center gap-3 rounded-2xl border-2 p-3 transition ${checked ? "border-sea bg-sea-soft/60" : "border-line bg-white hover:border-sea/40"}`}>
-      <input type="radio" name="offer" checked={checked} onChange={onSelect} className="h-6 w-6 shrink-0 accent-[var(--color-sea)]" data-testid={`offer-${o.quantity}`} />
+    <label
+      className={`relative flex items-center gap-3 rounded-2xl border-2 p-3 transition ${
+        disabled ? "cursor-not-allowed border-dashed border-line bg-sand/50 opacity-70" : checked ? "cursor-pointer border-sea bg-sea-soft/60" : "cursor-pointer border-field bg-white hover:border-sea/60"
+      }`}
+    >
+      <input type="radio" name="offer" checked={checked} disabled={disabled} onChange={onSelect} className="h-6 w-6 shrink-0 accent-[var(--color-sea)]" data-testid={`offer-${o.quantity}`} />
       <span className="relative h-16 w-16 shrink-0 overflow-hidden rounded-xl bg-sand">
         {imageId && (
           // eslint-disable-next-line @next/next/no-img-element
           <img src={`/api/img/${imageId}/128`} alt="" className="h-full w-full object-cover" />
         )}
-        <span className="absolute bottom-1 end-1 rounded-md bg-sea px-1.5 text-[12px] font-bold text-white ltr-nums">×{o.quantity}</span>
+        <span className="absolute bottom-1 end-1 rounded-md bg-sea px-1.5 text-[13px] font-bold text-white ltr-nums">×{o.quantity}</span>
       </span>
       <span className="flex min-w-0 flex-1 flex-col gap-1">
-        {o.mostChosen && (
-          <span className="inline-flex items-center gap-1 self-start rounded-full bg-sea px-2 py-0.5 text-[12px] font-bold text-white">
-            <IconCheck className="h-3 w-3" /> {t.buy.mostChosen}
+        {o.mostChosen && !disabled && (
+          <span className="inline-flex items-center gap-1 self-start rounded-full bg-sea px-2 py-0.5 text-[14px] font-bold text-white">
+            <IconCheck className="h-3.5 w-3.5" /> {t.buy.mostChosen}
           </span>
         )}
         <span className="text-[17px] font-bold leading-snug text-ink">{pick(lang, o.label, o.labelAr)}</span>
         <span className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
-          <span className="text-[19px] font-bold text-ink ltr-nums">{formatTND(o.price, lang)}</span>
-          {saving > 0 && <span className="text-[14px] text-muted line-through ltr-nums">{formatTND(separately, lang)}</span>}
+          <span className="whitespace-nowrap text-[19px] font-bold text-ink ltr-nums">{formatTND(o.price, lang)}</span>
+          {saving > 0 && o.compareAt != null && <span className="whitespace-nowrap text-[15px] text-muted line-through ltr-nums">{formatTND(o.compareAt, lang)}</span>}
         </span>
-        <span className="flex flex-wrap gap-1.5">
-          {saving > 0 && <span className="rounded-full bg-olive-soft px-2 py-0.5 text-[13px] font-bold text-olive">{t.buy.save(formatTND(saving, lang))}</span>}
-          {o.freeDelivery && <span className="rounded-full bg-sea-soft px-2 py-0.5 text-[13px] font-bold text-sea-2">{t.buy.freeDelivery}</span>}
-        </span>
-        {o.endsAt && (
-          <span className="text-[13px] text-muted">{t.buy.until(new Date(o.endsAt).toLocaleDateString(lang === "ar" ? "ar-TN" : "fr-FR", { day: "numeric", month: "long" }))}</span>
+        {disabled ? (
+          <span className="text-[15px] text-muted">{t.buy.packTooBig}</span>
+        ) : (
+          <>
+            {(saving > 0 || o.freeDelivery) && (
+              <span className="flex flex-wrap gap-1.5">
+                {saving > 0 && <span className="rounded-lg bg-olive-soft px-2 py-0.5 text-[15px] font-bold text-olive">{t.buy.save(formatTND(saving, lang))}</span>}
+                {o.freeDelivery && <span className="rounded-lg bg-sea-soft px-2 py-0.5 text-[15px] font-bold text-sea-2">{t.buy.freeDelivery}</span>}
+              </span>
+            )}
+            {o.lastDay && <span className="text-[15px] text-muted">{t.buy.until(formatDay(o.lastDay, locale))}</span>}
+          </>
         )}
       </span>
     </label>
@@ -443,11 +607,19 @@ function Field({ id, label, hint, error, children }: { id: string; label: string
         {label}
       </label>
       {children}
-      {error ? <p className="text-[15px] font-bold text-danger">{error}</p> : hint ? <p className="text-[14px] text-muted">{hint}</p> : null}
+      {error ? (
+        <p id={`bb-${id}-msg`} className="text-[15px] font-bold text-danger">
+          {error}
+        </p>
+      ) : hint ? (
+        <p id={`bb-${id}-msg`} className="text-[15px] text-muted">
+          {hint}
+        </p>
+      ) : null}
     </div>
   );
 }
 
 function inputCls(invalid: boolean) {
-  return `h-14 w-full rounded-xl border-2 bg-white px-3 text-[18px] text-ink outline-none placeholder:text-[#8a95a3] focus:border-sea ${invalid ? "border-danger" : "border-line"}`;
+  return `h-14 w-full rounded-xl border-2 bg-white px-3 text-[18px] text-ink outline-none placeholder:text-placeholder focus:border-sea ${invalid ? "border-danger" : "border-field"}`;
 }

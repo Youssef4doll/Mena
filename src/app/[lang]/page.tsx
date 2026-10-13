@@ -54,14 +54,14 @@ export default async function Home({ params }: PageProps<"/[lang]">) {
       {/* ------------------------------------------ big category cards */}
       {cats.length > 0 && (
         <section className="mx-auto max-w-6xl px-4" aria-label={t.home.categories}>
-          <div className="-mx-4 flex snap-x gap-3 overflow-x-auto px-4 pb-2 no-scrollbar lg:mx-0 lg:grid lg:grid-cols-4 lg:overflow-visible lg:px-0">
+          <div className="-mx-4 flex snap-x gap-3 overflow-x-auto px-4 pb-2 no-scrollbar md:mx-0 md:grid md:grid-cols-4 md:overflow-visible md:px-0">
             {cats.slice(0, 8).map((c, i) => {
-              const image = c.imageId ?? c.products[0]?.imageId ?? null;
+              const image = c.imageId ?? c.products[0]?.images[0]?.id ?? null;
               return (
                 <Link
                   key={c.slug}
                   href={href(lang, `/categorie/${c.slug}`)}
-                  className={`group flex w-[72%] shrink-0 snap-start flex-col overflow-hidden rounded-3xl sm:w-[44%] lg:w-auto ${TINTS[i % TINTS.length]}`}
+                  className={`group flex w-[72%] shrink-0 snap-start flex-col overflow-hidden rounded-3xl sm:w-[44%] md:w-auto ${TINTS[i % TINTS.length]}`}
                 >
                   <span className="px-4 pb-2 pt-4 text-[22px] font-bold leading-tight text-ink">{pick(lang, c.headline || c.name, c.headlineAr || c.nameAr)}</span>
                   <span className="relative mx-4 mb-4 aspect-[4/3] overflow-hidden rounded-2xl bg-white/60">
@@ -93,7 +93,8 @@ export default async function Home({ params }: PageProps<"/[lang]">) {
           <ProductRow products={home.featured} lang={lang} />
         </Shelf>
       )}
-      {home.bestsellers.length > 0 && (
+      {/* "Most ordered" only when at least four products really sold. */}
+      {home.bestsellers.length >= 4 && (
         <Shelf title={t.home.bestsellers} sub={t.home.bestsellersSub}>
           <ProductRow products={home.bestsellers.slice(0, 8)} lang={lang} />
         </Shelf>
@@ -125,9 +126,9 @@ export default async function Home({ params }: PageProps<"/[lang]">) {
       {/* ------------------------------------- reviews (real buyers only) */}
       {home.reviews.length > 0 && (
         <Shelf title={t.home.reviews} sub={t.home.reviewsSub}>
-          <div className="-mx-4 flex snap-x gap-3 overflow-x-auto px-4 pb-2 no-scrollbar">
+          <div className="-mx-4 flex snap-x gap-3 overflow-x-auto px-4 pb-2 no-scrollbar md:mx-0 md:grid md:grid-cols-3 md:overflow-visible md:px-0">
             {home.reviews.map((r) => (
-              <figure key={r.id} className="w-[82%] shrink-0 snap-start rounded-2xl border border-line bg-white p-5 sm:w-80">
+              <figure key={r.id} className="w-[82%] shrink-0 snap-start rounded-2xl border border-line bg-white p-5 sm:w-80 md:w-auto">
                 <Stars value={r.rating} size={18} />
                 <blockquote className="mt-3 line-clamp-5 text-[17px] leading-relaxed text-ink-2">{r.text}</blockquote>
                 <figcaption className="mt-4 text-[14px] text-muted">
@@ -160,15 +161,26 @@ function CategoryBox({ c, lang }: { c: HomeCategory; lang: Lang }) {
         <IconChevron className="mt-1 h-5 w-5 shrink-0 text-muted" />
       </Link>
       <div className="grid grid-cols-2 gap-3">
-        {c.products.map((p) => (
-          <Link key={p.id} href={href(lang, `/produit/${p.slug}`)} className="flex flex-col gap-1.5" prefetch={false}>
-            <span className="relative aspect-square overflow-hidden rounded-xl bg-sand">
-              {p.imageId ? <Img image={{ id: p.imageId, blur: null, width: 400, height: 400 }} alt="" sizes="(min-width: 1024px) 12vw, 45vw" /> : <Placeholder />}
-            </span>
-            <span className="line-clamp-2 text-[15px] leading-snug text-ink-2">{pick(lang, p.name, p.nameAr)}</span>
-            <span className="text-[16px] font-bold text-ink ltr-nums">{formatTND(p.price, lang)}</span>
-          </Link>
-        ))}
+        {c.products.map((p) => {
+          const out = p.stock.kind === "out";
+          const note = p.packOf ? t.product.pack(p.packOf) : p.priceFrom ? t.product.from : null;
+          return (
+            <Link key={p.id} href={href(lang, `/produit/${p.slug}`)} className="flex flex-col gap-1.5" prefetch={false}>
+              <span className="relative aspect-square overflow-hidden rounded-xl bg-sand">
+                {p.images[0] ? <Img image={{ ...p.images[0], blur: null }} alt="" sizes="(min-width: 1024px) 12vw, 45vw" className={out ? "opacity-60 grayscale" : ""} /> : <Placeholder />}
+              </span>
+              <span className="line-clamp-2 text-[15px] leading-snug text-ink-2">{pick(lang, p.name, p.nameAr)}</span>
+              {out ? (
+                <span className="text-[15px] font-bold text-muted">{t.product.out}</span>
+              ) : (
+                <span className="text-[16px] font-bold text-ink ltr-nums">
+                  {note && <span className="me-1 text-[14px] font-normal text-muted">{note}</span>}
+                  {formatTND(p.price, lang)}
+                </span>
+              )}
+            </Link>
+          );
+        })}
       </div>
       <Link href={href(lang, `/categorie/${c.slug}`)} className="mt-auto pt-4 text-[16px] font-bold text-sea underline-offset-4 hover:underline">
         {t.home.seeMore}

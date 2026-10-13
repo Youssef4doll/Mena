@@ -9,10 +9,11 @@ import { track } from "@/lib/client/track";
 import { pixelViewContent } from "@/lib/client/pixels";
 import { formatTND } from "@/lib/money";
 import { governorateLabel } from "@/lib/governorates";
+import { leadOffer } from "@/lib/offer-display";
 import { Price } from "./Price";
 import { Stars } from "./Stars";
 import { Placeholder } from "./Img";
-import { BuyBox } from "./BuyBox";
+import { BuyBox, useBuyChoice, type BuyChoice } from "./BuyBox";
 import { IconCash, IconCheck, IconReturn, IconShield } from "./Icons";
 
 type P = Omit<ProductPage, "related">;
@@ -28,12 +29,14 @@ export function ProductView({ p, lang, settings, url }: { p: P; lang: Lang; sett
   const out = p.stock.kind === "out";
   const buyRef = useRef<HTMLDivElement>(null);
   const [sticky, setSticky] = useState(false);
-  const leadPrice = p.offers[0]?.price ?? p.price;
+  const choice = useBuyChoice(p);
+  const shown = shownPrice(p, choice, lang);
 
+  const viewPrice = leadOffer(p.offers)?.price ?? p.price;
   useEffect(() => {
-    track("product_viewed", { productId: p.id, value: p.price });
-    pixelViewContent({ id: p.id, name: p.name, price: p.price, qty: 1 });
-  }, [p.id, p.name, p.price]);
+    track("product_viewed", { productId: p.id, value: viewPrice });
+    pixelViewContent({ id: p.id, name: p.name, price: viewPrice, qty: 1 });
+  }, [p.id, p.name, viewPrice]);
 
   // The bottom bar shows while the order form is out of sight, above or below.
   useEffect(() => {
@@ -79,7 +82,7 @@ export function ProductView({ p, lang, settings, url }: { p: P; lang: Lang; sett
           </div>
         </section>
       )}
-      <section id="avis" className="scroll-mt-24 rounded-3xl border border-line bg-white p-5">
+      <section id="avis" className="rounded-3xl border border-line bg-white p-5">
         <h2 className="mb-3 flex items-center gap-2 text-[19px] font-bold text-ink">
           {t.product.reviews}
           {p.rating && <span className="text-[16px] font-normal text-muted ltr-nums">({p.rating.count})</span>}
@@ -128,9 +131,9 @@ export function ProductView({ p, lang, settings, url }: { p: P; lang: Lang; sett
             </a>
           )}
           <div className="mt-1">
-            <Price value={leadPrice} compareAt={p.offers.length ? null : p.compareAt} lang={lang} size="lg" />
+            <Price value={shown.price} compareAt={shown.compareAt} lang={lang} size="lg" from={shown.note ?? undefined} />
           </div>
-          <StockLine lang={lang} p={p} />
+          <StockLine lang={lang} p={p} variant={choice.variant} />
         </div>
 
         <ul className="grid grid-cols-1 gap-2 text-[16px] sm:grid-cols-3 md:grid-cols-1 lg:grid-cols-3">
@@ -140,7 +143,7 @@ export function ProductView({ p, lang, settings, url }: { p: P; lang: Lang; sett
         </ul>
 
         <div ref={buyRef}>
-          <BuyBox p={p} lang={lang} settings={settings} url={url} />
+          <BuyBox p={p} lang={lang} settings={settings} url={url} choice={choice} />
         </div>
 
       </div>
@@ -152,14 +155,17 @@ export function ProductView({ p, lang, settings, url }: { p: P; lang: Lang; sett
         className={`fixed inset-x-0 bottom-0 z-30 border-t border-line bg-white/95 px-4 pb-[max(.75rem,env(safe-area-inset-bottom))] pt-3 backdrop-blur transition-transform duration-300 md:hidden ${
           sticky && !out ? "translate-y-0" : "translate-y-full"
         }`}
-        aria-hidden={!sticky}
+        aria-hidden={!sticky || out}
       >
         <div className="flex items-center gap-3">
           <div className="flex min-w-0 flex-1 flex-col">
             <span className="truncate text-[15px] text-muted">{name}</span>
-            <span className="text-[18px] font-bold ltr-nums">{formatTND(leadPrice, lang)}</span>
+            <span className="text-[18px] font-bold ltr-nums">
+              {shown.note && <span className="me-1.5 text-[15px] font-normal text-muted">{shown.note}</span>}
+              {formatTND(shown.price, lang)}
+            </span>
           </div>
-          <button type="button" tabIndex={sticky ? 0 : -1} onClick={goToForm} className="h-14 shrink-0 rounded-2xl bg-sea px-7 text-[18px] font-bold text-white">
+          <button type="button" tabIndex={sticky && !out ? 0 : -1} onClick={goToForm} className="h-14 shrink-0 rounded-2xl bg-sea px-7 text-[18px] font-bold text-white">
             {t.buy.sticky}
           </button>
         </div>
@@ -177,11 +183,26 @@ function Reassure({ icon, text }: { icon: React.ReactNode; text: string }) {
   );
 }
 
-function StockLine({ lang, p }: { lang: Lang; p: P }) {
+/**
+ * The price at the top says what the form will charge: the chosen offer (with
+ * its pack size when it is more than one), else the chosen option's price,
+ * else the lowest option price as "from".
+ */
+function shownPrice(p: P, c: BuyChoice, lang: Lang): { price: number; compareAt: number | null; note: string | null } {
   const t = dict(lang);
-  if (p.stock.kind === "out")
+  if (c.offer) return { price: c.offer.price, compareAt: c.offer.compareAt, note: c.offer.quantity > 1 ? t.product.pack(c.offer.quantity) : null };
+  if (c.variant) return { price: c.variant.price, compareAt: c.variant.price === p.price ? p.compareAt : null, note: null };
+  const prices = p.variants.map((v) => v.price);
+  const min = prices.length ? Math.min(...prices) : p.price;
+  return { price: min, compareAt: min === p.price ? p.compareAt : null, note: prices.some((x) => x !== min) ? t.product.from : null };
+}
+
+function StockLine({ lang, p, variant }: { lang: Lang; p: P; variant: BuyChoice["variant"] }) {
+  const t = dict(lang);
+  const stock = variant ? (variant.soldOut ? { kind: "out" as const } : variant.lowQty ? { kind: "low" as const, qty: variant.lowQty } : { kind: "in_stock" as const }) : p.stock;
+  if (stock.kind === "out")
     return <p className="flex items-center gap-2 text-[16px] text-muted"><span className="h-2.5 w-2.5 rounded-full bg-muted" />{t.product.out}</p>;
-  if (p.stock.kind === "low") return <p className="flex items-center gap-2 text-[16px] font-bold text-clay"><span className="h-2.5 w-2.5 rounded-full bg-clay" />{t.product.low(p.stock.qty)}</p>;
+  if (stock.kind === "low") return <p className="flex items-center gap-2 text-[16px] font-bold text-clay"><span className="h-2.5 w-2.5 rounded-full bg-clay" />{t.product.low(stock.qty)}</p>;
   return <p className="flex items-center gap-2 text-[16px] font-bold text-olive"><span className="h-2.5 w-2.5 rounded-full bg-olive" />{t.product.inStock}</p>;
 }
 

@@ -17,8 +17,8 @@ export default async function PrivacyRoute({ params }: PageProps<"/[lang]/confid
       <h2>Ce que nous gardons</h2>
       <ul>
         <li>Pour une commande : nom, téléphone, adresse de livraison, contenu de la commande. Ils servent à confirmer, livrer et suivre la commande.</li>
-        <li>Si vous commencez une commande sans la terminer, nous pouvons vous recontacter une fois sur le numéro saisi.</li>
-        <li>Une mesure d&apos;audience interne au site, sans cookie publicitaire : pages vues, ajouts au panier, recherches, avec un identifiant anonyme.</li>
+        <li>Si vous commencez une commande sans la terminer, le nom, le téléphone et le gouvernorat saisis dans le formulaire sont gardés, pour que nous puissions vous recontacter une fois et vous aider à la terminer.</li>
+        <li>Une mesure d&apos;audience interne au site, sans cookie publicitaire : pages vues, formulaires de commande commencés, recherches, avec un identifiant anonyme.</li>
       </ul>
       <h2>Cookies publicitaires</h2>
       {pixels.length > 0 ? (

@@ -11,6 +11,9 @@
   --color-sand: #edf1f5;
   --color-sand-2: #dce3ea;
   --color-line: #dfe5eb;
+  /* Borders of things to fill in or tap: at least 3:1 on white, so a box reads as a box. */
+  --color-field: #848f9c;
+  --color-placeholder: #6b7684;
   --color-ink: #1c2633;
   --color-ink-2: #364352;
   --color-muted: #566373;
@@ -112,10 +115,23 @@ body {
   border-radius: 999px 999px 1rem 1rem;
 }
 
-input,
-select,
-textarea {
-  font-size: 16px; /* below 16px, iOS zooms the page on focus */
+/* In the base layer, so the larger text sizes set on each field still apply. */
+@layer base {
+  input,
+  select,
+  textarea {
+    font-size: 16px; /* below 16px, iOS zooms the page on focus */
+  }
+}
+
+/* Links to a part of the page (#commander, #avis) land below the sticky header, not under it. */
+html {
+  scroll-padding-top: 11.5rem;
+}
+@media (min-width: 768px) {
+  html {
+    scroll-padding-top: 8.5rem;
+  }
 }
 
 :focus-visible {

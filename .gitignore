@@ -12,3 +12,4 @@ playwright-report
 .next-e2e
 .next-build
 /screenshots/
+.next-shots

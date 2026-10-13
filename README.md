@@ -5,29 +5,30 @@ Boutique en ligne pour la Tunisie : dropshipping, paiement à la livraison, fran
 - **Recherche marché** : [docs/RESEARCH.md](docs/RESEARCH.md)
 - **Mise en ligne et routine** : [docs/DEPLOIEMENT.md](docs/DEPLOIEMENT.md)
 
-| Fiche produit | Commande | Arabe | Back-office |
-|---|---|---|---|
-| ![](docs/screenshots/fiche-produit.webp) | ![](docs/screenshots/commande.webp) | ![](docs/screenshots/accueil-arabe.webp) | ![](docs/screenshots/admin-tableau-de-bord.webp) |
+| Accueil | Fiche produit | Commande | Arabe | Back-office |
+|---|---|---|---|---|
+| ![](docs/screenshots/accueil.webp) | ![](docs/screenshots/fiche-produit.webp) | ![](docs/screenshots/commande.webp) | ![](docs/screenshots/accueil-arabe.webp) | ![](docs/screenshots/admin-tableau-de-bord.webp) |
 
 ## Boutique
 
-- Mobile d'abord, LCP de 0,9 à 1,4 s en 4G lente sur un téléphone simulé à CPU ralenti ×4.
-- Commande en une page, téléphone en premier (+216, 8 chiffres), sans compte, paiement à la livraison. Paiement par carte (Konnect) prêt mais désactivé.
-- Frais et délai de livraison par gouvernorat dès la fiche produit, tirés des réglages.
+- Pensée pour des clients qui ne sont pas à l'aise avec les sites : gros caractères (Atkinson Hyperlegible), couleurs douces, contrastes vérifiés, cases bien visibles.
+- Accueil organisé comme Amazon : grandes cartes de catégories, boîtes « 4 produits », rayons.
+- **Pas de panier** : on commande sur la fiche produit, dans un seul formulaire. On choisit l'offre (« 1 unité », « 2 + 1 offerte »…), puis nom, téléphone (+216, 8 chiffres), gouvernorat, adresse, et on confirme. Paiement à la livraison, sans compte ni e-mail.
+- Frais et délai de livraison par gouvernorat, total affiché avant de confirmer, tirés des réglages.
 - Bouton WhatsApp sur chaque fiche, et confirmation WhatsApp proposée après la commande.
 - Suivi de commande par lien secret (SMS) ou par numéro de commande + téléphone. Demande de retour et avis depuis la page de suivi.
-- Panier enregistré côté serveur : les paniers abandonnés avec un numéro peuvent être relancés.
+- Un formulaire laissé avec un numéro apparaît dans « Non terminées » pour une relance, avec un lien qui rouvre la fiche sur le même choix.
 - SEO : métadonnées, sitemap FR/AR, données structurées produit. Pixels Meta, TikTok et GA4 (avec API serveur) chargés seulement après consentement.
 
-**Règle de la maison : n'afficher que des données réelles.** Pas de faux stock, de faux compte à rebours, de faux avis, de faux « X personnes regardent ». Un avis ne peut venir que d'une commande livrée, et n'est publié qu'après modération.
+**Règle de la maison : n'afficher que des données réelles.** Pas de faux stock, de faux compte à rebours, de faux avis, de faux « X personnes regardent ». Un avis ne peut venir que d'une commande livrée, et n'est publié qu'après modération. Le prix barré d'un lot vient de l'offre « 1 unité » réelle ; « Le plus choisi » vient des commandes ; une date de fin d'offre est celle saisie dans le back-office.
 
 **Le navigateur n'est jamais cru.** Le serveur recalcule prix, variantes, stock, remise, quantités et frais de livraison à chaque devis et à chaque commande. Une commande dont le total diffère de celui affiché est arrêtée, et le client voit le nouveau total.
 
 ## Back-office (`/admin`)
 
-Commandes (file de confirmation, appels notés, statuts, refus avec motif, liste noire), produits (photos, variantes, coût fournisseur, stock), catégories, fournisseurs, clients, codes promo, paniers abandonnés, retours, avis, paramètres. Exports CSV.
+Commandes (file de confirmation, appels notés, statuts, refus avec motif, liste noire), produits (photos, variantes, offres, coût fournisseur, stock), catégories, fournisseurs, clients, codes promo, commandes non terminées, retours, avis, paramètres. Exports CSV.
 
-**Analytics** : mesure d'audience interne, sans service extérieur. Temps réel, visiteurs, entonnoir (visite → fiche → panier → commande → confirmée → livrée), conversion par source, campagne et appareil, CA, panier moyen, marge, produits vus mais pas achetés, recherches sans résultat, paniers abandonnés, refus par gouvernorat, clients fidèles, cohortes, commandes par heure.
+**Analytics** : mesure d'audience interne, sans service extérieur. Temps réel, visiteurs, entonnoir (visite → fiche → formulaire commencé → téléphone saisi → commande → confirmée → livrée), conversion par source, campagne et appareil, CA, panier moyen, marge, produits vus mais pas achetés, recherches sans résultat, commandes non terminées, clics WhatsApp et appels, refus par gouvernorat, clients fidèles, cohortes, commandes par heure.
 
 ## Technique
 

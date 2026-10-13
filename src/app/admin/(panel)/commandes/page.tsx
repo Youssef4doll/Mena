@@ -24,7 +24,7 @@ export default async function OrdersPage({ searchParams }: PageProps<"/admin/com
       take: PER_PAGE,
       skip: (page - 1) * PER_PAGE,
       select: {
-        id: true, ref: true, status: true, name: true, phone: true, governorate: true, city: true, total: true, flags: true, source: true,
+        id: true, ref: true, status: true, name: true, phone: true, governorate: true, city: true, address: true, total: true, flags: true, source: true,
         confirmAttempts: true, createdAt: true, items: { select: { qty: true } },
       },
     }),
@@ -52,7 +52,7 @@ export default async function OrdersPage({ searchParams }: PageProps<"/admin/com
       />
       <form className="mb-4 flex gap-2" action="/admin/commandes">
         <input type="hidden" name="statut" value={status} />
-        <input name="q" defaultValue={q} placeholder="Réf., nom, téléphone, ville" className={input} />
+        <input name="q" defaultValue={q} placeholder="Réf., nom, téléphone, adresse, ville" className={input} />
         <button className={btn.primary}>Chercher</button>
       </form>
 
@@ -75,7 +75,7 @@ export default async function OrdersPage({ searchParams }: PageProps<"/admin/com
                       {o.name} · <span className="tabular-nums text-ink-2">{formatPhone(o.phone)}</span>
                     </span>
                     <span className="block truncate text-xs text-muted">
-                      {o.city}, {o.governorate} · {o.items.reduce((n, i) => n + i.qty, 0)} art. · {o.source ?? "direct"}
+                      {[o.address, o.city, o.governorate].filter(Boolean).join(", ")} · {o.items.reduce((n, i) => n + i.qty, 0)} art. · {o.source ?? "direct"}
                       {o.confirmAttempts > 0 && ` · ${o.confirmAttempts} appel(s)`}
                     </span>
                     {o.flags.length > 0 && (

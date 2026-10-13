@@ -182,3 +182,22 @@ test("an offer on a product with variants still needs the variant", () => {
   assert.equal(q.lines[0].variantName, "Noir");
   assert.equal(q.lines[0].lineTotal, 99_000);
 });
+
+test("an offer is refused on an option that has its own price", () => {
+  const variants = [
+    { id: "small", name: "Petit", price: null, stockQty: 0, available: true },
+    { id: "big", name: "Grand", price: 89_900, stockQty: 0, available: true },
+  ];
+  const catalog = new Map([["p1", product({ offers, variants })]]);
+  const q = priceCart({ ...base, catalog, lines: [{ productId: "p1", variantId: "big", offerId: "o1", qty: 1 }] });
+  assert.equal(q.lines.length, 0);
+  assert.equal(q.problems[0].kind, "offer_unavailable");
+  const ok = priceCart({ ...base, catalog, lines: [{ productId: "p1", variantId: "small", offerId: "o1", qty: 1 }] });
+  assert.equal(ok.lines.length, 1);
+});
+
+test("an offer larger than the stock says how many are left", () => {
+  const catalog = new Map([["p1", product({ offers, stockMode: "TRACKED", stockQty: 2 })]]);
+  const q = priceCart({ ...base, catalog, lines: [{ productId: "p1", offerId: "o3", qty: 1 }] });
+  assert.deepEqual(q.problems[0], { productId: "p1", variantId: null, kind: "unavailable", available: 2 });
+});

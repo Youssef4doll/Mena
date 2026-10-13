@@ -61,7 +61,7 @@ export default async function ThanksRoute({ params }: PageProps<"/[lang]/command
                     <span className="ltr-nums">{i.qty} × </span>
                     {pick(lang, i.name, i.product?.nameAr)}
                     {i.variantName && <span className="text-muted"> · {i.variantName}</span>}
-                    {i.offerLabel && <span className="text-muted"> · {i.offerLabel}</span>}
+                    {i.offerLabel && <span className="text-muted"> · {pick(lang, i.offerLabel, i.offerLabelAr)}</span>}
                   </span>
                   <span className="ltr-nums">{formatTND(i.lineTotal, lang)}</span>
                 </li>

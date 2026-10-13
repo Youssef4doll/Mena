@@ -106,7 +106,7 @@ type Details = { name: string; phoneAlt: string; city: string; address: string; 
 export function DetailsForm({ orderId, initial }: { orderId: string; initial: Details }) {
   const [d, setD] = useState(initial);
   const { pending, msg, run } = useAction();
-  const f = (k: keyof Details) => ({ value: d[k], onChange: (e: React.ChangeEvent<HTMLInputElement>) => setD({ ...d, [k]: e.target.value }), className: input });
+  const f = (k: keyof Details) => ({ value: d[k], onChange: (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => setD({ ...d, [k]: e.target.value }), className: input });
   return (
     <form
       className="flex flex-col gap-2"
@@ -117,8 +117,9 @@ export function DetailsForm({ orderId, initial }: { orderId: string; initial: De
     >
       <label className={label}>Nom<input {...f("name")} /></label>
       <label className={label}>Second numéro<input {...f("phoneAlt")} inputMode="tel" /></label>
-      <label className={label}>Ville<input {...f("city")} /></label>
-      <label className={label}>Adresse<input {...f("address")} /></label>
+      <label className={label}>Ville (facultatif)<input {...f("city")} /></label>
+      {/* A textarea: an input would drop the line breaks the customer typed. */}
+      <label className={label}>Adresse<textarea {...f("address")} rows={2} className={`${input} h-auto py-2`} /></label>
       <label className={label}>Note<input {...f("note")} /></label>
       <label className={label}>Transporteur<input {...f("carrier")} /></label>
       <label className={label}>N° de suivi<input {...f("trackingNumber")} /></label>

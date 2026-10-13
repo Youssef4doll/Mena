@@ -119,7 +119,7 @@ export function SettingsForm({ initial, secretsSet }: { initial: Settings; secre
       </Card>
 
       <Card title="Commande et retours">
-        <label className="flex items-center justify-between py-1 text-sm">Demander l&apos;e-mail (toujours facultatif)<input {...check("checkout", "askEmail")} /></label>
+        <p className="text-xs text-muted">Le formulaire de commande de la fiche produit est en paiement à la livraison, sans e-mail.</p>
         <div className="mt-2 grid grid-cols-2 gap-2">
           <label className={label}>Commandes / numéro / 24 h avant alerte<input type="number" min={1} max={20} value={s.checkout.maxOrdersPerPhonePerDay} onChange={(e) => up("checkout", { maxOrdersPerPhonePerDay: Math.max(1, Number(e.target.value) || 1) })} className={input} /></label>
           <label className={label}>Délai de retour (jours, 10 minimum)<input type="number" min={10} max={60} value={s.returns.days} onChange={(e) => up("returns", { days: Math.max(10, Number(e.target.value) || 10) })} className={input} /></label>
@@ -209,9 +209,8 @@ export function SettingsForm({ initial, secretsSet }: { initial: Settings; secre
         </div>
       </Card>
 
-      <Card title="Paiement par carte (Konnect)" hint="Désactivé par défaut : la boutique fonctionne en paiement à la livraison. À activer seulement avec un compte Konnect validé.">
-        <label className="flex items-center justify-between text-sm">Proposer la carte bancaire<input {...check("payments", "card")} /></label>
-        <div className="mt-2 grid gap-2">
+      <Card title="Paiement par carte (Konnect)" hint="Non proposé aux clients : le formulaire de commande de la fiche produit est en paiement à la livraison, sans e-mail. Les identifiants ci-dessous restent enregistrés.">
+        <div className="grid gap-2">
           <label className={label}>Konnect wallet ID<input {...text("payments", "konnectWalletId")} /></label>
           {secret("konnectApiKey", "Konnect — clé API")}
           <label className="flex items-center justify-between text-sm">Mode test (sandbox)<input {...check("payments", "konnectSandbox")} /></label>

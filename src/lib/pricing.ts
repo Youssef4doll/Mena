@@ -79,7 +79,7 @@ export type LineProblem = {
   productId: string;
   variantId: string | null;
   kind: "not_found" | "unavailable" | "variant_required" | "qty_reduced" | "offer_unavailable";
-  /** For qty_reduced: what is left. */
+  /** For qty_reduced, and for an offer larger than the stock: what is left. */
   available?: number;
 };
 
@@ -167,13 +167,16 @@ export function priceCart(args: {
     }
     if (l.offerId) {
       const offer = (p.offers ?? []).find((o) => o.id === l.offerId);
-      if (!offer || !offerLive(offer, args.now) || offer.quantity < 1) {
+      // Offers are set at the product's price: an option with its own price is not sold through them.
+      const ownPrice = v != null && v.price != null && v.price !== p.price;
+      if (!offer || !offerLive(offer, args.now) || offer.quantity < 1 || ownPrice) {
         problems.push({ productId: p.id, variantId: v?.id ?? null, kind: "offer_unavailable" });
         continue;
       }
       // An offer is all or nothing: never a smaller quantity at the offer's price.
-      if (sellable(p, v) < offer.quantity) {
-        problems.push({ productId: p.id, variantId: v?.id ?? null, kind: "unavailable" });
+      const left = sellable(p, v);
+      if (left < offer.quantity) {
+        problems.push({ productId: p.id, variantId: v?.id ?? null, kind: "unavailable", available: left });
         continue;
       }
       if (p.cost == null) costKnown = false;

@@ -24,7 +24,8 @@ export default async function ProductEditPage({ params }: PageProps<"/admin/prod
         )}
       </div>
       <ProductEditor
-        key={p?.id ?? "new"}
+        // Every save bumps updatedAt: the form remounts from the saved rows (new offers keep their ids).
+        version={p ? `${p.id}:${p.updatedAt.getTime()}` : "new"}
         id={p?.id ?? null}
         categories={categories}
         suppliers={suppliers}

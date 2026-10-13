@@ -3,6 +3,7 @@ import { unstable_cache } from "next/cache";
 import { Prisma } from "@prisma/client";
 import { prisma } from "./prisma";
 import type { CatalogProduct } from "./pricing";
+import { leadOffer, offerCompareAt, offerLastDay, offersApply } from "./offer-display";
 
 /**
  * Storefront reads. Cached under one tag the back office expires on every
@@ -25,6 +26,7 @@ const cardSelect = {
   createdAt: true,
   images: { orderBy: { sort: "asc" }, take: 2, select: { mediaId: true, alt: true, media: { select: { width: true, height: true, blur: true } } } },
   variants: { select: { stockQty: true, available: true, price: true } },
+  offers: { where: { active: true }, select: { quantity: true, price: true, endsAt: true } },
 } satisfies Prisma.ProductSelect;
 
 type CardRow = Prisma.ProductGetPayload<{ select: typeof cardSelect }>;
@@ -54,23 +56,37 @@ export type ProductCard = {
   price: number;
   /** "From" price when variants differ. */
   priceFrom: boolean;
+  /** The price is for a pack of this many (a product sold only in packs). */
+  packOf: number | null;
   compareAt: number | null;
   images: ImageRef[];
   stock: StockState;
   rating: { avg: number; count: number } | null;
 };
 
-function toCard(p: CardRow, ratings: Map<string, { avg: number; count: number }>): ProductCard {
+type PriceRow = { price: number; compareAt: number | null; variants: { price: number | null }[]; offers: { quantity: number; price: number; endsAt: Date | null }[] };
+
+/**
+ * The price a list may show: what the product page will actually charge.
+ * With offers, the one-unit offer (or the smallest pack, said as such);
+ * otherwise the lowest option price, "from" when options differ.
+ */
+export function cardPrice(p: PriceRow, now = Date.now()) {
+  const live = offersApply(p.price, p.variants) ? p.offers.filter((o) => !o.endsAt || o.endsAt.getTime() > now) : [];
+  const lead = leadOffer(live);
+  if (lead) return { price: lead.price, priceFrom: false, packOf: lead.quantity > 1 ? lead.quantity : null, compareAt: null };
   const variantPrices = p.variants.map((v) => v.price ?? p.price);
   const minPrice = variantPrices.length ? Math.min(...variantPrices) : p.price;
+  return { price: minPrice, priceFrom: variantPrices.some((x) => x !== minPrice), packOf: null, compareAt: p.compareAt != null && p.compareAt > minPrice ? p.compareAt : null };
+}
+
+function toCard(p: CardRow, ratings: Map<string, { avg: number; count: number }>): ProductCard {
   return {
     id: p.id,
     slug: p.slug,
     name: p.name,
     nameAr: p.nameAr,
-    price: minPrice,
-    priceFrom: variantPrices.some((x) => x !== minPrice),
-    compareAt: p.compareAt != null && p.compareAt > minPrice ? p.compareAt : null,
+    ...cardPrice(p),
     images: p.images.map((i) => ({ id: i.mediaId, alt: i.alt, width: i.media.width, height: i.media.height, blur: i.media.blur })),
     stock: stockState(p),
     rating: ratings.get(p.id) ?? null,
@@ -115,16 +131,14 @@ export const getHomeCategories = unstable_cache(
           where: { active: true },
           orderBy: [{ featured: "desc" }, { createdAt: "desc" }],
           take: 4,
-          select: { id: true, slug: true, name: true, nameAr: true, price: true, images: { orderBy: { sort: "asc" }, take: 1, select: { mediaId: true } } },
+          select: cardSelect,
         },
       },
     });
-    return cats.map((c) => ({
-      ...c,
-      products: c.products.map((p) => ({ id: p.id, slug: p.slug, name: p.name, nameAr: p.nameAr, price: p.price, imageId: p.images[0]?.mediaId ?? null })),
-    }));
+    const none = new Map<string, { avg: number; count: number }>();
+    return cats.map((c) => ({ ...c, products: c.products.map((p) => toCard(p, none)) }));
   },
-  ["home-categories-v1"],
+  ["home-categories-v2"],
   { tags: [CATALOG_TAG], revalidate: TTL },
 );
 
@@ -163,8 +177,12 @@ function orderFor(sort: SortKey): Prisma.ProductOrderByWithRelationInput[] {
   }
 }
 
-/** Real units sold in the last 60 days (cancelled orders excluded), then the newest. */
-async function popularIn(where: Prisma.ProductWhereInput, take: number) {
+/**
+ * Real units sold in the last 60 days (cancelled orders excluded). As a sort
+ * order the list is topped up with the newest; as a "most ordered" claim
+ * (fill = false) it is only what really sold.
+ */
+async function popularIn(where: Prisma.ProductWhereInput, take: number, fill = true) {
   const since = new Date(Date.now() - 60 * 86_400_000);
   const sold = await prisma.orderItem.groupBy({
     by: ["productId"],
@@ -176,7 +194,7 @@ async function popularIn(where: Prisma.ProductWhereInput, take: number) {
   const ids = sold.map((s) => s.productId!).filter(Boolean);
   const ranked = ids.length ? await cards({ id: { in: ids } }, [], ids.length) : [];
   ranked.sort((a, b) => ids.indexOf(a.id) - ids.indexOf(b.id));
-  if (ranked.length >= take) return ranked;
+  if (ranked.length >= take || !fill) return ranked;
   const rest = await cards({ ...where, id: { notIn: ids } }, orderFor("new"), take - ranked.length);
   return [...ranked, ...rest];
 }
@@ -195,7 +213,7 @@ export const getHome = unstable_cache(
       cards({ featured: true }, [{ createdAt: "desc" }], 8),
       cards({}, [{ createdAt: "desc" }], 8),
       // "Most ordered" is only claimed when there are orders behind it.
-      soldCount >= 5 ? popularIn({}, 8) : Promise.resolve([] as ProductCard[]),
+      soldCount >= 5 ? popularIn({}, 8, false) : Promise.resolve([] as ProductCard[]),
       prisma.review.findMany({
         where: { status: "APPROVED", rating: { gte: 4 }, text: { not: null } },
         orderBy: { createdAt: "desc" },
@@ -205,7 +223,7 @@ export const getHome = unstable_cache(
     ]);
     return { featured, newest, bestsellers, reviews: reviews.map((r) => ({ ...r, createdAt: r.createdAt.toISOString() })) };
   },
-  ["home-v1"],
+  ["home-v2"],
   { tags: [CATALOG_TAG], revalidate: TTL },
 );
 
@@ -258,13 +276,18 @@ export const getProduct = unstable_cache(
     // 60 days, with at least 3 orders and clearly ahead of the next one.
     const ranked = [...offerSales].sort((a, b) => b._count._all - a._count._all);
     const mostChosen = ranked[0] && ranked[0]._count._all >= 3 && ranked[0]._count._all > (ranked[1]?._count._all ?? 0) ? ranked[0].offerId : null;
+    const tracked = p.stockMode === "TRACKED";
     const variants = p.variants.map((v) => ({
       id: v.id,
       name: v.name,
       price: v.price ?? p.price,
-      soldOut: p.stockMode === "SUPPLIER" ? !v.available || !p.available : v.stockQty <= 0,
-      lowQty: p.stockMode === "TRACKED" && v.stockQty > 0 && v.stockQty <= 5 ? v.stockQty : null,
+      soldOut: tracked ? v.stockQty <= 0 : !v.available || !p.available,
+      lowQty: tracked && v.stockQty > 0 && v.stockQty <= 5 ? v.stockQty : null,
+      /** Units that can be ordered; null when the supplier has stock. Used to grey out packs, never printed. */
+      maxUnits: tracked ? Math.max(0, v.stockQty) : !v.available || !p.available ? 0 : null,
     }));
+    const maxUnits = variants.length ? (variants.some((v) => v.maxUnits == null) ? null : Math.max(0, ...variants.map((v) => v.maxUnits ?? 0))) : tracked ? Math.max(0, p.stockQty) : p.available ? null : 0;
+    const offers = offersApply(p.price, p.variants) ? p.offers : [];
     return {
       id: p.id,
       slug: p.slug,
@@ -281,11 +304,12 @@ export const getProduct = unstable_cache(
       updatedAt: p.updatedAt.toISOString(),
       reviews: reviews.map((r) => ({ ...r, createdAt: r.createdAt.toISOString() })),
       rating: agg._count._all > 0 ? { avg: agg._avg.rating ?? 0, count: agg._count._all } : null,
-      offers: p.offers.map((o) => ({ ...o, endsAt: o.endsAt?.toISOString() ?? null, mostChosen: o.id === mostChosen })),
+      maxUnits,
+      offers: offers.map(({ endsAt, ...o }) => ({ ...o, lastDay: endsAt ? offerLastDay(endsAt) : null, compareAt: offerCompareAt(offers, o), mostChosen: o.id === mostChosen })),
       related,
     };
   },
-  ["product-v1"],
+  ["product-v2"],
   { tags: [CATALOG_TAG], revalidate: TTL },
 );
 export type ProductPage = NonNullable<Awaited<ReturnType<typeof getProduct>>>;
@@ -316,7 +340,7 @@ export async function suggest(q: string) {
       where: { active: true, OR: [{ name: { contains: term, mode: "insensitive" } }, { nameAr: { contains: term, mode: "insensitive" } }] },
       orderBy: [{ featured: "desc" }, { createdAt: "desc" }],
       take: 6,
-      select: { slug: true, name: true, nameAr: true, price: true, images: { orderBy: { sort: "asc" }, take: 1, select: { mediaId: true } } },
+      select: { slug: true, name: true, nameAr: true, price: true, compareAt: true, variants: cardSelect.variants, offers: cardSelect.offers, images: { orderBy: { sort: "asc" }, take: 1, select: { mediaId: true } } },
     }),
     prisma.category.findMany({
       where: { active: true, OR: [{ name: { contains: term, mode: "insensitive" } }, { nameAr: { contains: term, mode: "insensitive" } }] },
@@ -325,7 +349,7 @@ export async function suggest(q: string) {
     }),
   ]);
   return {
-    products: products.map((p) => ({ slug: p.slug, name: p.name, nameAr: p.nameAr, price: p.price, imageId: p.images[0]?.mediaId ?? null })),
+    products: products.map((p) => ({ slug: p.slug, name: p.name, nameAr: p.nameAr, price: cardPrice(p).price, imageId: p.images[0]?.mediaId ?? null })),
     categories,
   };
 }

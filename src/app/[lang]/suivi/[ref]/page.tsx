@@ -100,7 +100,7 @@ export default async function OrderRoute({ params, searchParams }: PageProps<"/[
               <span className="flex-1">
                 {i.product ? <Link href={href(lang, `/produit/${i.product.slug}`)}>{pick(lang, i.name, i.product.nameAr)}</Link> : i.name}
                 {i.variantName && <span className="block text-sm text-muted">{i.variantName}</span>}
-                {i.offerLabel && <span className="block text-sm text-muted">{i.offerLabel}</span>}
+                {i.offerLabel && <span className="block text-sm text-muted">{pick(lang, i.offerLabel, i.offerLabelAr)}</span>}
               </span>
               <span className="text-end ltr-nums">
                 <span className="block text-sm text-muted">× {i.qty}</span>
@@ -126,12 +126,12 @@ export default async function OrderRoute({ params, searchParams }: PageProps<"/[
           </div>
         </dl>
         <p className="mt-3 text-sm text-muted">
-          {t.track.deliveryTo} {o.city}, {governorateLabel(o.governorate, lang)}
+          {t.track.deliveryTo} {[o.city, governorateLabel(o.governorate, lang)].filter(Boolean).join(lang === "ar" ? "، " : ", ")}
         </p>
       </div>
 
       {reviewable.length > 0 && (
-        <div id="avis" className="scroll-mt-24 rounded-2xl border border-line bg-white p-5">
+        <div id="avis" className="rounded-2xl border border-line bg-white p-5">
           <h2 className="text-lg font-semibold">{t.track.reviewTitle}</h2>
           <p className="mb-4 mt-1 text-sm text-muted">{t.track.reviewSub}</p>
           <div className="flex flex-col gap-6">

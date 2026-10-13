@@ -300,11 +300,13 @@ async function confirmation(from: Date, to: Date) {
   return { medianHours: r.median_h == null ? null : Number(r.median_h), avgCalls: r.avg_calls == null ? null : Number(r.avg_calls), confirmed: n(r.confirmed), cancelledBeforeConfirm: n(r.never) };
 }
 
+/** Taps on the shop's WhatsApp, Messenger and phone links. */
 async function contacts(from: Date, to: Date) {
-  const [r] = await prisma.$queryRaw<{ whatsapp: bigint; messenger: bigint }[]>`
-    SELECT COUNT(*) FILTER (WHERE name = 'whatsapp_clicked') AS whatsapp, COUNT(*) FILTER (WHERE name = 'messenger_clicked') AS messenger
-    FROM "AnalyticsEvent" WHERE "createdAt" >= ${from} AND "createdAt" < ${to} AND name IN ('whatsapp_clicked', 'messenger_clicked')`;
-  return { whatsapp: n(r.whatsapp), messenger: n(r.messenger) };
+  const [r] = await prisma.$queryRaw<{ whatsapp: bigint; messenger: bigint; phone: bigint }[]>`
+    SELECT COUNT(*) FILTER (WHERE name = 'whatsapp_clicked') AS whatsapp, COUNT(*) FILTER (WHERE name = 'messenger_clicked') AS messenger,
+      COUNT(*) FILTER (WHERE name = 'phone_clicked') AS phone
+    FROM "AnalyticsEvent" WHERE "createdAt" >= ${from} AND "createdAt" < ${to} AND name IN ('whatsapp_clicked', 'messenger_clicked', 'phone_clicked')`;
+  return { whatsapp: n(r.whatsapp), messenger: n(r.messenger), phone: n(r.phone) };
 }
 
 export async function getAnalytics(r: Range) {

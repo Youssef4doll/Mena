@@ -73,3 +73,40 @@ test("arabic pages are right-to-left", async ({ page }) => {
   await expect(page.locator("html")).toHaveAttribute("dir", "rtl");
   await expect(page.locator("html")).toHaveAttribute("lang", "ar-TN");
 });
+
+test("a pack's saving is measured against the shop's own one-unit offer", async ({ page }) => {
+  await page.goto("/produit/diffuseur-huiles-essentielles");
+  // "1 unité" is 69,000, so three cost 207,000 one by one; the pack is 138,000.
+  const pack = page.locator("label", { has: page.getByTestId("offer-3") });
+  await expect(pack.getByText("207,000 DT")).toBeVisible();
+  await expect(pack.getByText("Vous économisez 69,000 DT")).toBeVisible();
+  // The single unit never claims a saving.
+  await expect(page.locator("label", { has: page.getByTestId("offer-1") }).getByText(/Vous économisez/)).toHaveCount(0);
+});
+
+test("Enter in the promo field applies the code instead of sending the order", async ({ page }) => {
+  await page.goto("/produit/diffuseur-huiles-essentielles");
+  await fillDetails(page, "Sfax");
+  await page.getByRole("button", { name: "J'ai un code promo" }).click();
+  const code = page.getByLabel("Code promo");
+  await code.fill("NOPE10");
+  await code.press("Enter");
+  await expect(page.getByText("NOPE10")).toBeVisible();
+  await expect(page).toHaveURL(/\/produit\/diffuseur-huiles-essentielles/);
+});
+
+test("saved details alone do not count as a started order", async ({ page }) => {
+  await page.goto("/produit/diffuseur-huiles-essentielles");
+  await page.evaluate(() => localStorage.setItem("mena_details", JSON.stringify({ name: "Amira", phone: "22123456", governorate: "Sfax", address: "Sfax Ville" })));
+  const saves: string[] = [];
+  page.on("request", (r) => {
+    if (r.url().endsWith("/api/cart") && r.method() === "POST") saves.push(r.url());
+  });
+  await page.goto("/produit/lampe-de-chevet-tactile");
+  await expect(page.getByTestId("phone")).toHaveValue("22123456");
+  await page.waitForTimeout(1500);
+  expect(saves).toHaveLength(0);
+  // Using the form is what starts it.
+  await page.getByTestId("address").fill("Sfax Ville, rue 5");
+  await expect.poll(() => saves.length, { timeout: 5000 }).toBeGreaterThan(0);
+});

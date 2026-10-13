@@ -25,6 +25,26 @@ export function Header({ lang, categories, announcement, phone }: { lang: Lang; 
   const [menuOn, setMenuOn] = useState<string | null>(null);
   const menu = menuOn === pathname;
   const setMenu = (o: boolean) => setMenuOn(o ? pathname : null);
+  const openBtn = useRef<HTMLButtonElement>(null);
+  const closeBtn = useRef<HTMLButtonElement>(null);
+
+  // While the menu is open: Escape closes it, the page behind does not scroll, focus is inside.
+  useEffect(() => {
+    if (!menu) return;
+    const opener = openBtn.current;
+    const overflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    closeBtn.current?.focus();
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setMenuOn(null);
+    };
+    addEventListener("keydown", onKey);
+    return () => {
+      document.body.style.overflow = overflow;
+      removeEventListener("keydown", onKey);
+      opener?.focus();
+    };
+  }, [menu]);
 
   return (
     <>
@@ -39,7 +59,7 @@ export function Header({ lang, categories, announcement, phone }: { lang: Lang; 
       </div>
       <header className="sticky top-0 z-30 border-b border-line bg-white">
         <div className="mx-auto flex max-w-6xl flex-wrap items-center gap-x-3 gap-y-2 px-4 py-2.5">
-          <button type="button" onClick={() => setMenu(true)} className="-ms-2 flex h-11 w-11 items-center justify-center rounded-xl text-ink" aria-label={t.nav.menu}>
+          <button ref={openBtn} type="button" onClick={() => setMenu(true)} className="-ms-2 flex h-11 w-11 items-center justify-center rounded-xl text-ink" aria-label={t.nav.menu}>
             <IconMenu className="h-6 w-6" />
           </button>
           <Link href={href(lang, "/")} className="flex items-center" aria-label="Mena">
@@ -96,7 +116,7 @@ export function Header({ lang, categories, announcement, phone }: { lang: Lang; 
           <div className="absolute inset-y-0 start-0 flex w-[86%] max-w-sm animate-sheet-side flex-col overflow-y-auto bg-white shadow-lift [--sheet-from:-100%] rtl:[--sheet-from:100%]">
             <div className="flex items-center justify-between border-b border-line px-5 py-4">
               <Logo />
-              <button type="button" onClick={() => setMenu(false)} className="flex h-11 w-11 items-center justify-center rounded-xl" aria-label={t.nav.close}>
+              <button ref={closeBtn} type="button" onClick={() => setMenu(false)} className="flex h-11 w-11 items-center justify-center rounded-xl" aria-label={t.nav.close}>
                 <IconClose className="h-6 w-6" />
               </button>
             </div>
@@ -191,7 +211,7 @@ function SearchBox({ lang }: { lang: Lang }) {
           }}
           onFocus={() => setOpen(true)}
           placeholder={t.nav.searchPlaceholder}
-          className="min-w-0 flex-1 bg-transparent px-4 text-[17px] text-ink outline-none placeholder:text-[#8a95a3]"
+          className="min-w-0 flex-1 bg-transparent px-4 text-[17px] text-ink outline-none placeholder:text-placeholder"
           enterKeyHint="search"
           name="q"
           autoComplete="off"

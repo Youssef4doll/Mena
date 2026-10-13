@@ -1,4 +1,5 @@
 import { formatTND, type Locale } from "./money";
+import { governorateLabel } from "./governorates";
 
 /**
  * The texts sent to customers. Short, plain, in the customer's language.
@@ -15,11 +16,23 @@ export function placedText(o: OrderLike, shop: string, trackUrl: string) {
     : `${shop} : merci ${first(o.name)}, commande ${o.ref} reçue (${formatTND(o.total)}). Nous vous appelons pour la confirmer. Suivi : ${trackUrl}`;
 }
 
-export function confirmWhatsApp(o: OrderLike & { items: { name: string; qty: number }[]; city: string; governorate: string }, shop: string) {
-  const lines = o.items.map((i) => `• ${i.qty} × ${i.name}`).join("\n");
-  return loc(o) === "ar"
-    ? `السلام ${first(o.name)}، معاك ${shop}.\nباش نأكدو طلبيتك ${o.ref}:\n${lines}\nالمجموع: ${formatTND(o.total, "ar")} تخلّصهم كي توصلك.\nالعنوان: ${o.city}، ${o.governorate}\nنأكدو؟`
-    : `Bonjour ${first(o.name)}, c'est ${shop}.\nPour confirmer votre commande ${o.ref} :\n${lines}\nTotal : ${formatTND(o.total)}, à payer à la livraison.\nAdresse : ${o.city}, ${o.governorate}\nOn confirme ?`;
+type ConfirmItem = { name: string; qty: number; offerLabel?: string | null; offerLabelAr?: string | null };
+
+export function confirmWhatsApp(o: OrderLike & { items: ConfirmItem[]; address: string; city: string; governorate: string }, shop: string) {
+  const l = loc(o);
+  const ar = l === "ar";
+  const lines = o.items
+    .map((i) => {
+      const offer = ar ? i.offerLabelAr || i.offerLabel : i.offerLabel;
+      return `• ${i.qty} × ${i.name}${offer ? ` — ${offer}` : ""}`;
+    })
+    .join("\n");
+  // The city is often empty: the town is typed in the address.
+  const place = [o.address, o.city].filter(Boolean).join(ar ? "، " : ", ");
+  const gov = governorateLabel(o.governorate, l);
+  return ar
+    ? `السلام ${first(o.name)}، معاك ${shop}.\nباش نأكدو طلبيتك ${o.ref}:\n${lines}\nالمجموع: ${formatTND(o.total, "ar")} تخلّصهم كي توصلك.\nالعنوان: ${place}، ${gov}\nنأكدو؟`
+    : `Bonjour ${first(o.name)}, c'est ${shop}.\nPour confirmer votre commande ${o.ref} :\n${lines}\nTotal : ${formatTND(o.total)}, à payer à la livraison.\nAdresse : ${place}, ${gov}\nOn confirme ?`;
 }
 
 export function shippedText(o: OrderLike, shop: string, trackUrl: string, carrier?: string | null, tracking?: string | null) {

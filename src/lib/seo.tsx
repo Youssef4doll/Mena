@@ -1,6 +1,7 @@
 import type { Settings } from "./settings-schema";
 import type { ProductPage } from "./catalog";
 import { SITE_URL } from "./site";
+import { leadOffer } from "./offer-display";
 
 /** JSON-LD, with "<" escaped so no string in it can close the script tag. */
 export function JsonLd({ data }: { data: unknown }) {
@@ -28,6 +29,7 @@ export function productLd(p: ProductPage, s: Settings, url: string) {
   const zones = Object.values(s.delivery.zones).filter((z) => z.enabled);
   const minFee = zones.length ? Math.min(...zones.map((z) => z.fee)) : null;
   const inStock = p.stock.kind !== "out";
+  const lead = leadOffer(p.offers);
   return {
     "@context": "https://schema.org",
     "@type": "Product",
@@ -40,7 +42,9 @@ export function productLd(p: ProductPage, s: Settings, url: string) {
       "@type": "Offer",
       url,
       priceCurrency: "TND",
-      price: (Math.min(p.price, ...p.variants.map((v) => v.price)) / 1000).toFixed(3),
+      // What the page charges: the one-unit offer when there are offers (or the smallest pack, for its quantity).
+      price: ((lead?.price ?? Math.min(p.price, ...p.variants.map((v) => v.price))) / 1000).toFixed(3),
+      ...(lead && lead.quantity > 1 ? { eligibleQuantity: { "@type": "QuantitativeValue", value: lead.quantity } } : {}),
       availability: inStock ? "https://schema.org/InStock" : "https://schema.org/OutOfStock",
       itemCondition: "https://schema.org/NewCondition",
       ...(minFee != null

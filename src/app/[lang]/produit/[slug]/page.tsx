@@ -10,6 +10,7 @@ import { ProductGrid } from "@/components/shop/ProductCard";
 import { JsonLd, breadcrumbLd, productLd } from "@/lib/seo";
 import { SITE_URL } from "@/lib/site";
 import { formatTND } from "@/lib/money";
+import { leadOffer } from "@/lib/offer-display";
 
 export const revalidate = 60;
 
@@ -22,7 +23,7 @@ export async function generateMetadata({ params }: PageProps<"/[lang]/produit/[s
   const p = await getProduct(slug);
   if (!p || !isLang(lang)) return {};
   const name = pick(lang, p.name, p.nameAr);
-  const desc = pick(lang, p.description, p.descriptionAr).slice(0, 155) || `${name} — ${formatTND(p.price, lang)}`;
+  const desc = pick(lang, p.description, p.descriptionAr).slice(0, 155) || `${name} — ${formatTND(leadOffer(p.offers)?.price ?? p.price, lang)}`;
   const path = `/produit/${p.slug}`;
   return {
     title: name,

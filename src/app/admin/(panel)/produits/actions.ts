@@ -65,6 +65,10 @@ export async function saveProduct(id: string | null, raw: ProductInput): Promise
   if (!parsed.success) return { ok: false, error: `Champ invalide : ${parsed.error.issues[0]?.path.join(".")}` };
   const d = parsed.data;
   if (d.compareAt != null && d.compareAt <= d.price) return { ok: false, error: "L'ancien prix doit être plus élevé que le prix actuel, sinon laissez-le vide." };
+  // Offers are priced from the product price: an option with its own price would make them wrong.
+  if (d.offers.length > 0 && d.variants.some((v) => v.price != null && v.price !== d.price)) {
+    return { ok: false, error: "Les offres utilisent le prix du produit : retirez le prix propre des variantes, ou retirez les offres." };
+  }
   const slug = slugify(d.slug || d.name);
   if (!slug) return { ok: false, error: "Adresse (slug) invalide." };
   const clash = await prisma.product.findFirst({ where: { slug, ...(id ? { id: { not: id } } : {}) }, select: { id: true } });

@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import { useRef, useState, useTransition } from "react";
 import { deleteImage, deleteProduct, importImage, moveImage, saveProduct, setImageAlt, uploadImages, type ProductInput } from "../actions";
 import { parseTND, toInputTND, formatTND } from "@/lib/money";
+import { offerCompareAt } from "@/lib/offer-display";
 import { slugify } from "@/lib/slug";
 import { Card, btn, input, label } from "@/components/admin/ui";
 
@@ -15,19 +16,64 @@ const EMPTY: ProductInput = {
   supplierRef: "", supplierUrl: "", stockMode: "SUPPLIER", stockQty: 0, available: true, active: false, featured: false, variants: [], offers: [],
 };
 
-export function ProductEditor({ id, initial, images, categories, suppliers }: { id: string | null; initial: ProductInput | null; images: Img[]; categories: Opt[]; suppliers: Opt[] }) {
+type Msg = { ok: boolean; text: string };
+type Props = { id: string | null; version: string; initial: ProductInput | null; images: Img[]; categories: Opt[]; suppliers: Opt[] };
+
+/** "3" → 3; empty, decimal or outside 1–50 → null. */
+function offerQty(s: string | undefined): number | null {
+  const t = (s ?? "").trim();
+  return /^\d+$/.test(t) && Number(t) >= 1 && Number(t) <= 50 ? Number(t) : null;
+}
+
+/**
+ * Keeps the save message; the form is keyed on `version` (id + updatedAt), so
+ * each save remounts it from the saved rows: new offers and variants get their ids.
+ */
+export function ProductEditor(props: Props) {
+  const [msg, setMsg] = useState<Msg | null>(null);
+  return <Form key={props.version} {...props} msg={msg} setMsg={setMsg} />;
+}
+
+function Form({ id, initial, images, categories, suppliers, msg, setMsg }: Props & { msg: Msg | null; setMsg: (m: Msg | null) => void }) {
   const router = useRouter();
   const [p, setP] = useState<ProductInput>(initial ?? EMPTY);
   const [money, setMoney] = useState({ price: toInputTND(initial?.price || null), compareAt: toInputTND(initial?.compareAt), cost: toInputTND(initial?.cost) });
   const [vPrices, setVPrices] = useState<string[]>((initial?.variants ?? []).map((v) => toInputTND(v.price)));
   const [oPrices, setOPrices] = useState<string[]>((initial?.offers ?? []).map((o) => toInputTND(o.price)));
-  const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
+  // Raw text like the prices, checked on save: a cleared field can be retyped.
+  const [oQty, setOQty] = useState<string[]>((initial?.offers ?? []).map((o) => String(o.quantity)));
+  // Read once, to tell which end dates have passed.
+  const [now] = useState(() => Date.now());
   const [pending, start] = useTransition();
   const set = <K extends keyof ProductInput>(k: K, v: ProductInput[K]) => setP((x) => ({ ...x, [k]: v }));
 
   const price = parseTND(money.price);
   const cost = money.cost ? parseTND(money.cost) : null;
   const margin = price && cost != null ? price - cost : null;
+
+  // The live offers as the shop lists them: its 1-unit offer gives the card price and the "instead of" of bigger packs.
+  const live = (o: ProductInput["offers"][number]) => o.active && (!o.endsOn || Date.parse(`${o.endsOn}T00:00:00Z`) + 23 * 3_600_000 > now);
+  const liveOffers = p.offers.flatMap((o, i) => {
+    const quantity = offerQty(oQty[i]);
+    const total = parseTND(oPrices[i] ?? "");
+    return quantity && total && live(o) ? [{ quantity, price: total }] : [];
+  });
+  const unitOffer = liveOffers.find((o) => o.quantity === 1)?.price ?? null;
+  const ownPriced = p.offers.length > 0 && vPrices.some((s) => s.trim() && parseTND(s) !== price);
+
+  const moveOffer = (i: number) => {
+    if (i === 0) return;
+    const up = <T,>(a: T[]) => { const b = [...a]; [b[i - 1], b[i]] = [b[i], b[i - 1]]; return b; };
+    set("offers", up(p.offers));
+    setOPrices(up(oPrices));
+    setOQty(up(oQty));
+  };
+  const removeOffer = (i: number) => {
+    const rm = <T,>(a: T[]) => a.filter((_, j) => j !== i);
+    set("offers", rm(p.offers));
+    setOPrices(rm(oPrices));
+    setOQty(rm(oQty));
+  };
 
   function save() {
     const priceM = parseTND(money.price);
@@ -38,8 +84,10 @@ export function ProductEditor({ id, initial, images, categories, suppliers }: { 
     if (money.cost.trim() && costM == null) return setMsg({ ok: false, text: "Coût invalide." });
     const variants = p.variants.map((v, i) => ({ ...v, price: vPrices[i]?.trim() ? parseTND(vPrices[i]) : null }));
     if (variants.some((v, i) => vPrices[i]?.trim() && v.price == null)) return setMsg({ ok: false, text: "Prix de variante invalide." });
-    const offers = p.offers.map((o, i) => ({ ...o, price: parseTND(oPrices[i] ?? "") ?? 0 }));
-    const badOffer = offers.findIndex((o) => !o.label.trim() || o.price <= 0 || o.quantity < 1);
+    const offers = p.offers.map((o, i) => ({ ...o, quantity: offerQty(oQty[i]) ?? 0, price: parseTND(oPrices[i] ?? "") ?? 0 }));
+    const badQty = offers.findIndex((o) => o.quantity < 1);
+    if (badQty >= 0) return setMsg({ ok: false, text: `Offre ${badQty + 1} : la quantité doit être un nombre entier entre 1 et 50.` });
+    const badOffer = offers.findIndex((o) => !o.label.trim() || o.price <= 0);
     if (badOffer >= 0) return setMsg({ ok: false, text: `Offre ${badOffer + 1} : nom, quantité et prix total sont obligatoires.` });
     start(async () => {
       const r = await saveProduct(id, { ...p, price: priceM, compareAt: compareM, cost: costM, variants, offers });
@@ -68,12 +116,16 @@ export function ProductEditor({ id, initial, images, categories, suppliers }: { 
 
         {id ? <Images productId={id} images={images} /> : <Card title="Photos"><p className="text-sm text-muted">Enregistrez le produit une première fois pour ajouter des photos.</p></Card>}
 
-        <Card title="Offres" hint="Ce que le client choisit en haut du formulaire de commande : « 1 unité », « 2 unités », « Achetez 2, la 3e offerte »… Le prix est le total pour la quantité. Sans offre, le client choisit simplement une quantité. L'économie affichée est calculée sur le prix unitaire réel, et une date de fin n'est montrée que si vous la fixez.">
+        <Card title="Offres" hint="Ce que le client choisit en haut du formulaire de commande : « 1 unité », « 2 unités », « Achetez 2, la 3e offerte »… Le prix est le total pour la quantité. Sans offre, le client choisit simplement une quantité. Le prix barré et l'économie ne s'affichent que sur les offres de 2 unités ou plus, et seulement s'il existe une offre de 1 unité active : ils sont calculés sur son prix. Une date de fin n'est montrée que si vous la fixez.">
+          <p className={`-mt-1 mb-2 text-xs ${ownPriced ? "text-danger" : "text-muted"}`}>
+            Les offres utilisent le prix du produit : avec des offres, les variantes ne peuvent pas avoir leur propre prix.
+          </p>
           <div className="flex flex-col gap-2">
             {p.offers.map((o, i) => {
               const total = parseTND(oPrices[i] ?? "");
-              const unitNow = price ?? 0;
-              const separately = unitNow * o.quantity;
+              const q = offerQty(oQty[i]);
+              // The shop's own rule: packs of 2 or more, against its live 1-unit offer.
+              const insteadOf = q != null && total ? offerCompareAt(liveOffers, { quantity: q, price: total }) : null;
               const setO = (patch: Partial<typeof o>) => set("offers", p.offers.map((x, j) => (j === i ? { ...x, ...patch } : x)));
               return (
                 <div key={o.id ?? `n${i}`} className="flex flex-col gap-2 rounded-xl border border-line p-3">
@@ -82,30 +134,42 @@ export function ProductEditor({ id, initial, images, categories, suppliers }: { 
                     <input className={input} dir="rtl" placeholder="الاسم بالعربي (اختياري)" value={o.labelAr} onChange={(e) => setO({ labelAr: e.target.value })} />
                   </div>
                   <div className="grid grid-cols-2 gap-2 sm:grid-cols-[100px_140px_1fr]">
-                    <label className={label}>Quantité<input type="number" min={1} max={50} className={input} value={o.quantity} onChange={(e) => setO({ quantity: Math.max(1, Math.min(50, Number(e.target.value) || 1)) })} /></label>
+                    <label className={label}>
+                      Quantité
+                      <input type="number" min={1} max={50} className={input} aria-invalid={q == null} value={oQty[i] ?? ""} onChange={(e) => setOQty(oQty.map((x, j) => (j === i ? e.target.value : x)))} />
+                      {q == null && <span className="text-xs font-normal text-danger">{oQty[i]?.trim() ? "Nombre entier de 1 à 50." : "Obligatoire."}</span>}
+                    </label>
                     <label className={label}>Prix total (DT)<input className={input} inputMode="decimal" placeholder="99,000" value={oPrices[i] ?? ""} onChange={(e) => setOPrices(oPrices.map((x, j) => (j === i ? e.target.value : x)))} /></label>
                     <label className={label}>Dernier jour (facultatif)<input type="date" className={input} value={o.endsOn} onChange={(e) => setO({ endsOn: e.target.value })} /></label>
                   </div>
                   <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm">
                     <label className="flex items-center gap-1.5"><input type="checkbox" checked={o.freeDelivery} onChange={(e) => setO({ freeDelivery: e.target.checked })} />Livraison offerte</label>
                     <label className="flex items-center gap-1.5"><input type="checkbox" checked={o.active} onChange={(e) => setO({ active: e.target.checked })} />Active</label>
-                    {total != null && total > 0 && (
+                    {total != null && total > 0 && q != null && (
                       <span className="text-muted">
-                        {formatTND(Math.round(total / o.quantity))} l&apos;unité
-                        {separately > total && <span className="text-olive"> · économie client {formatTND(separately - total)}</span>}
-                        {cost != null && <span className={total - cost * o.quantity > 0 ? "text-olive" : "text-danger"}> · marge {formatTND(total - cost * o.quantity)}</span>}
+                        {formatTND(Math.round(total / q))} l&apos;unité
+                        {insteadOf != null && <span className="text-olive"> · au lieu de {formatTND(insteadOf)}, économie client {formatTND(insteadOf - total)}</span>}
+                        {cost != null && <span className={total - cost * q > 0 ? "text-olive" : "text-danger"}> · marge {formatTND(total - cost * q)}</span>}
                       </span>
                     )}
                     <span className="ms-auto flex gap-3">
-                      <button type="button" className="text-muted" onClick={() => { if (i === 0) return; const a = [...p.offers]; [a[i - 1], a[i]] = [a[i], a[i - 1]]; const b = [...oPrices]; [b[i - 1], b[i]] = [b[i], b[i - 1]]; set("offers", a); setOPrices(b); }} aria-label="Monter">↑</button>
-                      <button type="button" className="text-clay" onClick={() => { set("offers", p.offers.filter((_, j) => j !== i)); setOPrices(oPrices.filter((_, j) => j !== i)); }}>Retirer</button>
+                      <button type="button" className="text-muted" onClick={() => moveOffer(i)} aria-label="Monter">↑</button>
+                      <button type="button" className="text-clay" onClick={() => removeOffer(i)}>Retirer</button>
                     </span>
                   </div>
                 </div>
               );
             })}
             <div className="flex flex-wrap gap-2">
-              <button type="button" className={btn.ghost} onClick={() => { set("offers", [...p.offers, { label: "", labelAr: "", quantity: p.offers.length + 1, price: 0, freeDelivery: false, endsOn: "", active: true }]); setOPrices([...oPrices, ""]); }}>
+              <button
+                type="button"
+                className={btn.ghost}
+                onClick={() => {
+                  set("offers", [...p.offers, { label: "", labelAr: "", quantity: p.offers.length + 1, price: 0, freeDelivery: false, endsOn: "", active: true }]);
+                  setOPrices([...oPrices, ""]);
+                  setOQty([...oQty, String(p.offers.length + 1)]);
+                }}
+              >
                 + Ajouter une offre
               </button>
               {p.offers.length === 0 && price ? (
@@ -118,6 +182,7 @@ export function ProductEditor({ id, initial, images, categories, suppliers }: { 
                       { label: "Achetez 2, la 3e offerte", labelAr: "اشري 2 والثالثة هدية", quantity: 3, price: 0, freeDelivery: true, endsOn: "", active: true },
                     ]);
                     setOPrices([toInputTND(price), toInputTND(price * 2)]);
+                    setOQty(["1", "3"]);
                   }}
                 >
                   Proposer « 1 » et « 2 + 1 offerte »
@@ -127,7 +192,7 @@ export function ProductEditor({ id, initial, images, categories, suppliers }: { 
           </div>
         </Card>
 
-        <Card title="Variantes" hint="Taille, couleur… Laissez vide si le produit n'a pas d'option. Le prix d'une variante remplace celui du produit s'il est rempli.">
+        <Card title="Variantes" hint="Taille, couleur… Laissez vide si le produit n'a pas d'option. Le prix d'une variante remplace celui du produit s'il est rempli, sur un produit sans offre.">
           <div className="flex flex-col gap-2">
             {p.variants.map((v, i) => (
               <div key={v.id ?? `n${i}`} className="grid grid-cols-2 gap-2 rounded-xl border border-line p-2 sm:grid-cols-[1fr_110px_90px_auto_auto]">
@@ -170,6 +235,11 @@ export function ProductEditor({ id, initial, images, categories, suppliers }: { 
             <label className={label}>Ancien prix (DT)<input className={input} inputMode="decimal" placeholder="facultatif" value={money.compareAt} onChange={(e) => setMoney({ ...money, compareAt: e.target.value })} /></label>
           </div>
           <p className="mt-1.5 text-xs text-muted">L&apos;ancien prix doit être un prix réellement pratiqué avant. Il est affiché barré.</p>
+          {unitOffer != null && price != null && price !== unitOffer && (
+            <p className="mt-1.5 text-xs text-clay">
+              L&apos;offre de 1 unité est à {formatTND(unitOffer)} : c&apos;est ce prix que la boutique affiche sur les cartes et la fiche produit, pas le prix de vente.
+            </p>
+          )}
           <label className={`${label} mt-3`}>Coût fournisseur (DT)<input className={input} inputMode="decimal" placeholder="jamais affiché aux clients" value={money.cost} onChange={(e) => setMoney({ ...money, cost: e.target.value })} /></label>
           {margin != null && price ? (
             <p className={`mt-2 text-sm ${margin > 0 ? "text-olive" : "text-danger"}`}>

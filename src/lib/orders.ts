@@ -21,6 +21,9 @@ import { TRANSITIONS } from "./order-status";
 
 const text = (max: number) => z.string().trim().max(max);
 
+/** Turn on together with a payment choice in BuyBox. */
+const CARD_IN_FORM = false;
+
 export const placeOrderSchema = z.object({
   lines: z
     .array(z.object({ productId: z.string().min(1).max(40), variantId: z.string().max(40).nullish(), offerId: z.string().max(40).nullish(), qty: z.number().int().min(1).max(10) }))
@@ -33,7 +36,8 @@ export const placeOrderSchema = z.object({
   governorate: text(40),
   /** Optional: the one-step form asks for a single address line. */
   city: text(80).optional(),
-  address: text(200).pipe(z.string().min(4)),
+  /** Town, street and landmarks, typed in one field. */
+  address: text(300).pipe(z.string().min(4)),
   note: text(300).optional(),
   promoCode: text(40).optional(),
   payment: z.enum(["COD", "CARD"]),
@@ -97,7 +101,9 @@ export async function placeOrder(input: PlaceOrderInput, ctx: { ua: string | nul
   if (quote.total !== input.expectedTotal) return { ok: false, error: "price_changed", quote: pq };
 
   const settings = await getSettings();
-  if (input.payment === "CARD" && !(settings.payments.card && settings.payments.konnectWalletId)) {
+  // The order form offers cash on delivery only, and the back office no longer has a card switch:
+  // a card request is refused until the form offers the choice again (see docs/DEPLOIEMENT.md).
+  if (input.payment === "CARD" && !(CARD_IN_FORM && settings.payments.card && settings.payments.konnectWalletId)) {
     return { ok: false, error: "card_unavailable", quote: pq };
   }
 
@@ -209,6 +215,7 @@ export async function placeOrder(input: PlaceOrderInput, ctx: { ua: string | nul
                 lineTotal: l.lineTotal,
                 offerId: l.offerId,
                 offerLabel: l.offerLabel,
+                offerLabelAr: l.offerLabelAr,
               })),
             },
             history: { create: { from: null, to: "PENDING", by: "client" } },
@@ -240,6 +247,12 @@ export async function placeOrder(input: PlaceOrderInput, ctx: { ua: string | nul
   }
 
   if (quote.lines.some((l) => l.productId)) revalidateTag(CATALOG_TAG, "max");
+
+  // Forms left with the same number in another browser: no reminder after an order.
+  // Outside the order's transaction, so it never makes two orders collide.
+  await prisma.cart
+    .updateMany({ where: { status: "ACTIVE", phone: order.phone, updatedAt: { gte: new Date(Date.now() - 30 * 86_400_000) } }, data: { status: "CONVERTED", orderId: order.id } })
+    .catch((e) => console.error("[order] closing open forms failed", e));
 
   const site = process.env.NEXT_PUBLIC_SITE_URL ?? "";
   const trackUrl = `${site}/suivi/t/${token}`;

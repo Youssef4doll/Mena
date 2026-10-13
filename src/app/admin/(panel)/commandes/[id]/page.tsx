@@ -26,7 +26,7 @@ export default async function OrderPage({ params }: PageProps<"/admin/commandes/
   const o = await prisma.order.findUnique({
     where: { id },
     include: {
-      items: { include: { product: { select: { slug: true, supplierRef: true, supplierUrl: true, supplier: { select: { name: true, phone: true } }, images: { take: 1, orderBy: { sort: "asc" }, select: { mediaId: true } } } } } },
+      items: { include: { product: { select: { slug: true, nameAr: true, supplierRef: true, supplierUrl: true, supplier: { select: { name: true, phone: true } }, images: { take: 1, orderBy: { sort: "asc" }, select: { mediaId: true } } } } } },
       history: { orderBy: { createdAt: "desc" } },
       calls: { orderBy: { createdAt: "desc" } },
       notifications: { orderBy: { createdAt: "desc" }, take: 10 },
@@ -44,7 +44,11 @@ export default async function OrderPage({ params }: PageProps<"/admin/commandes/
   const refused = h.REFUSED ?? 0;
   const rate = refusalRate(delivered, refused);
   const shop = settings.shop.name;
-  const confirmMsg = confirmWhatsApp({ ...o, items: o.items.map((i) => ({ name: `${i.name}${i.variantName ? ` (${i.variantName})` : ""}`, qty: i.qty })) }, shop);
+  const confirmMsg = confirmWhatsApp(
+    // An Arabic-speaking customer reads the product's Arabic name when there is one.
+    { ...o, items: o.items.map((i) => ({ name: `${(o.locale === "ar" && i.product?.nameAr) || i.name}${i.variantName ? ` (${i.variantName})` : ""}`, qty: i.qty, offerLabel: i.offerLabel, offerLabelAr: i.offerLabelAr })) },
+    shop,
+  );
   const track = trackingUrl(o);
   const margin = o.costTotal != null ? o.subtotal - o.discount - o.costTotal : null;
 
@@ -163,7 +167,7 @@ export default async function OrderPage({ params }: PageProps<"/admin/commandes/
           <Card title="Client">
             <p className="text-sm font-medium">{o.name}</p>
             <p className="text-sm tabular-nums">{formatPhone(o.phone)}{o.phoneAlt && ` · ${formatPhone(o.phoneAlt)}`}</p>
-            <p className="mt-2 text-sm text-ink-2">{o.address}<br />{o.city}, {o.governorate}</p>
+            <p className="mt-2 text-sm text-ink-2">{[o.address, o.city].filter(Boolean).join(", ")}<br />{o.governorate}</p>
             {o.note && <p className="mt-2 rounded-lg bg-sand px-3 py-2 text-sm">Note : {o.note}</p>}
             <div className="mt-3 grid grid-cols-3 gap-2 text-center text-xs">
               <div className="rounded-lg bg-cream p-2"><p className="text-lg font-semibold text-olive">{delivered}</p>livrées avant</div>

@@ -28,7 +28,7 @@ export default async function TermsRoute({ params }: PageProps<"/[lang]/conditio
       <h2>Prix</h2>
       <p>Les prix sont indiqués en dinars tunisiens, toutes taxes comprises. Les frais de livraison dépendent du gouvernorat et sont affichés avant la validation. Le montant total affiché au moment de la commande est celui que vous payez.</p>
       <h2>Paiement</h2>
-      <p>Le paiement se fait en espèces à la livraison{s.payments.card ? ", ou en ligne par carte bancaire ou e-DINAR via Konnect" : ""}.</p>
+      <p>Le paiement se fait en espèces à la livraison.</p>
       <h2>Livraison</h2>
       <p>Les délais indiqués sont des délais habituels, à partir de la confirmation de la commande, et non une date garantie. Le détail est sur la page Livraison et retours.</p>
       <h2>Droit de retour</h2>

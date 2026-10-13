@@ -4,7 +4,7 @@ Durée : environ 30 minutes. Coût de départ : 0 DT (offres gratuites de Vercel
 
 ## 1. Le code sur GitHub
 
-Créez un dépôt **vide** nommé `mena` sur github.com (compte `Youssef4doll`), sans README. Donnez l'accès à Claude, et le code y sera envoyé sur la branche `main`.
+Le code est sur [github.com/Youssef4doll/Mena](https://github.com/Youssef4doll/Mena), branche `main`. Vercel le lit directement depuis GitHub.
 
 ## 2. La base de données (Neon)
 
@@ -53,7 +53,15 @@ Un `.tn` s'achète chez un registrar agréé par l'ATI. Dans Vercel, *Settings �
 - photos : téléversez-les, ou collez le lien d'une photo du fournisseur (elle est copiée chez vous) ;
 - **coût fournisseur** : jamais affiché aux clients, il sert à calculer votre marge ;
 - **stock** : « Stock fournisseur » en dropshipping (aucune quantité n'est affichée ; décochez « Disponible » quand le fournisseur est en rupture), ou « Je compte » si vous gardez du stock ;
-- **ancien prix** : seulement s'il a vraiment été pratiqué.
+- **ancien prix** : seulement s'il a vraiment été pratiqué ;
+- **catégorie** : dans *Catégories*, un titre d'accroche (« Pour la maison ») s'affiche sur les cartes de l'accueil.
+
+**Offres** (carte *Offres* du produit) : par exemple « 1 unité » à 69 DT et « Achetez 2, la 3e offerte » à 138 DT. Le bouton *Proposer « 1 » et « 2 + 1 offerte »* les crée à partir du prix. Pour chaque offre : le nombre d'unités, le prix total, la livraison offerte ou non, et un dernier jour si l'offre est limitée (la date affichée est celle que vous saisissez, jamais une date inventée).
+
+- Le prix barré « au lieu de » d'un lot est calculé à partir de votre offre « 1 unité ». Sans offre « 1 unité », aucun prix barré n'est affiché.
+- « Le plus choisi » n'apparaît que si une offre a vraiment été commandée au moins 3 fois en 60 jours, et plus que les autres.
+- Les offres s'appliquent au prix du produit. Si une variante a son propre prix, retirez-le, ou retirez les offres.
+- Un lot plus grand que le stock compté est grisé automatiquement.
 
 Une boutique en ligne ne contient pas de produits de démonstration. Pour voir à quoi elle ressemble pleine, lancez `npm run db:seed:demo` en local ; *Produits → Supprimer la démo* les retire.
 
@@ -75,12 +83,12 @@ Conseil : envoyez les pubs directement sur la **fiche produit**, pas sur l'accue
 2. **Fournisseurs** : la liste « À commander maintenant » regroupe les commandes confirmées de chaque fournisseur.
 3. **Commandes → Confirmées** : passez-les en « Expédiée » avec le numéro de suivi. Le client reçoit un SMS si une passerelle est configurée.
 4. Au retour du livreur : « Livrée » ou « Refusée » (avec le motif). Les refus alimentent la liste noire et le taux de refus par gouvernorat.
-5. **Paniers abandonnés** : relancez une fois sur WhatsApp ceux qui ont laissé leur numéro.
+5. **Non terminées** : les clients qui ont écrit leur numéro sans confirmer. Relancez-les une fois sur WhatsApp ; le lien du message rouvre la fiche sur leur offre et leur option.
 6. **Avis** : publiez les avis reçus. Seuls les clients livrés peuvent en laisser.
 
 ## Paiement par carte (plus tard)
 
-Le code pour Konnect est prêt mais désactivé. Une fois votre compte Konnect validé, renseignez la clé et le wallet dans *Paramètres → Paiement par carte*. Vérifiez d'abord en mode test : les adresses de l'API Konnect sont à confirmer dans leur documentation.
+Le formulaire de la fiche produit propose uniquement le paiement à la livraison, sans e-mail, pour rester simple. Le code pour Konnect existe côté serveur mais n'est pas proposé aux clients. Pour l'activer plus tard, il faudra ajouter le choix du paiement au formulaire.
 
 ## Développement en local
 

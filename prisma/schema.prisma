@@ -327,6 +327,7 @@ model OrderItem {
   offerId   String?
   offer     ProductOffer?   @relation(fields: [offerId], references: [id], onDelete: SetNull)
   offerLabel String?
+  offerLabelAr String?
   review    Review?
 
   @@index([orderId])
@@ -387,6 +388,7 @@ model Cart {
   createdAt  DateTime   @default(now())
   updatedAt  DateTime   @updatedAt
 
+  @@index([phone, status])
   @@index([status, updatedAt])
 }
 

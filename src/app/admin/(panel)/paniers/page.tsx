@@ -26,7 +26,7 @@ export default async function CartsPage() {
 
   return (
     <>
-      <PageTitle title="Commandes non terminées" sub="Formulaires de commande commencés sans commande depuis plus d'une heure, 30 derniers jours. Valeur aux prix actuels. Le numéro est celui que le client a tapé dans le formulaire ; le lien de relance le ramène sur le produit, avec l'offre qu'il avait choisie." />
+      <PageTitle title="Commandes non terminées" sub="Formulaires de commande commencés sans commande depuis plus d'une heure, 30 derniers jours. Valeur aux prix actuels ; sans option choisie, au prix de l'option la moins chère encore disponible. Le numéro est celui que le client a tapé dans le formulaire ; le lien de relance le ramène sur le produit, avec l'offre qu'il avait choisie." />
       <div className="mb-5 grid grid-cols-2 gap-3 lg:grid-cols-4">
         <Stat label="Non terminées" value={String(list.length)} />
         <Stat label="Valeur en jeu" value={formatTND(value)} tone={value ? "warn" : undefined} />

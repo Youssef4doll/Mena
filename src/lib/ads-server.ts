@@ -50,7 +50,8 @@ export async function sendPurchase(orderId: string, trigger: "placed" | "confirm
             user_data: {
               ph: [sha(`216${o.phone}`)],
               fn: firstName ? [sha(firstName)] : undefined,
-              ct: [sha(o.city.replace(/\s+/g, ""))],
+              // Only a typed city: most orders carry the town in the address.
+              ct: o.city.trim() ? [sha(o.city.replace(/\s+/g, ""))] : undefined,
               country: [sha("tn")],
               external_id: [sha(o.customerId)],
               client_ip_address: ctx.ip,

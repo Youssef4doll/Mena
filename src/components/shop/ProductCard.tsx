@@ -18,20 +18,20 @@ export function ProductCard({ p, lang, priority = false }: { p: Card; lang: Lang
       <div className="relative aspect-square overflow-hidden bg-sand">
         <Img image={p.images[0] ?? null} alt={p.images[0]?.alt ?? name} sizes="(min-width: 1024px) 25vw, (min-width: 640px) 33vw, 50vw" priority={priority} className={`transition duration-500 group-hover:scale-[1.02] ${out ? "opacity-60 grayscale" : ""}`} />
         <div className="absolute start-2 top-2 flex flex-col items-start gap-1">
-          {out && <span className="rounded-full bg-ink/80 px-2.5 py-1 text-[13px] font-bold text-white">{t.product.out}</span>}
-          {!out && p.compareAt && <span className="rounded-full bg-olive px-2.5 py-1 text-[13px] font-bold text-white ltr-nums">−{Math.round((1 - p.price / p.compareAt) * 100)}%</span>}
+          {out && <span className="rounded-full bg-ink/80 px-2.5 py-1 text-[14px] font-bold text-white">{t.product.out}</span>}
+          {!out && p.compareAt && <span className="rounded-full bg-olive px-2.5 py-1 text-[14px] font-bold text-white ltr-nums">−{Math.round((1 - p.price / p.compareAt) * 100)}%</span>}
         </div>
       </div>
       <div className="flex flex-1 flex-col gap-1.5 p-3">
         <h3 className="line-clamp-2 text-[16px] leading-snug text-ink">{name}</h3>
         {p.rating && (
-          <span className="flex items-center gap-1 text-[13px] text-muted">
+          <span className="flex items-center gap-1 text-[14px] text-muted">
             <Stars value={p.rating.avg} size={14} />
             <span className="ltr-nums">({p.rating.count})</span>
           </span>
         )}
         <div className="mt-auto pt-1">
-          <Price value={p.price} compareAt={p.compareAt} lang={lang} size="md" from={p.priceFrom ? t.product.from : undefined} />
+          <Price value={p.price} compareAt={p.compareAt} lang={lang} size="md" from={p.packOf ? t.product.pack(p.packOf) : p.priceFrom ? t.product.from : undefined} />
         </div>
         {p.stock.kind === "low" && <span className="text-[14px] font-bold text-clay">{t.product.low(p.stock.qty)}</span>}
         {!out && <span className="mt-1.5 flex min-h-11 items-center justify-center rounded-xl bg-sea-soft text-[16px] font-bold text-sea-2 transition group-hover:bg-sea group-hover:text-white">{t.product.buyNow}</span>}
@@ -50,12 +50,15 @@ export function ProductGrid({ products, lang, priorityFirst = 0 }: { products: C
   );
 }
 
-/** A horizontal row of products, scrolled sideways like Amazon's shelves. */
+/**
+ * A shelf: swiped sideways on a phone, like Amazon's; laid out in full on a
+ * computer, where a mouse wheel cannot scroll sideways.
+ */
 export function ProductRow({ products, lang }: { products: Card[]; lang: Lang }) {
   return (
-    <div className="-mx-4 flex snap-x gap-3 overflow-x-auto px-4 pb-2 no-scrollbar">
+    <div className="-mx-4 flex snap-x gap-3 overflow-x-auto px-4 pb-2 no-scrollbar md:mx-0 md:grid md:grid-cols-4 md:overflow-visible md:px-0 md:pb-0">
       {products.map((p) => (
-        <div key={p.id} className="w-[46%] shrink-0 snap-start sm:w-[30%] lg:w-[22%]">
+        <div key={p.id} className="w-[46%] shrink-0 snap-start sm:w-[30%] md:w-auto">
           <ProductCard p={p} lang={lang} />
         </div>
       ))}

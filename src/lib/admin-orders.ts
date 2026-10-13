@@ -15,6 +15,8 @@ export function orderWhere(status: string, q: string): Prisma.OrderWhereInput {
       { ref: { contains: term.toUpperCase() } },
       { name: { contains: term, mode: "insensitive" } },
       { city: { contains: term, mode: "insensitive" } },
+      // The one-step form has the town typed in the address.
+      { address: { contains: term, mode: "insensitive" } },
       ...(phone ? [{ phone }] : [{ phone: { contains: term.replace(/\D/g, "") || "—" } }]),
     ];
   }

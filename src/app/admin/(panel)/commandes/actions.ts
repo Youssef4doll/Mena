@@ -49,18 +49,40 @@ export async function setStatus(orderId: string, to: OrderStatus, form: { note?:
 const details = z.object({
   name: z.string().trim().min(2).max(80),
   phoneAlt: z.string().trim().max(30),
-  city: z.string().trim().min(2).max(80),
-  address: z.string().trim().min(4).max(200),
+  // Often empty: the one-step form has the town typed in the address.
+  city: z.string().trim().max(80),
+  address: z.string().trim().min(4).max(300),
   note: z.string().trim().max(300),
   carrier: z.string().trim().max(60),
   trackingNumber: z.string().trim().max(80),
 });
 
+const FIELD_LABELS: Record<keyof z.infer<typeof details>, string> = {
+  name: "Nom",
+  phoneAlt: "Second numéro",
+  city: "Ville",
+  address: "Adresse",
+  note: "Note",
+  carrier: "Transporteur",
+  trackingNumber: "N° de suivi",
+};
+
+/** "Adresse : 4 caractères minimum." — which field, and why. */
+function invalidFields(error: z.ZodError) {
+  return error.issues
+    .map((i) => {
+      const field = FIELD_LABELS[i.path[0] as keyof typeof FIELD_LABELS] ?? String(i.path[0] ?? "Formulaire");
+      const why = i.code === "too_small" ? `${i.minimum} caractères minimum` : i.code === "too_big" ? `${i.maximum} caractères maximum` : "valeur invalide";
+      return `${field} : ${why}.`;
+    })
+    .join(" ");
+}
+
 /** What a confirmation call corrects: the address, a second number. Prices and the governorate stay as ordered. */
 export async function updateDetails(orderId: string, raw: z.input<typeof details>): Promise<Result> {
   await requireAdmin();
   const d = details.safeParse(raw);
-  if (!d.success) return { ok: false, error: "Champs invalides." };
+  if (!d.success) return { ok: false, error: invalidFields(d.error) };
   const phoneAlt = d.data.phoneAlt ? normalizePhone(d.data.phoneAlt) : null;
   if (d.data.phoneAlt && !phoneAlt) return { ok: false, error: "Second numéro invalide." };
   await prisma.order.update({

@@ -45,6 +45,8 @@ export async function GET(request: Request) {
       return csvResponse(`recherches_${tag}.csv`, toCsv(["recherche", "nombre", "resultats"], [...a.searches.top, ...a.searches.none].map((s) => [s.q, s.count, s.results])));
     case "governorates":
       return csvResponse(`gouvernorats_${tag}.csv`, toCsv(["gouvernorat", "commandes", "livrees", "refusees", "taux_refus_pct", "ca_livre_dt"], a.governorates.map((g) => [g.governorate, g.orders, g.delivered, g.refused, pct(ratio(g.refused, g.delivered + g.refused)), dt(g.revenue)])));
+    case "contacts":
+      return csvResponse(`contacts_${tag}.csv`, toCsv(["canal", "clics"], [["whatsapp", a.contacts.whatsapp], ["telephone", a.contacts.phone]]));
     case "cohorts":
       return csvResponse(`cohortes.csv`, toCsv(["mois", "clients", "m1", "m2", "m3", "m4", "m5"], a.cohorts.map((c) => [c.month, c.size, ...c.retained.map((v) => (v == null ? "" : v))])));
     default:
