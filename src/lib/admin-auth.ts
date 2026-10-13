@@ -37,7 +37,7 @@ export async function verifyLogin(email: string, password: string) {
   const user = await prisma.adminUser.findUnique({ where: { email: email.trim().toLowerCase() } });
   // Compare against a dummy hash when there is no user, so timing does not reveal which e-mails exist.
   dummyHash ??= await bcrypt.hash("no-such-user", 10);
-  const ok = await bcrypt.compare(password, user?.passwordHash ?? dummyHash);
+  const ok = await bcrypt.compare(password.trim(), user?.passwordHash ?? dummyHash);
   return ok && user ? user : null;
 }
 

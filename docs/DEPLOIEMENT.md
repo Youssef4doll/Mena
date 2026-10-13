@@ -28,7 +28,7 @@ Le code est sur [github.com/Youssef4doll/Mena](https://github.com/Youssef4doll/M
 | `ADMIN_PASSWORD` | un mot de passe d'au moins 10 caractères |
 | `NEXT_PUBLIC_SITE_URL` | `https://mena.tn` (votre domaine, sans `/` à la fin) |
 
-4. *Deploy*. À chaque déploiement, la base est mise à jour et le compte admin est créé s'il n'existe pas.
+4. *Deploy*. À chaque déploiement, la base est mise à jour et le compte admin suit `ADMIN_EMAIL` / `ADMIN_PASSWORD`. Pour changer de mot de passe : modifiez `ADMIN_PASSWORD`, puis *Redeploy*. Une variable ajoutée ou modifiée ne compte qu'au déploiement suivant.
 
 Le back-office est à l'adresse `/admin`.
 

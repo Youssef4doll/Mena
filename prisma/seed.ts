@@ -1,7 +1,8 @@
 /**
- * First run: the back-office account from ADMIN_EMAIL / ADMIN_PASSWORD.
- * Idempotent — running it again changes nothing for an existing account
- * unless ADMIN_RESET=1, which resets that account's password.
+ * The back-office account, from ADMIN_EMAIL / ADMIN_PASSWORD, on every deploy.
+ * The variables are the source of truth: a new password set in Vercel takes
+ * effect at the next deploy (and signs out open sessions). An unchanged
+ * password changes nothing.
  */
 import { PrismaClient } from "@prisma/client";
 import bcrypt from "bcryptjs";
@@ -10,22 +11,22 @@ const prisma = new PrismaClient();
 
 async function main() {
   const email = process.env.ADMIN_EMAIL?.trim().toLowerCase();
-  const password = process.env.ADMIN_PASSWORD;
+  // Spaces around a pasted password are a copy slip, never meant: the login trims them too.
+  const password = process.env.ADMIN_PASSWORD?.trim();
   if (!email || !password) {
-    // Runs on every deploy: without the variables there is simply nothing to create.
-    console.log("ADMIN_EMAIL / ADMIN_PASSWORD not set: no admin account created.");
+    console.warn("ADMIN_EMAIL / ADMIN_PASSWORD not set: no admin account created or updated. Add them in Vercel, then redeploy.");
     return;
   }
   if (password.length < 10) throw new Error("ADMIN_PASSWORD must be at least 10 characters.");
   const existing = await prisma.adminUser.findUnique({ where: { email } });
-  if (existing && process.env.ADMIN_RESET !== "1") {
-    console.log(`Admin ${email} already exists.`);
+  if (existing && (await bcrypt.compare(password, existing.passwordHash))) {
+    console.log(`Admin ${email}: password unchanged.`);
     return;
   }
   const passwordHash = await bcrypt.hash(password, 12);
-  await prisma.adminUser.upsert({ where: { email }, create: { email, name: "Youssef", passwordHash }, update: { passwordHash } });
+  await prisma.adminUser.upsert({ where: { email }, create: { email, name: "Admin", passwordHash }, update: { passwordHash } });
   await prisma.adminSession.deleteMany({ where: { user: { email } } });
-  console.log(`Admin ${email} ready.`);
+  console.log(existing ? `Admin ${email}: password updated.` : `Admin ${email} created.`);
 }
 
 main().finally(() => prisma.$disconnect());
