@@ -116,7 +116,7 @@ function Form({ id, initial, images, categories, suppliers, msg, setMsg }: Props
 
         {id ? <Images productId={id} images={images} /> : <Card title="Photos"><p className="text-sm text-muted">Enregistrez le produit une première fois pour ajouter des photos.</p></Card>}
 
-        <Card title="Offres" hint="Ce que le client choisit en haut du formulaire de commande : « 1 unité », « 2 unités », « Achetez 2, la 3e offerte »… Le prix est le total pour la quantité. Sans offre, le client choisit simplement une quantité. Le prix barré et l'économie ne s'affichent que sur les offres de 2 unités ou plus, et seulement s'il existe une offre de 1 unité active : ils sont calculés sur son prix. Une date de fin n'est montrée que si vous la fixez.">
+        <Card title="Offres" hint="Ce que le client choisit en haut du formulaire de commande : « 1 unité », « 2 unités », « Achetez 2, la 3e offerte »… Le prix est le total pour la quantité. Sans offre, le client choisit simplement une quantité. Prix barré : sur l'offre de 1 unité, l'ancien prix du produit s'il est rempli ; sur les lots, le prix de l'offre de 1 unité multiplié par la quantité (sans offre de 1 unité active, rien n'est barré). Une date de fin n'est montrée que si vous la fixez.">
           <p className={`-mt-1 mb-2 text-xs ${ownPriced ? "text-danger" : "text-muted"}`}>
             Les offres utilisent le prix du produit : avec des offres, les variantes ne peuvent pas avoir leur propre prix.
           </p>
@@ -124,8 +124,8 @@ function Form({ id, initial, images, categories, suppliers, msg, setMsg }: Props
             {p.offers.map((o, i) => {
               const total = parseTND(oPrices[i] ?? "");
               const q = offerQty(oQty[i]);
-              // The shop's own rule: packs of 2 or more, against its live 1-unit offer.
-              const insteadOf = q != null && total ? offerCompareAt(liveOffers, { quantity: q, price: total }) : null;
+              // The shop's own rule: a pack against its live 1-unit offer; the 1-unit offer against the product's former price.
+              const insteadOf = q != null && total ? offerCompareAt(liveOffers, { quantity: q, price: total }, money.compareAt.trim() ? parseTND(money.compareAt) : null) : null;
               const setO = (patch: Partial<typeof o>) => set("offers", p.offers.map((x, j) => (j === i ? { ...x, ...patch } : x)));
               return (
                 <div key={o.id ?? `n${i}`} className="flex flex-col gap-2 rounded-xl border border-line p-3">

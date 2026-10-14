@@ -16,7 +16,7 @@ import { formatTND } from "@/lib/money";
 import { formatPhone, normalizePhone } from "@/lib/phone";
 import { GOVERNORATES, governorateLabel } from "@/lib/governorates";
 import { deliveryRangeLabel } from "@/lib/delivery";
-import { formatDay } from "@/lib/offer-display";
+import { discountPct, formatDay } from "@/lib/offer-display";
 import { IconCheck, IconMinus, IconPlus, IconTruck, IconWhatsApp } from "./Icons";
 
 type P = Omit<ProductPage, "related">;
@@ -215,7 +215,7 @@ export function BuyBox({ p, lang, settings, url, choice }: { p: P; lang: Lang; s
   }
   const blur = (k: keyof Form) => () => setTouched((x) => ({ ...x, [k]: true }));
   /** Enter moves to the next field instead of sending a half-filled order. */
-  const next = (id: string) => (e: React.KeyboardEvent<HTMLInputElement>) => {
+  const next = (id: string) => (e: React.KeyboardEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     if (e.key !== "Enter" || e.nativeEvent.isComposing) return;
     e.preventDefault();
     document.getElementById(id)?.focus();
@@ -229,8 +229,9 @@ export function BuyBox({ p, lang, settings, url, choice }: { p: P; lang: Lang; s
     variant: needsVariant,
     name: f.name.trim().length < 2,
     phone: !phone,
-    governorate: !f.governorate,
+    // In the order the fields are on screen: the first empty one gets the focus.
     address: f.address.trim().length < 4,
+    governorate: !f.governorate,
   };
   const show = (k: keyof typeof problems) => Boolean((touched[k] && problems[k]) || serverBad.includes(k));
 
@@ -315,10 +316,11 @@ export function BuyBox({ p, lang, settings, url, choice }: { p: P; lang: Lang; s
   const locale = lang === "ar" ? "ar-TN" : "fr-FR";
 
   return (
-    <form id="commander" onSubmit={submit} noValidate className="flex flex-col gap-5 rounded-3xl border border-line bg-white p-4 shadow-soft sm:p-6">
+    // A container: the fields go two by two when the form itself is wide enough, wherever it sits.
+    <form id="commander" onSubmit={submit} noValidate className="@container flex flex-col gap-4">
       {/* ------------------------------------------------------ 1. choose */}
       {p.offers.length > 0 && (
-        <fieldset className="flex min-w-0 flex-col gap-3">
+        <fieldset className="flex min-w-0 flex-col gap-2.5">
           <legend className="mb-2 text-[17px] font-bold text-ink">{t.buy.step1}</legend>
           {p.offers.map((o) => (
             <OfferCard
@@ -339,12 +341,12 @@ export function BuyBox({ p, lang, settings, url, choice }: { p: P; lang: Lang; s
       )}
 
       {p.variants.length > 0 && (
-        <div id="variants" className="flex flex-col gap-2.5" role="group" aria-labelledby="bb-variants-label">
+        <div id="variants" className="flex flex-col gap-2" role="group" aria-labelledby="bb-variants-label">
           <p id="bb-variants-label" className={`text-[17px] font-bold ${show("variant") ? "text-danger" : "text-ink"}`} aria-live="polite">
             {show("variant") ? t.buy.variantError : t.product.choose}
             {variant && <span className="font-normal text-muted"> · {variant.name}</span>}
           </p>
-          <div className="flex flex-wrap gap-2.5">
+          <div className="flex flex-wrap gap-2">
             {p.variants.map((v) => (
               <button
                 key={v.id}
@@ -392,17 +394,21 @@ export function BuyBox({ p, lang, settings, url, choice }: { p: P; lang: Lang; s
         <p className="rounded-2xl bg-sand px-4 py-4 text-[16px] text-ink-2">{t.product.outSub}</p>
       ) : (
         <>
-          {/* -------------------------------------------- 2. details */}
-          <fieldset className="flex min-w-0 flex-col gap-4" onFocus={start}>
+          {/* -------------------------------------------- 2. details: two by two when there is room, like the shops customers know */}
+          <fieldset className="grid min-w-0 items-start gap-x-3 gap-y-3.5 @lg:grid-cols-2" onFocus={start}>
             <legend className="mb-2 text-[17px] font-bold text-ink">{t.buy.step2}</legend>
             <Field id="name" label={t.buy.name} error={show("name") ? t.buy.nameError : null}>
               <input id="bb-name" value={f.name} onChange={(e) => update("name", e.target.value)} onBlur={blur("name")} onKeyDown={next("bb-phone")} enterKeyHint="next" autoComplete="name" placeholder={t.buy.namePh} className={inputCls(show("name"))} aria-invalid={show("name")} aria-describedby={show("name") ? "bb-name-msg" : undefined} data-testid="name" />
             </Field>
             <Field id="phone" label={t.buy.phone} error={show("phone") ? (f.phone.trim() ? t.checkout.phoneInvalid : t.buy.phoneRequired) : null} hint={t.buy.phoneHint}>
               <div className={`flex h-14 items-stretch overflow-hidden rounded-xl border-2 bg-white focus-within:border-sea ${show("phone") ? "border-danger" : "border-field"}`} dir="ltr">
-                <span className="flex items-center border-e-2 border-line bg-sand px-3 text-[18px] text-ink-2">+216</span>
-                <input id="bb-phone" value={f.phone} onChange={(e) => update("phone", e.target.value)} onBlur={blur("phone")} onKeyDown={next("bb-governorate")} enterKeyHint="next" inputMode="tel" autoComplete="tel-national" placeholder="22 123 456" maxLength={16} className="min-w-0 flex-1 bg-transparent px-3 text-[19px] tracking-wide outline-none placeholder:text-placeholder" aria-invalid={show("phone")} aria-describedby="bb-phone-msg" data-testid="phone" />
+                <span className="flex items-center border-e-2 border-line bg-sand px-2.5 text-[18px] text-ink-2">+216</span>
+                <input id="bb-phone" value={f.phone} onChange={(e) => update("phone", e.target.value)} onBlur={blur("phone")} onKeyDown={next("bb-address")} enterKeyHint="next" inputMode="tel" autoComplete="tel-national" placeholder="22 123 456" maxLength={16} className="min-w-0 flex-1 bg-transparent px-3 text-[19px] tracking-wide outline-none placeholder:text-placeholder" aria-invalid={show("phone")} aria-describedby="bb-phone-msg" data-testid="phone" />
               </div>
+            </Field>
+            <Field id="address" label={t.buy.address} error={show("address") ? t.buy.addressError : null} hint={t.buy.addressHint}>
+              {/* Grows with what is typed, so the whole address can be read again before confirming. */}
+              <textarea id="bb-address" value={f.address} onChange={(e) => update("address", e.target.value)} onBlur={blur("address")} onKeyDown={next("bb-governorate")} enterKeyHint="next" autoComplete="street-address" rows={2} maxLength={ADDRESS_MAX} placeholder={t.buy.addressPh} className={`${inputCls(show("address"))} h-auto max-h-40 min-h-14 resize-none py-3 leading-snug [field-sizing:content]`} aria-invalid={show("address")} aria-describedby="bb-address-msg" data-testid="address" />
             </Field>
             <Field id="governorate" label={t.buy.governorate} error={show("governorate") ? t.buy.govError : null}>
               <select id="bb-governorate" value={f.governorate} onChange={(e) => update("governorate", e.target.value)} onBlur={blur("governorate")} autoComplete="address-level1" className={inputCls(show("governorate"))} aria-invalid={show("governorate")} aria-describedby={show("governorate") ? "bb-governorate-msg" : undefined} data-testid="governorate">
@@ -414,13 +420,10 @@ export function BuyBox({ p, lang, settings, url, choice }: { p: P; lang: Lang; s
                 ))}
               </select>
             </Field>
-            <Field id="address" label={t.buy.address} error={show("address") ? t.buy.addressError : null} hint={t.buy.addressHint}>
-              <textarea id="bb-address" value={f.address} onChange={(e) => update("address", e.target.value)} onBlur={blur("address")} autoComplete="street-address" rows={2} maxLength={ADDRESS_MAX} className={`${inputCls(show("address"))} h-auto py-3 leading-snug`} aria-invalid={show("address")} aria-describedby="bb-address-msg" data-testid="address" />
-            </Field>
           </fieldset>
 
           {/* ------------------------------------------------ summary */}
-          <dl className="flex flex-col gap-2 rounded-2xl bg-sand/70 p-4 text-[16px]">
+          <dl className="flex flex-col gap-2 text-[16px]">
             <div className="flex justify-between gap-3 text-ink-2">
               <dt>
                 {t.buy.price}
@@ -441,15 +444,15 @@ export function BuyBox({ p, lang, settings, url, choice }: { p: P; lang: Lang; s
               </dt>
               <dd className="shrink-0 whitespace-nowrap ltr-nums">{delivery ? delivery.free ? <span className="font-bold text-olive">{t.product.free}</span> : formatTND(delivery.fee, lang) : <span className="text-muted">{t.buy.deliveryChoose}</span>}</dd>
             </div>
-            <div className="mt-1 flex items-baseline justify-between gap-3 border-t border-sand-2 pt-3">
+            <div className="flex items-baseline justify-between gap-3 border-t border-line pt-2.5">
               <dt className="font-bold text-ink">{t.buy.total}</dt>
-              <dd className="shrink-0 whitespace-nowrap text-[24px] font-bold text-ink ltr-nums" data-testid="total">
+              <dd className="shrink-0 whitespace-nowrap text-[23px] font-bold text-ink ltr-nums" data-testid="total">
                 {priced && delivery ? formatTND(quote.total, lang) : "—"}
               </dd>
             </div>
             {delivery && (
               <p className="flex items-center gap-2 text-[15px] text-muted">
-                <IconTruck className="h-4 w-4" />
+                <IconTruck className="h-4 w-4 shrink-0" />
                 {t.checkout.deliveryDelay(deliveryRangeLabel(delivery.minDays, delivery.maxDays, lang))}
               </p>
             )}
@@ -457,19 +460,33 @@ export function BuyBox({ p, lang, settings, url, choice }: { p: P; lang: Lang; s
             {!delivery && settings.delivery.freeThreshold != null && <p className="text-[15px] text-muted">{t.product.freeFrom(formatTND(settings.delivery.freeThreshold, lang))}</p>}
           </dl>
 
+          {error && (
+            <p className="rounded-xl bg-clay-soft px-4 py-3 text-[16px] text-clay" role="alert">
+              {error}
+            </p>
+          )}
+
+          <button type="submit" disabled={busy} className="flex min-h-[60px] w-full items-center justify-center gap-3 rounded-2xl bg-navy px-4 py-2.5 text-white shadow-soft transition hover:bg-night active:scale-[.99] disabled:bg-night" data-testid="place-order">
+            <IconTruck className="h-7 w-7 shrink-0" />
+            <span className="flex flex-col items-start leading-tight">
+              <span className="text-[19px] font-bold">{busy ? t.buy.sending : t.buy.submit}</span>
+              {!busy && <span className="text-[14px] text-white/90">{t.buy.submitSub}</span>}
+            </span>
+          </button>
+
           {!showPromo && !promo ? (
-            <button type="button" onClick={() => setShowPromo(true)} className="-mt-2 self-start text-[15px] text-sea underline underline-offset-4">
+            <button type="button" onClick={() => setShowPromo(true)} className="inline-flex min-h-11 items-center self-center px-3 text-[16px] text-sea underline underline-offset-4">
               {t.buy.promo}
             </button>
           ) : promo ? (
-            <div className="-mt-2 flex items-center justify-between text-[15px]">
+            <div className="flex items-center justify-between text-[15px]">
               <span className="rounded-full bg-sea-soft px-3 py-1 font-bold text-sea-2 ltr-nums">{promo}</span>
               <button type="button" className="text-muted underline" onClick={() => setPromo(null)}>
                 {t.checkout.removeCode}
               </button>
             </div>
           ) : (
-            <div className="-mt-2 flex gap-2">
+            <div className="flex gap-2">
               <input
                 value={promoInput}
                 onChange={(e) => setPromoInput(e.target.value.toUpperCase())}
@@ -491,23 +508,13 @@ export function BuyBox({ p, lang, settings, url, choice }: { p: P; lang: Lang; s
               </button>
             </div>
           )}
-          {promo && promoError && <p className="-mt-3 text-[15px] text-danger">{promoError}</p>}
+          {promo && promoError && <p className="-mt-2 text-[15px] text-danger">{promoError}</p>}
 
-          {error && (
-            <p className="rounded-xl bg-clay-soft px-4 py-3 text-[16px] text-clay" role="alert">
-              {error}
-            </p>
-          )}
-
-          <button type="submit" disabled={busy} className="flex min-h-16 w-full flex-col items-center justify-center rounded-2xl bg-sea px-4 py-3 text-white shadow-soft transition hover:bg-sea-2 active:scale-[.99] disabled:bg-sea-2" data-testid="place-order">
-            <span className="text-[19px] font-bold leading-tight">{busy ? t.buy.sending : t.buy.submit}</span>
-            {!busy && <span className="text-[14px] leading-tight text-white/90">{t.buy.submitSub}</span>}
-          </button>
-          <div className="-mt-2 flex flex-col gap-2 text-center text-[15px] leading-relaxed text-muted">
+          <div className="flex flex-col gap-1.5 text-center text-[15px] leading-relaxed text-muted">
             <p>{t.buy.reassure}</p>
             <p>
               {t.buy.consentPhone} {t.buy.consentTerms}{" "}
-              <Link href={href(lang, "/conditions")} className="underline underline-offset-2" prefetch={false}>
+              <Link href={href(lang, "/conditions")} className="py-2 underline underline-offset-2" prefetch={false}>
                 {t.buy.termsLink}
               </Link>
               .
@@ -515,11 +522,11 @@ export function BuyBox({ p, lang, settings, url, choice }: { p: P; lang: Lang; s
           </div>
 
           {(shopPhone || settings.contact.whatsapp) && (
-            <div className="flex flex-col gap-2 border-t border-line pt-4">
+            <div className="grid gap-2 border-t border-line pt-4 @lg:grid-cols-2">
               {shopPhone && (
                 <a
                   href={`tel:+216${shopPhone}`}
-                  className="flex min-h-12 items-center justify-center gap-2 rounded-xl border-2 border-field text-[16px] text-ink"
+                  className="flex min-h-12 items-center justify-center gap-2 rounded-xl border-2 border-field px-3 text-center text-[16px] text-ink"
                   onClick={() => {
                     track("phone_clicked", { productId: p.id, props: { where: "product" } });
                     pixelContact();
@@ -537,7 +544,7 @@ export function BuyBox({ p, lang, settings, url, choice }: { p: P; lang: Lang; s
                     track("whatsapp_clicked", { productId: p.id, props: { where: "product" } });
                     pixelContact();
                   }}
-                  className="flex min-h-12 items-center justify-center gap-2 rounded-xl bg-[#e8f6ee] text-[16px] font-bold text-[#17663a]"
+                  className="flex min-h-12 items-center justify-center gap-2 rounded-xl bg-[#e8f6ee] px-3 text-[16px] font-bold text-[#17663a]"
                 >
                   <IconWhatsApp className="h-5 w-5" />
                   {t.buy.whatsapp}
@@ -553,56 +560,69 @@ export function BuyBox({ p, lang, settings, url, choice }: { p: P; lang: Lang; s
   );
 }
 
+/**
+ * One offer, laid out like the cards Tunisian shoppers already know: the
+ * picture with its quantity, the name, the price with the real price it
+ * replaces and the saving, and the round choice at the end.
+ */
 function OfferCard({ o, lang, locale, imageId, checked, disabled, onSelect }: { o: Offer; lang: Lang; locale: string; imageId: string | null; checked: boolean; disabled: boolean; onSelect: () => void }) {
   const t = dict(lang);
-  // "Instead of" comes from the server: the same units at the shop's own one-unit offer, or nothing.
-  const saving = o.compareAt != null ? o.compareAt - o.price : 0;
+  // "Instead of" comes from the server: a real price, or nothing. The % is only
+  // given for packs, all measured against the same one-unit offer, so a bigger
+  // pack never looks like a smaller saving.
+  const pct = o.quantity > 1 ? discountPct(o.price, o.compareAt) : 0;
+  const struck = o.compareAt != null && o.compareAt > o.price ? o.compareAt : null;
   return (
     <label
-      className={`relative flex items-center gap-3 rounded-2xl border-2 p-3 transition ${
-        disabled ? "cursor-not-allowed border-dashed border-line bg-sand/50 opacity-70" : checked ? "cursor-pointer border-sea bg-sea-soft/60" : "cursor-pointer border-field bg-white hover:border-sea/60"
+      className={`relative flex items-center gap-3 rounded-2xl border-2 p-2.5 transition sm:p-3 ${
+        disabled ? "cursor-not-allowed border-dashed border-line bg-sand/50 opacity-70" : checked ? "cursor-pointer border-sea bg-sea-soft/50 shadow-soft" : "cursor-pointer border-field bg-white hover:border-sea/60"
       }`}
     >
-      <input type="radio" name="offer" checked={checked} disabled={disabled} onChange={onSelect} className="h-6 w-6 shrink-0 accent-[var(--color-sea)]" data-testid={`offer-${o.quantity}`} />
-      <span className="relative h-16 w-16 shrink-0 overflow-hidden rounded-xl bg-sand">
+      <span className="relative h-[72px] w-[72px] shrink-0 overflow-hidden rounded-xl bg-sand">
         {imageId && (
           // eslint-disable-next-line @next/next/no-img-element
-          <img src={`/api/img/${imageId}/128`} alt="" className="h-full w-full object-cover" />
+          <img src={`/api/img/${imageId}/200`} alt="" className="h-full w-full object-cover" loading="lazy" decoding="async" />
         )}
-        <span className="absolute bottom-1 end-1 rounded-md bg-sea px-1.5 text-[13px] font-bold text-white ltr-nums">×{o.quantity}</span>
+        <span aria-hidden className="absolute bottom-1 end-1 rounded-md bg-sea px-2 text-[15px] font-bold leading-6 text-white ltr-nums">×{o.quantity}</span>
       </span>
       <span className="flex min-w-0 flex-1 flex-col gap-1">
-        {o.mostChosen && !disabled && (
-          <span className="inline-flex items-center gap-1 self-start rounded-full bg-sea px-2 py-0.5 text-[14px] font-bold text-white">
-            <IconCheck className="h-3.5 w-3.5" /> {t.buy.mostChosen}
-          </span>
-        )}
-        <span className="text-[17px] font-bold leading-snug text-ink">{pick(lang, o.label, o.labelAr)}</span>
-        <span className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
+        <span className="flex flex-wrap items-center gap-x-2 gap-y-1">
+          <span className="text-[17px] font-bold leading-snug text-ink">{pick(lang, o.label, o.labelAr)}</span>
+          {o.mostChosen && !disabled && (
+            <span className="inline-flex items-center gap-1 rounded-full bg-sea px-2 py-0.5 text-[14px] font-bold text-white">
+              <IconCheck className="h-3.5 w-3.5" /> {t.buy.mostChosen}
+            </span>
+          )}
+        </span>
+        <span className="relative flex flex-wrap items-center gap-x-2 gap-y-1">
           <span className="whitespace-nowrap text-[19px] font-bold text-ink ltr-nums">{formatTND(o.price, lang)}</span>
-          {saving > 0 && o.compareAt != null && <span className="whitespace-nowrap text-[15px] text-muted line-through ltr-nums">{formatTND(o.compareAt, lang)}</span>}
+          {struck != null && !disabled && (
+            <>
+              <span className="sr-only">{t.buy.instead(formatTND(struck, lang))}</span>
+              <span aria-hidden className="whitespace-nowrap text-[15px] text-muted line-through ltr-nums">{formatTND(struck, lang)}</span>
+            </>
+          )}
+          {pct > 0 && !disabled && <span className="rounded-full bg-olive px-2 py-0.5 text-[14px] font-bold text-white ltr-nums">−{pct}%</span>}
         </span>
         {disabled ? (
           <span className="text-[15px] text-muted">{t.buy.packTooBig}</span>
         ) : (
-          <>
-            {(saving > 0 || o.freeDelivery) && (
-              <span className="flex flex-wrap gap-1.5">
-                {saving > 0 && <span className="rounded-lg bg-olive-soft px-2 py-0.5 text-[15px] font-bold text-olive">{t.buy.save(formatTND(saving, lang))}</span>}
-                {o.freeDelivery && <span className="rounded-lg bg-sea-soft px-2 py-0.5 text-[15px] font-bold text-sea-2">{t.buy.freeDelivery}</span>}
-              </span>
-            )}
-            {o.lastDay && <span className="text-[15px] text-muted">{t.buy.until(formatDay(o.lastDay, locale))}</span>}
-          </>
+          (o.freeDelivery || o.lastDay) && (
+            <span className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[15px]">
+              {o.freeDelivery && <span className="rounded-lg bg-olive-soft px-2 py-0.5 font-bold text-olive">{t.buy.freeDelivery}</span>}
+              {o.lastDay && <span className="text-muted">{t.buy.until(formatDay(o.lastDay, locale))}</span>}
+            </span>
+          )
         )}
       </span>
+      <input type="radio" name="offer" checked={checked} disabled={disabled} onChange={onSelect} className="h-6 w-6 shrink-0 accent-[var(--color-sea)]" data-testid={`offer-${o.quantity}`} />
     </label>
   );
 }
 
 function Field({ id, label, hint, error, children }: { id: string; label: string; hint?: string; error?: string | null; children: React.ReactNode }) {
   return (
-    <div className="flex flex-col gap-1.5">
+    <div className="flex min-w-0 flex-col gap-1">
       <label htmlFor={`bb-${id}`} className="text-[16px] font-bold text-ink">
         {label}
       </label>
@@ -612,7 +632,7 @@ function Field({ id, label, hint, error, children }: { id: string; label: string
           {error}
         </p>
       ) : hint ? (
-        <p id={`bb-${id}-msg`} className="text-[15px] text-muted">
+        <p id={`bb-${id}-msg`} className="text-[15px] leading-snug text-muted">
           {hint}
         </p>
       ) : null}
@@ -621,5 +641,5 @@ function Field({ id, label, hint, error, children }: { id: string; label: string
 }
 
 function inputCls(invalid: boolean) {
-  return `h-14 w-full rounded-xl border-2 bg-white px-3 text-[18px] text-ink outline-none placeholder:text-placeholder focus:border-sea ${invalid ? "border-danger" : "border-field"}`;
+  return `h-14 w-full min-w-0 rounded-xl border-2 bg-white px-3 text-[18px] text-ink outline-none placeholder:text-placeholder focus:border-sea ${invalid ? "border-danger" : "border-field"}`;
 }

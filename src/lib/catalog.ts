@@ -74,7 +74,7 @@ type PriceRow = { price: number; compareAt: number | null; variants: { price: nu
 export function cardPrice(p: PriceRow, now = Date.now()) {
   const live = offersApply(p.price, p.variants) ? p.offers.filter((o) => !o.endsAt || o.endsAt.getTime() > now) : [];
   const lead = leadOffer(live);
-  if (lead) return { price: lead.price, priceFrom: false, packOf: lead.quantity > 1 ? lead.quantity : null, compareAt: null };
+  if (lead) return { price: lead.price, priceFrom: false, packOf: lead.quantity > 1 ? lead.quantity : null, compareAt: offerCompareAt(live, lead, p.compareAt) };
   const variantPrices = p.variants.map((v) => v.price ?? p.price);
   const minPrice = variantPrices.length ? Math.min(...variantPrices) : p.price;
   return { price: minPrice, priceFrom: variantPrices.some((x) => x !== minPrice), packOf: null, compareAt: p.compareAt != null && p.compareAt > minPrice ? p.compareAt : null };
@@ -305,7 +305,7 @@ export const getProduct = unstable_cache(
       reviews: reviews.map((r) => ({ ...r, createdAt: r.createdAt.toISOString() })),
       rating: agg._count._all > 0 ? { avg: agg._avg.rating ?? 0, count: agg._count._all } : null,
       maxUnits,
-      offers: offers.map(({ endsAt, ...o }) => ({ ...o, lastDay: endsAt ? offerLastDay(endsAt) : null, compareAt: offerCompareAt(offers, o), mostChosen: o.id === mostChosen })),
+      offers: offers.map(({ endsAt, ...o }) => ({ ...o, lastDay: endsAt ? offerLastDay(endsAt) : null, compareAt: offerCompareAt(offers, o, p.compareAt), mostChosen: o.id === mostChosen })),
       related,
     };
   },

@@ -11,6 +11,7 @@ import { ConsentAndPixels } from "@/components/shop/Consent";
 import { WhatsAppFloat } from "@/components/shop/WhatsAppButton";
 import { SITE_URL } from "@/lib/site";
 import { normalizePhone } from "@/lib/phone";
+import { deliversEverywhere } from "@/lib/governorates";
 
 // Atkinson Hyperlegible: letters that cannot be mistaken for one another (I/l/1, O/0), for readers with low vision.
 const body = Atkinson_Hyperlegible_Next({ subsets: ["latin"], variable: "--font-body", display: "swap" });
@@ -47,7 +48,7 @@ export default async function ShopLayout({ children, params }: LayoutProps<"/[la
   const t = dict(lang);
   const [settings, categories] = await Promise.all([getSettings(), getCategories()]);
   const cats = categories.map((c) => ({ slug: c.slug, name: c.name, nameAr: c.nameAr }));
-  const announcement = [t.trust.cod, t.trust.delivery, t.trust.returns(settings.returns.days)];
+  const announcement = [t.trust.cod, deliversEverywhere(settings.delivery.zones) ? t.trust.delivery : t.trust.deliveryHome, t.trust.returns(settings.returns.days)];
 
   return (
     <html lang={lang === "ar" ? "ar-TN" : "fr-TN"} dir={t.dir} className={`shop-root ${body.variable} ${plexAr.variable}`}>

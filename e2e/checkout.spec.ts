@@ -76,12 +76,15 @@ test("arabic pages are right-to-left", async ({ page }) => {
 
 test("a pack's saving is measured against the shop's own one-unit offer", async ({ page }) => {
   await page.goto("/produit/diffuseur-huiles-essentielles");
-  // "1 unité" is 69,000, so three cost 207,000 one by one; the pack is 138,000.
+  // "1 unité" is 69,000, so three cost 207,000 one by one; the pack is 138,000, a third less.
   const pack = page.locator("label", { has: page.getByTestId("offer-3") });
-  await expect(pack.getByText("207,000 DT")).toBeVisible();
-  await expect(pack.getByText("Vous économisez 69,000 DT")).toBeVisible();
-  // The single unit never claims a saving.
-  await expect(page.locator("label", { has: page.getByTestId("offer-1") }).getByText(/Vous économisez/)).toHaveCount(0);
+  await expect(pack.getByText("207,000 DT", { exact: true })).toBeVisible();
+  await expect(pack.getByText("−33%")).toBeVisible();
+  // The single unit strikes only the product's real former price (79,000 in the demo), with no %:
+  // every % on the cards is measured against the same one-unit offer.
+  const one = page.locator("label", { has: page.getByTestId("offer-1") });
+  await expect(one.getByText("79,000 DT", { exact: true })).toBeVisible();
+  await expect(one.getByText(/%/)).toHaveCount(0);
 });
 
 test("Enter in the promo field applies the code instead of sending the order", async ({ page }) => {

@@ -14,6 +14,12 @@
   /* Borders of things to fill in or tap: at least 3:1 on white, so a box reads as a box. */
   --color-field: #848f9c;
   --color-placeholder: #6b7684;
+  /* Amazon's arrangement in a calmer night blue: header, category strip, order button. */
+  --color-night: #172536;
+  --color-night-2: #22364c;
+  --color-amber: #f2c46b;
+  --color-amber-2: #e8b14f;
+  --color-navy: #15395c;
   --color-ink: #1c2633;
   --color-ink-2: #364352;
   --color-muted: #566373;
@@ -125,8 +131,9 @@ body {
 }
 
 /* Links to a part of the page (#commander, #avis) land below the sticky header, not under it. */
+/* On a phone the header scrolls away; from tablet width it stays, so links land below it. */
 html {
-  scroll-padding-top: 11.5rem;
+  scroll-padding-top: 1rem;
 }
 @media (min-width: 768px) {
   html {
@@ -134,9 +141,10 @@ html {
   }
 }
 
+/* The ring's colour can be changed per area (the dark header sets it to amber). */
 :focus-visible {
-  outline: 2px solid var(--color-sea);
-  outline-offset: 2px;
+  outline: 2px solid var(--focus-ring, var(--color-sea));
+  outline-offset: var(--focus-offset, 2px);
 }
 
 @media (prefers-reduced-motion: reduce) {

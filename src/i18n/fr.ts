@@ -18,6 +18,7 @@ export const fr = {
     codSub: "Vous payez quand vous recevez",
     delivery: "Livraison 24 gouvernorats",
     deliverySub: "À domicile",
+    deliveryHome: "Livraison à domicile",
     returns: (d: number) => `Retour sous ${d} jours`,
     returnsSub: "Simple et sans frais cachés",
     support: "Une question ?",
@@ -40,6 +41,8 @@ export const fr = {
       ["Vous payez à la réception", "Le livreur vous remet le colis, vous payez en espèces."],
     ] as [string, string][],
     empty: "La boutique ouvre bientôt. Les produits arrivent.",
+    prev: "Précédent",
+    next: "Suivant",
     seeMore: "Voir plus",
   },
   product: {
@@ -70,6 +73,7 @@ export const fr = {
     added: "Ajouté au panier",
     from: "à partir de",
     pack: (n: number) => `Lot de ${n}`,
+    photo: (n: number, total: number) => `Photo ${n} sur ${total}`,
     save: (amount: string) => `−${amount}`,
     whatsappText: (name: string, variant: string | null, price: string, url: string) =>
       `Bonjour, je voudrais commander : ${name}${variant ? ` (${variant})` : ""} — ${price}\n${url}`,
@@ -99,6 +103,7 @@ export const fr = {
     chooseGov: "Choisissez votre gouvernorat",
     address: "Adresse de livraison",
     addressHint: "Ville, rue, numéro, et un repère (à côté de…).",
+    addressPh: "Ex. : Sousse, rue Ibn Khaldoun 12, à côté de la pharmacie",
     nameError: "Écrivez votre nom.",
     phoneRequired: "Écrivez votre numéro de téléphone.",
     govError: "Choisissez votre gouvernorat.",

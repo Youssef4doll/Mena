@@ -40,3 +40,8 @@ export function governorateLabel(id: string, locale: "fr" | "ar"): string {
   if (locale === "fr") return id;
   return GOVERNORATES.find((g) => g.id === id)?.ar ?? id;
 }
+
+/** "Livraison 24 gouvernorats" is said only while the shop really delivers to all of them. */
+export function deliversEverywhere(zones: Record<string, { enabled: boolean } | undefined>): boolean {
+  return GOVERNORATES.every((g) => zones[g.id]?.enabled !== false);
+}

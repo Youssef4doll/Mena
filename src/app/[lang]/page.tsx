@@ -4,12 +4,13 @@ import { dict, href, isLang, pick, type Lang } from "@/i18n";
 import { getHome, getHomeCategories } from "@/lib/catalog";
 import { getSettings } from "@/lib/settings";
 import { formatTND } from "@/lib/money";
-import { governorateLabel } from "@/lib/governorates";
+import { deliversEverywhere, governorateLabel } from "@/lib/governorates";
 import { ProductRow } from "@/components/shop/ProductCard";
 import { TrustBar } from "@/components/shop/TrustBar";
 import { Stars } from "@/components/shop/Stars";
 import { Img, Placeholder } from "@/components/shop/Img";
 import { IconChevron } from "@/components/shop/Icons";
+import { Scroller } from "@/components/shop/Scroller";
 import { JsonLd, organizationLd } from "@/lib/seo";
 
 export const revalidate = 60;
@@ -29,21 +30,22 @@ export default async function Home({ params }: PageProps<"/[lang]">) {
   const [settings, home, cats] = await Promise.all([getSettings(), getHome(), getHomeCategories()]);
   const hero = settings.hero;
   const empty = home.newest.length === 0;
+  // Amazon's boxes always hold four pictures; a thinner category stays in the card row and the menu.
+  const full = cats.filter((c) => c.products.length >= 4);
+  const boxes = full.length > 0 ? full : cats.filter((c) => c.products.length >= 2);
 
   return (
     <>
       <JsonLd data={organizationLd(settings)} />
 
-      {/* ---------------------------------------------------- welcome */}
+      {/* ------------------------------------------- welcome, one line */}
       <section className="bg-gradient-to-b from-sea-soft to-cream">
-        <div className="mx-auto flex max-w-6xl flex-col gap-5 px-4 pb-6 pt-6 md:flex-row md:items-center md:gap-10 md:pb-10 md:pt-10">
-          <div className="flex flex-1 flex-col items-start gap-3">
-            <h1 className="text-[30px] font-bold leading-tight text-ink sm:text-[40px]">{pick(lang, hero.title, hero.titleAr)}</h1>
-            <p className="max-w-xl text-[18px] leading-relaxed text-ink-2">{pick(lang, hero.subtitle, hero.subtitleAr)}</p>
-          </div>
+        <div className="mx-auto max-w-6xl px-4 pb-4 pt-4 md:pb-6 md:pt-6">
+          <h1 className="text-[24px] font-bold leading-tight text-ink sm:text-[30px]">{pick(lang, hero.title, hero.titleAr)}</h1>
+          <p className="mt-1 text-[16px] leading-snug text-ink-2 sm:text-[18px]">{pick(lang, hero.subtitle, hero.subtitleAr)}</p>
           {hero.imageId && (
-            <div className="relative aspect-[16/9] w-full overflow-hidden rounded-3xl md:w-[45%]">
-              <Img image={{ id: hero.imageId, blur: null, width: 1600, height: 900 }} alt="" sizes="(min-width: 768px) 45vw, 100vw" priority />
+            <div className="relative mt-4 aspect-[16/7] w-full overflow-hidden rounded-2xl md:aspect-[21/6]">
+              <Img image={{ id: hero.imageId, blur: null, width: 1600, height: 700 }} alt="" sizes="(min-width: 1152px) 1120px, 100vw" priority />
             </div>
           )}
         </div>
@@ -51,41 +53,42 @@ export default async function Home({ params }: PageProps<"/[lang]">) {
 
       {empty && <p className="mx-auto max-w-6xl px-4 py-16 text-center text-[18px] text-muted">{t.home.empty}</p>}
 
-      {/* ------------------------------------------ big category cards */}
+      {/* ---------------- Amazon's tall cards: a bold title over a big picture */}
       {cats.length > 0 && (
         <section className="mx-auto max-w-6xl px-4" aria-label={t.home.categories}>
-          <div className="-mx-4 flex snap-x gap-3 overflow-x-auto px-4 pb-2 no-scrollbar md:mx-0 md:grid md:grid-cols-4 md:overflow-visible md:px-0">
+          <Scroller prev={t.home.prev} next={t.home.next}>
             {cats.slice(0, 8).map((c, i) => {
               const image = c.imageId ?? c.products[0]?.images[0]?.id ?? null;
               return (
                 <Link
                   key={c.slug}
                   href={href(lang, `/categorie/${c.slug}`)}
-                  className={`group flex w-[72%] shrink-0 snap-start flex-col overflow-hidden rounded-3xl sm:w-[44%] md:w-auto ${TINTS[i % TINTS.length]}`}
+                  className={`group relative flex aspect-[5/7] w-[64%] shrink-0 snap-start flex-col overflow-hidden rounded-2xl sm:w-[40%] md:w-[calc((100%-2.25rem)/4.3)] lg:w-[calc((100%-2.25rem)/4)] ${TINTS[i % TINTS.length]}`}
                 >
-                  <span className="px-4 pb-2 pt-4 text-[22px] font-bold leading-tight text-ink">{pick(lang, c.headline || c.name, c.headlineAr || c.nameAr)}</span>
-                  <span className="relative mx-4 mb-4 aspect-[4/3] overflow-hidden rounded-2xl bg-white/60">
-                    {image ? <Img image={{ id: image, blur: null, width: 800, height: 600 }} alt="" sizes="(min-width: 1024px) 25vw, 72vw" className="transition duration-500 group-hover:scale-[1.03]" priority={i < 2} /> : <Placeholder />}
+                  {/* As on Amazon: the picture fills the card, the title sits on it over a soft fade. */}
+                  <span className="absolute inset-0">
+                    {image ? <Img image={{ id: image, blur: null, width: 800, height: 1100 }} alt="" sizes="(min-width: 768px) 25vw, 64vw" className="transition duration-500 group-hover:scale-[1.03]" priority={i < 2} /> : <Placeholder />}
                   </span>
+                  <span className="relative z-10 bg-gradient-to-b from-white/90 via-white/60 to-transparent px-4 pb-10 pt-4 text-[23px] font-extrabold leading-[1.1] text-ink md:text-[26px]">{pick(lang, c.headline || c.name, c.headlineAr || c.nameAr)}</span>
                 </Link>
               );
             })}
-          </div>
+          </Scroller>
         </section>
       )}
 
-      <section className="mx-auto mt-6 max-w-6xl px-4">
-        <TrustBar lang={lang} returnDays={settings.returns.days} whatsapp={Boolean(settings.contact.whatsapp)} />
-      </section>
-
-      {/* --------------------------------------- four products per card */}
-      {cats.length > 0 && (
-        <section className="mx-auto mt-8 grid max-w-6xl gap-4 px-4 sm:grid-cols-2 lg:grid-cols-4">
-          {cats.map((c) => (
+      {/* ------------------- four products per card, for the categories that have four */}
+      {boxes.length > 0 && (
+        <section className="mx-auto mt-4 grid max-w-6xl gap-3 px-4 sm:grid-cols-2 lg:grid-cols-4">
+          {boxes.map((c) => (
             <CategoryBox key={c.slug} c={c} lang={lang} />
           ))}
         </section>
       )}
+
+      <section className="mx-auto mt-8 max-w-6xl px-4">
+        <TrustBar lang={lang} returnDays={settings.returns.days} whatsapp={Boolean(settings.contact.whatsapp)} everywhere={deliversEverywhere(settings.delivery.zones)} />
+      </section>
 
       {/* --------------------------------------------------- shelves */}
       {home.featured.length > 0 && (
@@ -155,9 +158,9 @@ function CategoryBox({ c, lang }: { c: HomeCategory; lang: Lang }) {
   const t = dict(lang);
   const title = pick(lang, c.headline || c.name, c.headlineAr || c.nameAr);
   return (
-    <div className="flex flex-col rounded-3xl border border-line bg-white p-4">
+    <div className="flex flex-col rounded-2xl border border-line bg-white p-4">
       <Link href={href(lang, `/categorie/${c.slug}`)} className="mb-3 flex items-start justify-between gap-2">
-        <h2 className="text-[21px] font-bold leading-tight text-ink">{title}</h2>
+        <h2 className="text-[21px] font-extrabold leading-tight text-ink">{title}</h2>
         <IconChevron className="mt-1 h-5 w-5 shrink-0 text-muted" />
       </Link>
       <div className="grid grid-cols-2 gap-3">
@@ -173,9 +176,9 @@ function CategoryBox({ c, lang }: { c: HomeCategory; lang: Lang }) {
               {out ? (
                 <span className="text-[15px] font-bold text-muted">{t.product.out}</span>
               ) : (
-                <span className="text-[16px] font-bold text-ink ltr-nums">
-                  {note && <span className="me-1 text-[14px] font-normal text-muted">{note}</span>}
-                  {formatTND(p.price, lang)}
+                <span className="flex flex-col items-start text-[16px] font-bold text-ink">
+                  {note && <span className="text-[14px] font-normal text-muted">{note}</span>}
+                  <span className="whitespace-nowrap ltr-nums">{formatTND(p.price, lang)}</span>
                 </span>
               )}
             </Link>

@@ -1,6 +1,7 @@
 import Link from "next/link";
 import type { ProductCard as Card } from "@/lib/catalog";
 import { dict, href, pick, type Lang } from "@/i18n";
+import { discountPct } from "@/lib/offer-display";
 import { Img } from "./Img";
 import { Price } from "./Price";
 import { Stars } from "./Stars";
@@ -19,7 +20,7 @@ export function ProductCard({ p, lang, priority = false }: { p: Card; lang: Lang
         <Img image={p.images[0] ?? null} alt={p.images[0]?.alt ?? name} sizes="(min-width: 1024px) 25vw, (min-width: 640px) 33vw, 50vw" priority={priority} className={`transition duration-500 group-hover:scale-[1.02] ${out ? "opacity-60 grayscale" : ""}`} />
         <div className="absolute start-2 top-2 flex flex-col items-start gap-1">
           {out && <span className="rounded-full bg-ink/80 px-2.5 py-1 text-[14px] font-bold text-white">{t.product.out}</span>}
-          {!out && p.compareAt && <span className="rounded-full bg-olive px-2.5 py-1 text-[14px] font-bold text-white ltr-nums">−{Math.round((1 - p.price / p.compareAt) * 100)}%</span>}
+          {!out && discountPct(p.price, p.compareAt) > 0 && <span className="rounded-full bg-olive px-2.5 py-1 text-[14px] font-bold text-white ltr-nums">−{discountPct(p.price, p.compareAt)}%</span>}
         </div>
       </div>
       <div className="flex flex-1 flex-col gap-1.5 p-3">

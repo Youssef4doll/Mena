@@ -12,7 +12,9 @@ Boutique en ligne pour la Tunisie : dropshipping, paiement à la livraison, fran
 ## Boutique
 
 - Pensée pour des clients qui ne sont pas à l'aise avec les sites : gros caractères (Atkinson Hyperlegible), couleurs douces, contrastes vérifiés, cases bien visibles.
-- Accueil organisé comme Amazon : grandes cartes de catégories, boîtes « 4 produits », rayons.
+- Accueil organisé comme Amazon : en-tête sombre avec une grande recherche, hautes cartes de catégories avec flèches, boîtes « 4 produits », rayons.
+- Fiche produit organisée comme les boutiques tunisiennes que les clients connaissent : photos (vignettes sur le côté sur ordinateur), prix, offres en cartes (image ×N, prix barré réel, % sur les lots), formulaire nom | téléphone et adresse | gouvernorat, gros bouton sombre. Sur téléphone, le nom et le prix tiennent sur le premier écran.
+- Rapide sur téléphone : contenu principal affiché en 0,8 à 1,3 s en 4G lente avec un processeur ralenti ×4, sans décalage de mise en page.
 - **Pas de panier** : on commande sur la fiche produit, dans un seul formulaire. On choisit l'offre (« 1 unité », « 2 + 1 offerte »…), puis nom, téléphone (+216, 8 chiffres), gouvernorat, adresse, et on confirme. Paiement à la livraison, sans compte ni e-mail.
 - Frais et délai de livraison par gouvernorat, total affiché avant de confirmer, tirés des réglages.
 - Bouton WhatsApp sur chaque fiche, et confirmation WhatsApp proposée après la commande.
