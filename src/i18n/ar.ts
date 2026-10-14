@@ -1,6 +1,6 @@
 import type { Dict } from "./fr";
 
-/** Storefront copy, Arabic (RTL). Plain Arabic a Tunisian reads at a glance. */
+/** Storefront copy, Arabic (RTL), the shop's main language: plain Tunisian, read at a glance. */
 export const ar: Dict = {
   dir: "rtl",
   nav: {
@@ -26,6 +26,8 @@ export const ar: Dict = {
     support: "عندك سؤال؟",
     supportSub: "نجاوبوك على واتساب",
     openBeforePaying: "تنجم تثبّت في الطرد قبل ما تخلّص",
+    waBubble: "عندك سؤال؟ ابعثلنا على واتساب",
+    waHello: "السلام، عندي سؤال",
   },
   home: {
     shopNow: "اكتشف المتجر",
@@ -82,6 +84,16 @@ export const ar: Dict = {
     pack: (n) => `${n} حبات`,
     photo: (n, total) => `صورة ${n} من ${total}`,
     save: (amount) => `−${amount}`,
+    soldSuffix: "طلبية في آخر 30 يوم",
+    soldShort: "طلبية",
+    specs: "المواصفات",
+    video: "فيديو",
+    playVideo: "شغّل الفيديو",
+    zoom: "شوف التصويرة بالكبير",
+    zoomIn: "كبّر",
+    zoomOut: "صغّر",
+    oldPrice: "السوم قبل:",
+    moreAbout: "كل شي على المنتوج هذا",
     whatsappText: (name, variant, price, url) => `السلام، نحب نطلب: ${name}${variant ? ` (${variant})` : ""} — ${price}\n${url}`,
   },
   buy: {
@@ -122,7 +134,7 @@ export const ar: Dict = {
     plusDelivery: "+ التوصيل",
     total: "المجموع اللي تخلّصو كي تستلم",
     submit: "أكّد الطلبية",
-    submitSub: "الدفع عند الاستلام، كاش",
+    submitSub: "تخلّص كي تستلم، كاش",
     sending: "نبعثو…",
     callUs: "ولا أطلب بالتليفون",
     whatsapp: "أطلب على واتساب",
@@ -135,8 +147,27 @@ export const ar: Dict = {
     termsLink: "شروط البيع",
   },
   cart: {
+    title: "السلة متاعك",
     delivery: "التوصيل",
     total: "المجموع",
+    added: "تزاد للسلة",
+    already: "موجود في السلة من قبل",
+    full: "السلة عامرة: 30 منتوج على الأكثر.",
+    checkout: (n) => `كمّل الطلبية (${n})`,
+    keepShopping: "كمّل التسوّق",
+    empty: "السلة فارغة.",
+    emptySub: "زيد منتوجات من صفحاتهم، بـ « زيد للسلة ».",
+    items: (n) => `المنتوجات (${n})`,
+    remove: "نحّي",
+    open: (n) => `السلة، فيها ${n}`,
+    qtyReduced: (name, n) => `${name}: ما بقاش كان ${n}.`,
+    gone: (name) => `${name} ما عادش متوفّر، نحّيناه من السلة.`,
+    offerGone: (name) => `العرض متاع ${name} وفى، نحّيناه من السلة.`,
+    needsOption: (name) => `${name}: اختار الخيار من صفحة المنتوج.`,
+    restored: "لقينا السلة متاعك.",
+    unit: (price) => `${price} للحبة`,
+    submit: "أكّد الطلبية",
+    loading: "لحظة…",
   },
 
   checkout: {

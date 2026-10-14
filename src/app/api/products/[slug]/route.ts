@@ -15,6 +15,6 @@ export async function GET(_request: Request, ctx: RouteContext<"/api/products/[s
   const [p, settings] = await Promise.all([getProduct(slug), getSettings()]);
   if (!p) return NextResponse.json({ error: "not_found" }, { status: 404 });
   // The sheet shows the form, not the page: no reviews, related products or long texts.
-  const product = { ...p, related: undefined, reviews: [], description: "", descriptionAr: null };
+  const product = { ...p, related: undefined, reviews: [], description: "", descriptionAr: null, specs: [], specsAr: null, detailImages: [], video: null };
   return NextResponse.json({ product, settings: publicSettings(settings) }, { headers: { "cache-control": "public, max-age=30, s-maxage=60" } });
 }

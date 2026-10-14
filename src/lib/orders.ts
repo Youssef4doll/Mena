@@ -18,6 +18,7 @@ import { deliveryRangeLabel } from "./delivery";
 import { revalidateTag } from "next/cache";
 import { CATALOG_TAG } from "./catalog";
 import { TRANSITIONS } from "./order-status";
+import { href, orderLang } from "@/i18n/lang";
 
 const text = (max: number) => z.string().trim().max(max);
 
@@ -61,7 +62,9 @@ export const placeOrderSchema = z.object({
   ad: z
     .object({ fbp: text(120).optional(), fbc: text(200).optional(), ttp: text(120).optional(), ttclid: text(200).optional(), gaClientId: text(60).optional() })
     .optional(),
-  locale: z.enum(["fr", "ar"]).default("fr"),
+  locale: z.enum(["fr", "ar"]).default("ar"),
+  /** Where the order was placed: the product page's form, the quick form on a card, or the basket. Analytics only. */
+  origin: z.enum(["product", "quick", "cart"]).optional(),
   /** Honeypot: hidden from people, filled by bots. */
   website: z.string().max(200).optional(),
 });
@@ -255,9 +258,10 @@ export async function placeOrder(input: PlaceOrderInput, ctx: { ua: string | nul
     .catch((e) => console.error("[order] closing open forms failed", e));
 
   const site = process.env.NEXT_PUBLIC_SITE_URL ?? "";
-  const trackUrl = `${site}/suivi/t/${token}`;
+  // In the language the customer ordered in.
+  const trackUrl = `${site}${href(orderLang(order.locale), `/suivi/t/${token}`)}`;
   after(async () => {
-    await recordOrderEvent("order_placed", order, { items: quote.lines.reduce((s, l) => s + l.qty, 0), payment: input.payment, promo: Boolean(quote.discount) });
+    await recordOrderEvent("order_placed", order, { items: quote.lines.reduce((s, l) => s + l.qty, 0), lines: quote.lines.length, payment: input.payment, promo: Boolean(quote.discount), origin: input.origin ?? "product" });
     if (settings.notify.smsOnPlaced) await sendSms({ to: order.phone, text: placedText(order, settings.shop.name, trackUrl), kind: "order_placed", orderId: order.id });
     if (order.email) {
       await sendEmail({
@@ -343,7 +347,7 @@ export async function changeStatus(orderId: string, to: OrderStatus, by: string,
     if (to === "SHIPPED" && settings.notify.smsOnShipped) {
       const token = accessTokenFromSalt(updated.accessSalt);
       const site = process.env.NEXT_PUBLIC_SITE_URL ?? "";
-      await sendSms({ to: updated.phone, text: shippedText(updated, settings.shop.name, `${site}/suivi/t/${token}`, updated.carrier, updated.trackingNumber), kind: "order_shipped", orderId });
+      await sendSms({ to: updated.phone, text: shippedText(updated, settings.shop.name, `${site}${href(orderLang(updated.locale), `/suivi/t/${token}`)}`, updated.carrier, updated.trackingNumber), kind: "order_shipped", orderId });
     }
   });
   return { ok: true as const, order: updated };
@@ -355,10 +359,10 @@ export async function reviewLinkFor(orderId: string) {
   if (!o || o.status !== "DELIVERED") return null;
   const site = process.env.NEXT_PUBLIC_SITE_URL ?? "";
   const settings = await getSettings();
-  const url = `${site}/suivi/t/${accessTokenFromSalt(o.accessSalt)}?avis=1`;
+  const url = `${site}${href(orderLang(o.locale), `/suivi/t/${accessTokenFromSalt(o.accessSalt)}`)}?avis=1`;
   return { url, text: reviewText(o, settings.shop.name, url), phone: o.phone };
 }
 
-export function trackingUrl(order: { accessSalt: string }) {
-  return `${process.env.NEXT_PUBLIC_SITE_URL ?? ""}/suivi/t/${accessTokenFromSalt(order.accessSalt)}`;
+export function trackingUrl(order: { accessSalt: string; locale?: string | null }) {
+  return `${process.env.NEXT_PUBLIC_SITE_URL ?? ""}${href(orderLang(order.locale), `/suivi/t/${accessTokenFromSalt(order.accessSalt)}`)}`;
 }

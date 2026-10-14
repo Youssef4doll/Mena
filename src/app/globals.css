@@ -35,6 +35,12 @@
   --color-olive: #2c6b45;
   --color-olive-soft: #e3f1e8;
   --color-danger: #b42318;
+  /* A real saving, the way shoppers spot one: a deep red, white on it 6:1. Errors keep their own red. */
+  --color-deal: #c0122f;
+  --color-deal-soft: #fdecef;
+  /* "Acheter maintenant": the strongest colour on the page, night text on it 7:1. */
+  --color-buy: #f6a019;
+  --color-buy-2: #e08a0b;
 
   /* Soft card backgrounds for the home page, used in this order. */
   --color-tint-1: #e8f1fb;

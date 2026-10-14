@@ -156,6 +156,24 @@ export default async function AnalyticsPage({ searchParams }: PageProps<"/admin/
       </div>
 
       <div className="grid gap-4 lg:grid-cols-2">
+        <Card title="Panier et commande rapide" hint="Où les commandes sont passées : le formulaire de la fiche produit, le bouton « Acheter maintenant » d'une carte (commande rapide), ou le panier. Visites : sessions distinctes.">
+          <dl className="grid grid-cols-2 gap-3 text-sm sm:grid-cols-3">
+            <div><dt className="text-xs text-muted">Commandes depuis la fiche</dt><dd className="text-xl font-semibold">{a.basket.orders.product}</dd></div>
+            <div><dt className="text-xs text-muted">Commandes rapides</dt><dd className="text-xl font-semibold">{a.basket.orders.quick}</dd></div>
+            <div><dt className="text-xs text-muted">Commandes depuis le panier</dt><dd className="text-xl font-semibold">{a.basket.orders.cart}</dd></div>
+            <div><dt className="text-xs text-muted">Visites avec ajout au panier</dt><dd className="text-xl font-semibold">{a.basket.added}</dd></div>
+            <div><dt className="text-xs text-muted">Visites qui ont ouvert le panier</dt><dd className="text-xl font-semibold">{a.basket.viewed}</dd></div>
+          </dl>
+        </Card>
+        <Card title="Photos et vidéo" hint="Visites où le client a ouvert les photos en plein écran, ou lancé la vidéo d'un produit.">
+          <dl className="grid grid-cols-2 gap-3 text-sm">
+            <div><dt className="text-xs text-muted">Photos en plein écran</dt><dd className="text-xl font-semibold">{a.basket.zooms}</dd></div>
+            <div><dt className="text-xs text-muted">Vidéos lancées</dt><dd className="text-xl font-semibold">{a.basket.videos}</dd></div>
+          </dl>
+        </Card>
+      </div>
+
+      <div className="grid gap-4 lg:grid-cols-2">
         <Card title="Commandes par heure" hint="Heure de Tunis. Utile pour placer les appels de confirmation et les budgets publicitaires.">
           <ColumnChart points={a.hours.map((h) => ({ x: `${h.hour}h`, y: h.orders }))} unit="int" name="Commandes" days={false} highlightMax />
           <TableView head={["Heure", "Commandes"]} rows={a.hours.map((h) => [`${h.hour}h`, h.orders])} />

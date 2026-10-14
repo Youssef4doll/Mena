@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { dict, href, isLang, pick } from "@/i18n";
+import { dict, href, isLang, languages, pick } from "@/i18n";
 import { getProduct } from "@/lib/catalog";
 import { getSettings } from "@/lib/settings";
 import { publicSettings } from "@/lib/settings-schema";
@@ -23,12 +23,12 @@ export async function generateMetadata({ params }: PageProps<"/[lang]/produit/[s
   const p = await getProduct(slug);
   if (!p || !isLang(lang)) return {};
   const name = pick(lang, p.name, p.nameAr);
-  const desc = pick(lang, p.description, p.descriptionAr).slice(0, 155) || `${name} — ${formatTND(leadOffer(p.offers)?.price ?? p.price, lang)}`;
+  const desc = (pick(lang, p.summary, p.summaryAr) || pick(lang, p.description, p.descriptionAr)).slice(0, 155) || `${name} — ${formatTND(leadOffer(p.offers)?.price ?? p.price, lang)}`;
   const path = `/produit/${p.slug}`;
   return {
     title: name,
     description: desc,
-    alternates: { canonical: href(lang, path), languages: { fr: path, ar: `/ar${path}` } },
+    alternates: { canonical: href(lang, path), languages: languages(path) },
     openGraph: { title: name, description: desc, type: "website", images: p.images[0] ? [{ url: `/api/img/${p.images[0].id}/1080`, width: 1080 }] : [] },
   };
 }

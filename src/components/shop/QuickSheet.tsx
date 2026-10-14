@@ -86,7 +86,7 @@ export function QuickSheet({ slug, lang, onClose }: { slug: string; lang: Lang; 
               </Link>
             </div>
           ) : (
-            <QuickForm data={data} slug={slug} lang={lang} />
+            <QuickForm data={data} slug={slug} lang={lang} onClose={onClose} />
           )}
         </div>
       </div>
@@ -94,7 +94,7 @@ export function QuickSheet({ slug, lang, onClose }: { slug: string; lang: Lang; 
   );
 }
 
-function QuickForm({ data, slug, lang }: { data: QuickData; slug: string; lang: Lang }) {
+function QuickForm({ data, slug, lang, onClose }: { data: QuickData; slug: string; lang: Lang; onClose: () => void }) {
   const t = dict(lang);
   const p = data.product;
   const choice = useBuyChoice(p);
@@ -109,7 +109,8 @@ function QuickForm({ data, slug, lang }: { data: QuickData; slug: string; lang: 
 
   return (
     <div className="flex flex-col gap-4">
-      <BuyBox p={p} lang={lang} settings={data.settings} url={`${SITE_URL}${path}`} choice={choice} idp="qb" />
+      {/* "Ajouter au panier" closes the sheet: the confirmation takes its place. */}
+      <BuyBox p={p} lang={lang} settings={data.settings} url={`${SITE_URL}${path}`} choice={choice} idp="qb" onAdded={onClose} />
       <Link href={path} className="flex min-h-11 items-center justify-center text-[16px] text-sea underline underline-offset-4">
         {t.product.quickSee}
       </Link>

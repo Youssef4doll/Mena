@@ -29,6 +29,15 @@ export function pixelViewContent(item: PixelItem) {
   x.gtag?.("event", "view_item", { currency: "TND", value, items: [{ item_id: item.id, item_name: item.name, price: value }] });
 }
 
+export function pixelAddToCart(item: PixelItem) {
+  const x = w();
+  if (!x) return;
+  const value = (item.price * item.qty) / 1000;
+  x.fbq?.("track", "AddToCart", { content_ids: [item.id], content_type: "product", content_name: item.name, value, currency: "TND" });
+  x.ttq?.track("AddToCart", { contents: [{ content_id: item.id, content_name: item.name, price: item.price / 1000, quantity: item.qty }], content_type: "product", value, currency: "TND" });
+  x.gtag?.("event", "add_to_cart", { currency: "TND", value, items: [{ item_id: item.id, item_name: item.name, price: item.price / 1000, quantity: item.qty }] });
+}
+
 export function pixelInitiateCheckout(items: PixelItem[], total: number) {
   const x = w();
   if (!x) return;

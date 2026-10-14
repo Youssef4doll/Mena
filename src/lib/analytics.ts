@@ -309,9 +309,29 @@ async function contacts(from: Date, to: Date) {
   return { whatsapp: n(r.whatsapp), messenger: n(r.messenger), phone: n(r.phone) };
 }
 
+/**
+ * The basket and the product page's pictures: sessions that added to the
+ * basket or opened it, orders by where they were placed (product page, quick
+ * form on a card, basket), and how often the video and the full-screen
+ * pictures were used.
+ */
+async function basket(from: Date, to: Date) {
+  const [r] = await prisma.$queryRaw<{ added: bigint; viewed: bigint; product: bigint; quick: bigint; cart: bigint; videos: bigint; zooms: bigint }[]>`
+    SELECT COUNT(DISTINCT "sessionId") FILTER (WHERE name = 'add_to_cart') AS added,
+      COUNT(DISTINCT "sessionId") FILTER (WHERE name = 'cart_viewed') AS viewed,
+      COUNT(*) FILTER (WHERE name = 'order_placed' AND COALESCE(props->>'origin', 'product') = 'product') AS product,
+      COUNT(*) FILTER (WHERE name = 'order_placed' AND props->>'origin' = 'quick') AS quick,
+      COUNT(*) FILTER (WHERE name = 'order_placed' AND props->>'origin' = 'cart') AS cart,
+      COUNT(DISTINCT "sessionId") FILTER (WHERE name = 'video_played') AS videos,
+      COUNT(DISTINCT "sessionId") FILTER (WHERE name = 'gallery_zoomed') AS zooms
+    FROM "AnalyticsEvent" WHERE "createdAt" >= ${from} AND "createdAt" < ${to}
+      AND name IN ('add_to_cart', 'cart_viewed', 'order_placed', 'video_played', 'gallery_zoomed')`;
+  return { added: n(r.added), viewed: n(r.viewed), orders: { product: n(r.product), quick: n(r.quick), cart: n(r.cart) }, videos: n(r.videos), zooms: n(r.zooms) };
+}
+
 export async function getAnalytics(r: Range) {
   const [k, prev] = await Promise.all([kpis(r.from, r.to), kpis(r.prevFrom, r.prevTo)]);
-  const [days, steps, sources, campaigns, devices, prods, search, govs, reasons, cust, cohortRows, hours, conf, contact, carts] = await Promise.all([
+  const [days, steps, sources, campaigns, devices, prods, search, govs, reasons, cust, cohortRows, hours, conf, contact, carts, bask] = await Promise.all([
     daily(r),
     funnel(r.from, r.to, k),
     bySource(r.from, r.to, false),
@@ -327,6 +347,7 @@ export async function getAnalytics(r: Range) {
     confirmation(r.from, r.to),
     contacts(r.from, r.to),
     abandonedCarts(Math.max(1, r.days), 500),
+    basket(r.from, r.to),
   ]);
   const cartsInRange = carts.filter((c) => c.cart.updatedAt >= r.from && c.cart.updatedAt < r.to);
   return {
@@ -334,6 +355,7 @@ export async function getAnalytics(r: Range) {
     prev,
     days,
     funnel: steps,
+    basket: bask,
     sources,
     campaigns,
     devices,

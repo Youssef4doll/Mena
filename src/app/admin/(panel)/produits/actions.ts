@@ -7,6 +7,7 @@ import { requireAdmin } from "@/lib/admin-auth";
 import { CATALOG_TAG } from "@/lib/catalog";
 import { importImageFromUrl, storeImage, MAX_UPLOAD } from "@/lib/media";
 import { slugify } from "@/lib/slug";
+import { parseVideo } from "@/lib/product-content";
 
 type Result = { ok: true; id?: string; message?: string } | { ok: false; error: string };
 
@@ -35,8 +36,13 @@ const product = z.object({
   name: z.string().trim().min(2).max(140),
   nameAr: z.string().trim().max(140),
   slug: z.string().trim().max(140),
+  summary: z.string().trim().max(300),
+  summaryAr: z.string().trim().max(300),
   description: z.string().max(8000),
   descriptionAr: z.string().max(8000),
+  specs: z.string().max(4000),
+  specsAr: z.string().max(4000),
+  videoUrl: z.string().trim().max(500),
   price: z.number().int().min(0).max(100_000_000),
   compareAt: z.number().int().min(0).nullable(),
   cost: z.number().int().min(0).nullable(),
@@ -69,13 +75,15 @@ export async function saveProduct(id: string | null, raw: ProductInput): Promise
   if (d.offers.length > 0 && d.variants.some((v) => v.price != null && v.price !== d.price)) {
     return { ok: false, error: "Les offres utilisent le prix du produit : retirez le prix propre des variantes, ou retirez les offres." };
   }
+  if (d.videoUrl && !parseVideo(d.videoUrl)) return { ok: false, error: "Vidéo : collez un lien YouTube (youtube.com ou youtu.be) ou l'adresse https d'un fichier .mp4." };
   const slug = slugify(d.slug || d.name);
   if (!slug) return { ok: false, error: "Adresse (slug) invalide." };
   const clash = await prisma.product.findFirst({ where: { slug, ...(id ? { id: { not: id } } : {}) }, select: { id: true } });
   if (clash) return { ok: false, error: `L'adresse « ${slug} » est déjà utilisée par un autre produit.` };
 
   const data = {
-    name: d.name, nameAr: d.nameAr || null, slug, description: d.description, descriptionAr: d.descriptionAr || null,
+    name: d.name, nameAr: d.nameAr || null, slug, summary: d.summary, summaryAr: d.summaryAr || null, description: d.description, descriptionAr: d.descriptionAr || null,
+    specs: d.specs.trim(), specsAr: d.specsAr.trim() || null, videoUrl: d.videoUrl || null,
     price: d.price, compareAt: d.compareAt, cost: d.cost, categoryId: d.categoryId, supplierId: d.supplierId,
     supplierRef: d.supplierRef || null, supplierUrl: d.supplierUrl || null, stockMode: d.stockMode, stockQty: d.stockQty,
     available: d.available, active: d.active, featured: d.featured,
@@ -105,17 +113,21 @@ export async function saveProduct(id: string | null, raw: ProductInput): Promise
   return { ok: true, id: saved.id, message: "Produit enregistré." };
 }
 
+type Kind = "GALLERY" | "DETAIL";
+const kindOf = (v: unknown): Kind => (v === "DETAIL" ? "DETAIL" : "GALLERY");
+
 export async function uploadImages(productId: string, form: FormData): Promise<Result> {
   await requireAdmin();
+  const kind = kindOf(form.get("kind"));
   const files = form.getAll("files").filter((f): f is File => f instanceof File && f.size > 0).slice(0, 10);
   if (files.length === 0) return { ok: false, error: "Aucune image." };
-  const last = await prisma.productImage.findFirst({ where: { productId }, orderBy: { sort: "desc" }, select: { sort: true } });
+  const last = await prisma.productImage.findFirst({ where: { productId, kind }, orderBy: { sort: "desc" }, select: { sort: true } });
   let sort = (last?.sort ?? -1) + 1;
   try {
     for (const f of files) {
       if (f.size > MAX_UPLOAD) return { ok: false, error: `${f.name} : 8 Mo maximum.` };
       const m = await storeImage(Buffer.from(await f.arrayBuffer()), f.type);
-      await prisma.productImage.create({ data: { productId, mediaId: m.id, sort: sort++ } });
+      await prisma.productImage.create({ data: { productId, mediaId: m.id, sort: sort++, kind } });
     }
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : "Image refusée." };
@@ -124,12 +136,13 @@ export async function uploadImages(productId: string, form: FormData): Promise<R
   return { ok: true };
 }
 
-export async function importImage(productId: string, url: string): Promise<Result> {
+export async function importImage(productId: string, url: string, kindRaw: Kind = "GALLERY"): Promise<Result> {
   await requireAdmin();
+  const kind = kindOf(kindRaw);
   try {
     const m = await importImageFromUrl(url.trim());
-    const last = await prisma.productImage.findFirst({ where: { productId }, orderBy: { sort: "desc" }, select: { sort: true } });
-    await prisma.productImage.create({ data: { productId, mediaId: m.id, sort: (last?.sort ?? -1) + 1 } });
+    const last = await prisma.productImage.findFirst({ where: { productId, kind }, orderBy: { sort: "desc" }, select: { sort: true } });
+    await prisma.productImage.create({ data: { productId, mediaId: m.id, sort: (last?.sort ?? -1) + 1, kind } });
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : "Import impossible." };
   }
@@ -141,7 +154,8 @@ export async function moveImage(imageId: string, dir: -1 | 1): Promise<Result> {
   await requireAdmin();
   const img = await prisma.productImage.findUnique({ where: { id: imageId } });
   if (!img) return { ok: false, error: "Image introuvable." };
-  const all = await prisma.productImage.findMany({ where: { productId: img.productId }, orderBy: { sort: "asc" } });
+  // Pictures move among their own kind: the top gallery and the long pictures are two lists.
+  const all = await prisma.productImage.findMany({ where: { productId: img.productId, kind: img.kind }, orderBy: { sort: "asc" } });
   const i = all.findIndex((x) => x.id === imageId);
   const j = i + dir;
   if (j < 0 || j >= all.length) return { ok: true };

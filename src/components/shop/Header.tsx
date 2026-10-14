@@ -10,15 +10,15 @@ import { pixelContact } from "@/lib/client/pixels";
 import { formatTND } from "@/lib/money";
 import { formatPhone } from "@/lib/phone";
 import { Logo } from "./Logo";
-import { IconCheck, IconChevron, IconClose, IconMenu, IconSearch } from "./Icons";
+import { IconCart, IconCheck, IconChevron, IconClose, IconMenu, IconSearch } from "./Icons";
+import { cartCount, useCart } from "@/lib/client/cart";
 
 type Cat = { slug: string; name: string; nameAr: string | null };
 
-
 /**
  * Amazon's arrangement, in a calmer palette: the logo, one wide search box,
- * and a row of categories underneath. No basket — every product is ordered
- * from its own page.
+ * the basket with its count, and a row of categories underneath. Every
+ * product can still be ordered on its own page without the basket.
  */
 export function Header({ lang, categories, announcement, phone }: { lang: Lang; categories: Cat[]; announcement: string[]; phone: string | null }) {
   const t = dict(lang);
@@ -69,11 +69,12 @@ export function Header({ lang, categories, announcement, phone }: { lang: Lang; 
           On a product page on a phone, search becomes an icon and the category strip goes, so the
           picture, the name, the price and the stock fit on the first screen. */}
       <header className="z-30 bg-night text-white md:sticky md:top-0 [--focus-ring:var(--color-amber)]">
-        <div className="mx-auto flex max-w-6xl flex-wrap items-center gap-x-3 gap-y-2 px-4 py-2">
-          <button ref={openBtn} type="button" onClick={() => setMenu(true)} className="-ms-2 flex h-11 w-11 items-center justify-center rounded-xl text-white hover:bg-white/10" aria-label={t.nav.menu}>
+        {/* Tight on a phone: menu, logo, search, language and basket fit on one line from 360 px. */}
+        <div className="mx-auto flex max-w-6xl flex-wrap items-center gap-x-2 gap-y-2 px-3 py-2 sm:gap-x-3 sm:px-4">
+          <button ref={openBtn} type="button" onClick={() => setMenu(true)} className="-ms-1 flex h-11 w-10 items-center justify-center rounded-xl text-white hover:bg-white/10" aria-label={t.nav.menu}>
             <IconMenu className="h-6 w-6" />
           </button>
-          <Link href={href(lang, "/")} className="flex items-center rounded-lg px-1 py-1 hover:ring-1 hover:ring-white/40" aria-label="Mena">
+          <Link href={href(lang, "/")} className="flex items-center rounded-lg px-0.5 py-1 hover:ring-1 hover:ring-white/40" aria-label="Mena">
             <Logo light />
           </Link>
           <div className={`order-last w-full md:order-none md:ms-4 md:w-auto md:flex-1 ${compact ? "max-md:hidden" : ""}`}>
@@ -82,7 +83,7 @@ export function Header({ lang, categories, announcement, phone }: { lang: Lang; 
               <SearchFromUrl lang={lang} />
             </Suspense>
           </div>
-          <div className="ms-auto flex items-center gap-1 md:ms-0">
+          <div className="ms-auto flex items-center gap-0.5 md:ms-0 md:gap-1">
             {compact && (
               <button
                 type="button"
@@ -91,7 +92,7 @@ export function Header({ lang, categories, announcement, phone }: { lang: Lang; 
                   flushSync(() => setSearchAt(pathname));
                   document.querySelector<HTMLInputElement>("header input[name=q]")?.focus();
                 }}
-                className="flex h-11 w-11 items-center justify-center rounded-xl text-white hover:bg-white/10 md:hidden"
+                className="flex h-11 w-10 items-center justify-center rounded-xl text-white hover:bg-white/10 md:hidden"
                 aria-label={t.nav.search}
               >
                 <IconSearch className="h-6 w-6" />
@@ -110,9 +111,10 @@ export function Header({ lang, categories, announcement, phone }: { lang: Lang; 
                 <span className="text-[16px] font-bold text-white ltr-nums">{formatPhone(phone)}</span>
               </a>
             )}
-            <Link href={switchHref(lang, pathname)} className="flex h-11 items-center rounded-lg px-3 text-[16px] font-bold text-white hover:ring-1 hover:ring-white/40" hrefLang={lang === "fr" ? "ar" : "fr"} prefetch={false}>
+            <Link href={switchHref(lang, pathname)} className="flex h-11 items-center rounded-lg px-2 text-[16px] font-bold text-white sm:px-3 hover:ring-1 hover:ring-white/40" hrefLang={lang === "fr" ? "ar" : "fr"} prefetch={false}>
               {t.nav.language}
             </Link>
+            <CartLink lang={lang} />
           </div>
         </div>
         {categories.length > 0 && (
@@ -158,6 +160,7 @@ export function Header({ lang, categories, announcement, phone }: { lang: Lang; 
             </div>
             <nav className="flex flex-col px-2 py-3">
               <MenuLink href={href(lang, "/")}>{t.nav.home}</MenuLink>
+              <MenuLink href={href(lang, "/panier")}>{t.cart.title}</MenuLink>
               <MenuLink href={href(lang, "/boutique")}>{t.nav.shop}</MenuLink>
               <p className="px-3 pb-1 pt-4 text-[14px] font-bold text-muted">{t.nav.categories}</p>
               {categories.map((c) => (
@@ -169,6 +172,7 @@ export function Header({ lang, categories, announcement, phone }: { lang: Lang; 
               <MenuLink href={href(lang, "/suivi")}>{t.nav.track}</MenuLink>
               <MenuLink href={href(lang, "/livraison-retours")}>{t.footer.deliveryReturns}</MenuLink>
               <MenuLink href={href(lang, "/contact")}>{t.footer.contact}</MenuLink>
+              <MenuLink href={switchHref(lang, pathname)}>{t.nav.language}</MenuLink>
               {phone && (
                 <a href={`tel:+216${phone}`} className="mx-3 mt-4 flex min-h-12 items-center justify-center rounded-xl bg-sea-soft text-[17px] font-bold text-sea-2 ltr-nums">
                   {formatPhone(phone)}
@@ -187,6 +191,26 @@ function MenuLink({ href, children }: { href: string; children: React.ReactNode 
     <Link href={href} className="flex min-h-12 items-center justify-between rounded-xl px-3 text-[17px] text-ink hover:bg-sand">
       {children}
       <IconChevron className="h-5 w-5 text-muted" />
+    </Link>
+  );
+}
+
+/** The basket, Amazon's way: the count inside the cart, and the word beside it when there is room. */
+function CartLink({ lang }: { lang: Lang }) {
+  const t = dict(lang);
+  const n = cartCount(useCart());
+  return (
+    <Link href={href(lang, "/panier")} className="relative flex h-11 items-center gap-1 rounded-lg px-1 text-white hover:ring-1 hover:ring-white/40 md:pe-2" aria-label={t.cart.open(n)} prefetch={false} data-testid="cart-link">
+      {/* The cart is drawn the same way in both languages, so the count sits over its basket on the left. */}
+      <span className="relative" dir="ltr">
+        <IconCart className="h-8 w-8" />
+        {n > 0 && (
+          <span className="absolute -top-1.5 left-[9px] flex h-5 min-w-5 items-center justify-center rounded-full bg-buy px-1 text-[13px] font-bold leading-none text-night" aria-hidden data-testid="cart-count">
+            {n}
+          </span>
+        )}
+      </span>
+      <span className="hidden text-[16px] font-bold md:inline">{t.nav.cart}</span>
     </Link>
   );
 }

@@ -27,6 +27,7 @@ Le code est sur [github.com/Youssef4doll/Mena](https://github.com/Youssef4doll/M
 | `ADMIN_EMAIL` | votre e-mail de connexion au back-office |
 | `ADMIN_PASSWORD` | un mot de passe d'au moins 10 caractères |
 | `NEXT_PUBLIC_SITE_URL` | `https://mena.tn` (votre domaine, sans `/` à la fin) |
+| `NEXT_PUBLIC_DEFAULT_LANG` | facultatif. Sans elle, la boutique s'ouvre **en arabe** (`mena.tn/…`) et le français est sous `mena.tn/fr/…`. Mettez `fr` pour l'inverse. |
 
 4. *Deploy*. À chaque déploiement, la base est mise à jour et le compte admin suit `ADMIN_EMAIL` / `ADMIN_PASSWORD`. Pour changer de mot de passe : modifiez `ADMIN_PASSWORD`, puis *Redeploy*. Une variable ajoutée ou modifiée ne compte qu'au déploiement suivant.
 
@@ -48,9 +49,12 @@ Un `.tn` s'achète chez un registrar agréé par l'ATI. Dans Vercel, *Settings �
 
 ## 6. Les produits
 
-*Produits → Nouveau produit*. Pour chaque produit :
+*Produits → Nouveau produit*. La boutique s'affiche d'abord en arabe : remplissez les champs en arabe ; le français sert aux clients qui passent en français (et remplace un champ arabe laissé vide). Pour chaque produit :
 
-- photos : téléversez-les, ou collez le lien d'une photo du fournisseur (elle est copiée chez vous) ;
+- **nom** et **description courte** : une ou deux phrases sous le nom, le premier texte lu (300 caractères au plus) ;
+- **photos du produit** : 4 à 8, carrées de préférence (le produit seul, en situation, de près, ses dimensions). Téléversez-les depuis le téléphone ou l'ordinateur (elles sont allégées avant l'envoi), ou collez le lien d'une photo du fournisseur (elle est copiée chez vous). La première est la photo principale. Le client les fait glisser, et les ouvre en plein écran avec un zoom ;
+- **vidéo** (facultatif) : un lien YouTube (vidéo ou Short) ou l'adresse `https://` d'un fichier `.mp4`. Elle s'affiche en 2e position dans les photos et ne se charge que si le client appuie dessus ;
+- **description détaillée**, **caractéristiques** (une par ligne, « Matière : inox ») et **images de description** : les grandes images verticales qui expliquent le produit, comme sur Amazon. Tout cela s'affiche sous le formulaire de commande, les images l'une sous l'autre en pleine largeur ;
 - **coût fournisseur** : jamais affiché aux clients, il sert à calculer votre marge ;
 - **stock** : « Stock fournisseur » en dropshipping (aucune quantité n'est affichée ; décochez « Disponible » quand le fournisseur est en rupture), ou « Je compte » si vous gardez du stock ;
 - **ancien prix** : seulement s'il a vraiment été pratiqué ;
@@ -62,6 +66,10 @@ Un `.tn` s'achète chez un registrar agréé par l'ATI. Dans Vercel, *Settings �
 - « Le plus choisi » n'apparaît que si une offre a vraiment été commandée au moins 3 fois en 60 jours, et plus que les autres.
 - Les offres s'appliquent au prix du produit. Si une variante a son propre prix, retirez-le, ou retirez les offres.
 - Un lot plus grand que le stock compté est grisé automatiquement.
+
+**Ce que la boutique affiche d'elle-même, seulement quand c'est vrai** : « +20 commandes » sur les cartes et les fiches (commandes confirmées des 30 derniers jours, arrondies vers le bas, rien en dessous de 10) ; « Livraison offerte » quand le prix affiché l'inclut ; l'offre lot la plus avantageuse ; le pourcentage, calculé sur un prix réel.
+
+**Le panier** : « Acheter maintenant » commande tout de suite le produit de la fiche ; « Ajouter au panier », juste dessous, le garde pour commander plusieurs produits ensemble depuis la page *Panier* (même formulaire, mêmes contrôles). Une offre lot reste une seule fois par commande.
 
 Une boutique en ligne ne contient pas de produits de démonstration. Pour voir à quoi elle ressemble pleine, lancez `npm run db:seed:demo` en local ; *Produits → Supprimer la démo* les retire.
 
@@ -75,7 +83,7 @@ https://mena.tn/produit/lampe-de-chevet-tactile?utm_source=facebook&utm_medium=p
 
 `utm_source` : facebook, instagram ou tiktok. `utm_campaign` : un nom par campagne. *Analytics → Sources* et *Campagnes* montrent ensuite, pour chaque pub, les visites, les commandes, les commandes confirmées, les livraisons et les refus.
 
-Conseil : envoyez les pubs directement sur la **fiche produit**, pas sur l'accueil.
+Conseil : envoyez les pubs directement sur la **fiche produit**, pas sur l'accueil. Le lien sans préfixe ouvre la fiche en arabe ; pour une pub en français, ajoutez `/fr` : `https://mena.tn/fr/produit/…`.
 
 ## 8. La routine quotidienne
 

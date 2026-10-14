@@ -1,6 +1,7 @@
 import "server-only";
 import { prisma } from "./prisma";
 import { getSecrets, getSettings } from "./settings";
+import { href, orderLang } from "@/i18n/lang";
 
 /**
  * Card payment through Konnect (Tunisian payment facilitator: bank cards,
@@ -44,8 +45,8 @@ export async function startKonnectPayment(orderId: string, token: string): Promi
         orderId: o.ref,
         webhook: `${site}/api/payments/konnect`,
         silentWebhook: true,
-        successUrl: `${site}/suivi/t/${token}?paiement=ok`,
-        failUrl: `${site}/suivi/t/${token}?paiement=echec`,
+        successUrl: `${site}${href(orderLang(o.locale), `/suivi/t/${token}`)}?paiement=ok`,
+        failUrl: `${site}${href(orderLang(o.locale), `/suivi/t/${token}`)}?paiement=echec`,
         theme: "light",
       }),
       signal: AbortSignal.timeout(10_000),

@@ -6,13 +6,15 @@ import { deleteImage, deleteProduct, importImage, moveImage, saveProduct, setIma
 import { parseTND, toInputTND, formatTND } from "@/lib/money";
 import { offerCompareAt } from "@/lib/offer-display";
 import { slugify } from "@/lib/slug";
+import { parseSpecs, parseVideo } from "@/lib/product-content";
+import { shrinkForUpload } from "@/lib/client/shrink-image";
 import { Card, btn, input, label } from "@/components/admin/ui";
 
 type Opt = { id: string; name: string };
-type Img = { id: string; mediaId: string; alt: string };
+type Img = { id: string; mediaId: string; alt: string; kind: "GALLERY" | "DETAIL"; width: number; height: number };
 
 const EMPTY: ProductInput = {
-  name: "", nameAr: "", slug: "", description: "", descriptionAr: "", price: 0, compareAt: null, cost: null, categoryId: null, supplierId: null,
+  name: "", nameAr: "", slug: "", summary: "", summaryAr: "", description: "", descriptionAr: "", specs: "", specsAr: "", videoUrl: "", price: 0, compareAt: null, cost: null, categoryId: null, supplierId: null,
   supplierRef: "", supplierUrl: "", stockMode: "SUPPLIER", stockQty: 0, available: true, active: false, featured: false, variants: [], offers: [],
 };
 
@@ -101,20 +103,53 @@ function Form({ id, initial, images, categories, suppliers, msg, setMsg }: Props
   return (
     <div className="grid gap-4 lg:grid-cols-[1fr_360px]">
       <div className="flex min-w-0 flex-col gap-4">
-        <Card title="Texte">
+        <Card title="Texte" hint="La boutique s'affiche d'abord en arabe : remplissez les champs en arabe, le français sert aux clients qui changent de langue (et quand un champ arabe est vide).">
           <div className="grid gap-3">
-            <label className={label}>Nom (français)<input className={input} value={p.name} onChange={(e) => set("name", e.target.value)} onBlur={() => !p.slug && set("slug", slugify(p.name))} /></label>
-            <label className={label}>Nom (arabe, facultatif)<input className={input} dir="rtl" value={p.nameAr} onChange={(e) => set("nameAr", e.target.value)} /></label>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <label className={label}>Nom (français)<input className={input} value={p.name} onChange={(e) => set("name", e.target.value)} onBlur={() => !p.slug && set("slug", slugify(p.name))} /></label>
+              <label className={label}>Nom (arabe)<input className={input} dir="rtl" value={p.nameAr} onChange={(e) => set("nameAr", e.target.value)} /></label>
+            </div>
             <label className={label}>
               Adresse de la page
               <span className="flex items-center gap-1 text-xs text-muted">/produit/<input className={input} value={p.slug} onChange={(e) => set("slug", e.target.value)} /></span>
             </label>
-            <label className={label}>Description (français)<textarea rows={6} className={`${input} h-auto py-2`} value={p.description} onChange={(e) => set("description", e.target.value)} /></label>
-            <label className={label}>Description (arabe, facultatif)<textarea rows={4} dir="rtl" className={`${input} h-auto py-2`} value={p.descriptionAr} onChange={(e) => set("descriptionAr", e.target.value)} /></label>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <Counted label="Description courte, sous le nom (français)" value={p.summary} max={300} onChange={(v) => set("summary", v)} rows={3} placeholder="Ex. : Lumière douce, trois intensités, se recharge en USB." />
+              <Counted label="Description courte (arabe)" value={p.summaryAr} max={300} onChange={(v) => set("summaryAr", v)} rows={3} rtl placeholder="مثلا: ضو مريح، 3 درجات، يتشحن بـ USB." />
+            </div>
+            <p className="-mt-1 text-xs text-muted">Une ou deux phrases, le premier texte lu : à quoi sert le produit et ce qui le rend utile.</p>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <label className={label}>Description détaillée (français)<textarea rows={7} className={`${input} h-auto py-2`} value={p.description} onChange={(e) => set("description", e.target.value)} /></label>
+              <label className={label}>Description détaillée (arabe)<textarea rows={7} dir="rtl" className={`${input} h-auto py-2`} value={p.descriptionAr} onChange={(e) => set("descriptionAr", e.target.value)} /></label>
+            </div>
+            <p className="-mt-1 text-xs text-muted">Affichée sous le formulaire de commande, avec les caractéristiques et les images de description. Une ligne vide sépare deux paragraphes.</p>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <label className={label}>Caractéristiques (français)<textarea rows={5} className={`${input} h-auto py-2`} value={p.specs} onChange={(e) => set("specs", e.target.value)} placeholder={"Matière : inox\nDimensions : 32 × 20 cm\nDans la boîte : 1 lampe, 1 câble USB-C"} /></label>
+              <label className={label}>Caractéristiques (arabe)<textarea rows={5} dir="rtl" className={`${input} h-auto py-2`} value={p.specsAr} onChange={(e) => set("specsAr", e.target.value)} placeholder={"المادة: إينوكس\nالقياس: 32 × 20 صم\nفي الكرطونة: لمبة وكابل USB-C"} /></label>
+            </div>
+            <p className="-mt-1 text-xs text-muted">
+              Une par ligne, « nom : valeur ». {parseSpecs(p.specs).length > 0 && `${parseSpecs(p.specs).length} ligne(s) lue(s).`}
+            </p>
+            <label className={label}>
+              Vidéo (facultatif)
+              <input className={input} value={p.videoUrl} onChange={(e) => set("videoUrl", e.target.value)} placeholder="https://youtu.be/… ou https://…/video.mp4" dir="ltr" />
+              <span className={`text-xs font-normal ${p.videoUrl.trim() && !parseVideo(p.videoUrl) ? "text-danger" : "text-muted"}`}>
+                {p.videoUrl.trim() && !parseVideo(p.videoUrl)
+                  ? "Lien non reconnu : un lien YouTube (vidéo ou Short) ou l'adresse https d'un fichier .mp4."
+                  : "Un lien YouTube (vidéo ou Short) ou l'adresse d'un fichier .mp4. Elle s'affiche en 2e position dans les photos, et ne se charge que si le client appuie dessus."}
+              </span>
+            </label>
           </div>
         </Card>
 
-        {id ? <Images productId={id} images={images} /> : <Card title="Photos"><p className="text-sm text-muted">Enregistrez le produit une première fois pour ajouter des photos.</p></Card>}
+        {id ? (
+          <>
+            <Images productId={id} kind="GALLERY" images={images.filter((i) => i.kind === "GALLERY")} />
+            <Images productId={id} kind="DETAIL" images={images.filter((i) => i.kind === "DETAIL")} />
+          </>
+        ) : (
+          <Card title="Photos"><p className="text-sm text-muted">Enregistrez le produit une première fois pour ajouter des photos.</p></Card>
+        )}
 
         <Card title="Offres" hint="Ce que le client choisit en haut du formulaire de commande : « 1 unité », « 2 unités », « Achetez 2, la 3e offerte »… Le prix est le total pour la quantité. Sans offre, le client choisit simplement une quantité. Prix barré : sur l'offre de 1 unité, l'ancien prix du produit s'il est rempli ; sur les lots, le prix de l'offre de 1 unité multiplié par la quantité (sans offre de 1 unité active, rien n'est barré). Une date de fin n'est montrée que si vous la fixez.">
           <p className={`-mt-1 mb-2 text-xs ${ownPriced ? "text-danger" : "text-muted"}`}>
@@ -302,12 +337,40 @@ function Form({ id, initial, images, categories, suppliers, msg, setMsg }: Props
   );
 }
 
-function Images({ productId, images }: { productId: string; images: Img[] }) {
+/** A text field with its character count, so the short description stays short. */
+function Counted({ label: text, value, max, onChange, rows, rtl, placeholder }: { label: string; value: string; max: number; onChange: (v: string) => void; rows: number; rtl?: boolean; placeholder?: string }) {
+  return (
+    <label className={label}>
+      <span className="flex items-baseline justify-between gap-2">
+        {text}
+        <span className={`text-xs font-normal tabular-nums ${value.length > max ? "text-danger" : "text-muted"}`}>{value.length}/{max}</span>
+      </span>
+      <textarea rows={rows} dir={rtl ? "rtl" : undefined} className={`${input} h-auto py-2`} value={value} maxLength={max} placeholder={placeholder} onChange={(e) => onChange(e.target.value)} />
+    </label>
+  );
+}
+
+const KIND = {
+  GALLERY: {
+    title: "Photos du produit",
+    hint: "En haut de la fiche, à faire glisser, et en plein écran quand le client appuie dessus. La première est la photo principale (aussi sur les cartes). Format carré conseillé, 4 à 8 photos : le produit seul, en situation, de près, ses dimensions.",
+    add: "Ajouter des photos",
+  },
+  DETAIL: {
+    title: "Images de description (longues)",
+    hint: "Les grandes images verticales qui expliquent le produit (avantages, mode d'emploi, dimensions), comme sur Amazon. Elles s'affichent l'une sous l'autre, en pleine largeur, sous la description. Largeur conseillée 1080 à 1600 px, toute hauteur.",
+    add: "Ajouter des images de description",
+  },
+} as const;
+
+function Images({ productId, images, kind }: { productId: string; images: Img[]; kind: "GALLERY" | "DETAIL" }) {
   const router = useRouter();
   const file = useRef<HTMLInputElement>(null);
   const [url, setUrl] = useState("");
   const [err, setErr] = useState<string | null>(null);
+  const [progress, setProgress] = useState<string | null>(null);
   const [pending, start] = useTransition();
+  const k = KIND[kind];
   const run = (fn: () => Promise<{ ok: boolean; error?: string }>) =>
     start(async () => {
       const r = await fn();
@@ -315,25 +378,43 @@ function Images({ productId, images }: { productId: string; images: Img[] }) {
       router.refresh();
     });
   return (
-    <Card title="Photos" hint="La première est la photo principale. Format portrait 4:5 conseillé. Les photos sont recompressées et les données GPS retirées.">
-      <div className="grid grid-cols-3 gap-2 sm:grid-cols-4">
-        {images.map((img, i) => (
-          <div key={img.id} className="flex flex-col gap-1">
-            <div className="relative aspect-[4/5] overflow-hidden rounded-xl bg-sand">
+    <Card title={k.title} hint={k.hint}>
+      {kind === "DETAIL" ? (
+        <div className="flex flex-col gap-2">
+          {images.length === 0 && <p className="text-sm text-muted">Aucune image de description pour le moment.</p>}
+          {images.map((img, i) => (
+            <div key={img.id} className="flex items-center gap-3 rounded-xl border border-line p-2">
               {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src={`/api/img/${img.mediaId}/256`} alt="" className="h-full w-full object-cover" />
-              {i === 0 && <span className="absolute start-1 top-1 rounded-full bg-ink px-1.5 text-[10px] text-white">Principale</span>}
+              <img src={`/api/img/${img.mediaId}/256`} alt="" className="h-24 w-16 shrink-0 rounded-lg bg-sand object-cover object-top" />
+              <input defaultValue={img.alt} placeholder="Ce que dit l'image (pour les malvoyants et Google)" className="h-9 min-w-0 flex-1 rounded-lg border border-line px-2 text-xs" onBlur={(e) => e.target.value !== img.alt && run(() => setImageAlt(img.id, e.target.value))} />
+              <span className="flex shrink-0 flex-col gap-1 text-xs">
+                <button type="button" disabled={pending || i === 0} onClick={() => run(() => moveImage(img.id, -1))} className="px-1 disabled:opacity-30" aria-label="Monter">↑</button>
+                <button type="button" disabled={pending || i === images.length - 1} onClick={() => run(() => moveImage(img.id, 1))} className="px-1 disabled:opacity-30" aria-label="Descendre">↓</button>
+              </span>
+              <button type="button" disabled={pending} onClick={() => confirm("Supprimer cette image ?") && run(() => deleteImage(img.id))} className="text-xs text-clay">Suppr.</button>
             </div>
-            <div className="flex justify-between text-xs">
-              <button type="button" disabled={pending || i === 0} onClick={() => run(() => moveImage(img.id, -1))} className="px-1 disabled:opacity-30">←</button>
-              <button type="button" disabled={pending} onClick={() => confirm("Supprimer cette photo ?") && run(() => deleteImage(img.id))} className="text-clay">Suppr.</button>
-              <button type="button" disabled={pending || i === images.length - 1} onClick={() => run(() => moveImage(img.id, 1))} className="px-1 disabled:opacity-30">→</button>
+          ))}
+        </div>
+      ) : (
+        <div className="grid grid-cols-3 gap-2 sm:grid-cols-4">
+          {images.map((img, i) => (
+            <div key={img.id} className="flex flex-col gap-1">
+              <div className="relative aspect-square overflow-hidden rounded-xl bg-sand">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={`/api/img/${img.mediaId}/256`} alt="" className="h-full w-full object-cover" />
+                {i === 0 && <span className="absolute start-1 top-1 rounded-full bg-ink px-1.5 text-[10px] text-white">Principale</span>}
+              </div>
+              <div className="flex justify-between text-xs">
+                <button type="button" disabled={pending || i === 0} onClick={() => run(() => moveImage(img.id, -1))} className="px-1 disabled:opacity-30">←</button>
+                <button type="button" disabled={pending} onClick={() => confirm("Supprimer cette photo ?") && run(() => deleteImage(img.id))} className="text-clay">Suppr.</button>
+                <button type="button" disabled={pending || i === images.length - 1} onClick={() => run(() => moveImage(img.id, 1))} className="px-1 disabled:opacity-30">→</button>
+              </div>
+              <input defaultValue={img.alt} placeholder="Texte alternatif" className="h-8 rounded-lg border border-line px-2 text-xs" onBlur={(e) => e.target.value !== img.alt && run(() => setImageAlt(img.id, e.target.value))} />
             </div>
-            <input defaultValue={img.alt} placeholder="Texte alternatif" className="h-8 rounded-lg border border-line px-2 text-xs" onBlur={(e) => e.target.value !== img.alt && run(() => setImageAlt(img.id, e.target.value))} />
-          </div>
-        ))}
-      </div>
-      <div className="mt-3 flex flex-wrap gap-2">
+          ))}
+        </div>
+      )}
+      <div className="mt-3 flex flex-wrap items-center gap-2">
         <input
           ref={file}
           type="file"
@@ -341,19 +422,32 @@ function Images({ productId, images }: { productId: string; images: Img[] }) {
           multiple
           className="hidden"
           onChange={(e) => {
-            const files = e.target.files;
-            if (!files?.length) return;
-            const fd = new FormData();
-            for (const f of Array.from(files)) fd.append("files", f);
-            run(() => uploadImages(productId, fd));
+            const files = Array.from(e.target.files ?? []);
             e.target.value = "";
+            if (!files.length) return;
+            // One picture per request, made lighter in the browser first: a phone photo
+            // of 6 MB goes up as a few hundred kB, under the host's request limit.
+            start(async () => {
+              let error: string | null = null;
+              for (const [n, f] of files.entries()) {
+                setProgress(`Envoi ${n + 1}/${files.length}…`);
+                const fd = new FormData();
+                fd.append("kind", kind);
+                fd.append("files", await shrinkForUpload(f, kind === "DETAIL" ? 16_000 : 3200));
+                const r = await uploadImages(productId, fd);
+                if (!r.ok) error = r.error;
+              }
+              setProgress(null);
+              setErr(error);
+              router.refresh();
+            });
           }}
         />
-        <button type="button" disabled={pending} className={btn.primary} onClick={() => file.current?.click()}>{pending ? "Envoi…" : "Ajouter des photos"}</button>
+        <button type="button" disabled={pending} className={btn.primary} onClick={() => file.current?.click()}>{pending ? (progress ?? "Envoi…") : k.add}</button>
       </div>
       <div className="mt-2 flex gap-2">
-        <input value={url} onChange={(e) => setUrl(e.target.value)} placeholder="Ou coller le lien d'une photo du fournisseur" className={input} />
-        <button type="button" disabled={pending || !url} className={btn.ghost} onClick={() => run(async () => { const r = await importImage(productId, url); if (r.ok) setUrl(""); return r; })}>Importer</button>
+        <input value={url} onChange={(e) => setUrl(e.target.value)} placeholder="Ou coller le lien d'une image du fournisseur" className={input} />
+        <button type="button" disabled={pending || !url} className={btn.ghost} onClick={() => run(async () => { const r = await importImage(productId, url, kind); if (r.ok) setUrl(""); return r; })}>Importer</button>
       </div>
       {err && <p className="mt-2 text-sm text-danger">{err}</p>}
     </Card>

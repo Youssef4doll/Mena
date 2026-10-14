@@ -2,8 +2,9 @@ import "server-only";
 import sharp from "sharp";
 import { prisma } from "./prisma";
 
-/** Stored at most this wide; /api/img resizes down from it. */
+/** Stored at most this wide; /api/img resizes down from it. Long description pictures stop at MAX_H tall (WebP's limit is 16 383). */
 const MAX_W = 1600;
+const MAX_H = 16_000;
 export const MAX_UPLOAD = 8 * 1024 * 1024;
 const ALLOWED = new Set(["image/jpeg", "image/png", "image/webp", "image/avif", "image/gif"]);
 
@@ -15,7 +16,7 @@ export async function storeImage(buf: Buffer, mime: string) {
   if (!ALLOWED.has(mime)) throw new Error("Format non accepté (JPEG, PNG, WebP, AVIF).");
   if (buf.length > MAX_UPLOAD) throw new Error("Image trop lourde (8 Mo maximum).");
   const img = sharp(buf, { failOn: "error" }).rotate();
-  const out = await img.resize({ width: MAX_W, withoutEnlargement: true }).webp({ quality: 82 }).toBuffer({ resolveWithObject: true });
+  const out = await img.resize({ width: MAX_W, height: MAX_H, fit: "inside", withoutEnlargement: true }).webp({ quality: 82 }).toBuffer({ resolveWithObject: true });
   const tiny = await sharp(out.data).resize(16).webp({ quality: 40 }).toBuffer();
   return prisma.media.create({
     data: {

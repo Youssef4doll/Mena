@@ -62,8 +62,16 @@ model Product {
   slug          String           @unique
   name          String
   nameAr        String?
+  /// A line or two under the name, the first thing read about the product.
+  summary       String           @default("")
+  summaryAr     String?
   description   String           @default("")
   descriptionAr String?
+  /// "Matière : inox", one per line: the table under the description.
+  specs         String           @default("")
+  specsAr       String?
+  /// A YouTube link or a direct .mp4 address, shown with the pictures.
+  videoUrl      String?
   /// Selling price, millimes.
   price         Int
   /// A real previous price. Shown struck through only when higher than
@@ -108,8 +116,15 @@ model ProductImage {
   media     Media   @relation(fields: [mediaId], references: [id], onDelete: Cascade)
   alt       String?
   sort      Int     @default(0)
+  /// GALLERY: the pictures at the top. DETAIL: the long pictures under the description.
+  kind      ImageKind @default(GALLERY)
 
   @@index([productId, sort])
+}
+
+enum ImageKind {
+  GALLERY
+  DETAIL
 }
 
 /// A size, a colour — whatever the customer must choose. A product with no

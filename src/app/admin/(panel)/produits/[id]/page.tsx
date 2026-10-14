@@ -29,11 +29,12 @@ export default async function ProductEditPage({ params }: PageProps<"/admin/prod
         id={p?.id ?? null}
         categories={categories}
         suppliers={suppliers}
-        images={p?.images.map((i) => ({ id: i.id, mediaId: i.mediaId, alt: i.alt ?? "" })) ?? []}
+        images={p?.images.map((i) => ({ id: i.id, mediaId: i.mediaId, alt: i.alt ?? "", kind: i.kind, width: 0, height: 0 })) ?? []}
         initial={
           p
             ? {
-                name: p.name, nameAr: p.nameAr ?? "", slug: p.slug, description: p.description, descriptionAr: p.descriptionAr ?? "",
+                name: p.name, nameAr: p.nameAr ?? "", slug: p.slug, summary: p.summary, summaryAr: p.summaryAr ?? "", description: p.description, descriptionAr: p.descriptionAr ?? "",
+                specs: p.specs, specsAr: p.specsAr ?? "", videoUrl: p.videoUrl ?? "",
                 price: p.price, compareAt: p.compareAt, cost: p.cost, categoryId: p.categoryId, supplierId: p.supplierId,
                 supplierRef: p.supplierRef ?? "", supplierUrl: p.supplierUrl ?? "", stockMode: p.stockMode, stockQty: p.stockQty,
                 available: p.available, active: p.active, featured: p.featured,

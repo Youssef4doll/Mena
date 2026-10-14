@@ -1,9 +1,11 @@
 import { NextResponse, type NextRequest } from "next/server";
+import { DEFAULT_LANG, OTHER_LANG } from "@/i18n/lang";
 
 /**
- * French is served at the root and Arabic under /ar; internally every page
- * lives under app/[lang]. A French URL is rewritten to /fr/..., and /fr/...
- * typed by hand is redirected to the root form, so each page has one URL.
+ * The main language (Arabic, see DEFAULT_LANG) is served at the root, the
+ * other under its prefix; internally every page lives under app/[lang]. A
+ * root URL is rewritten to /ar/..., and /ar/... typed by hand is redirected
+ * to the root form, so each page has one URL.
  *
  * /admin gets an optimistic check only (no cookie → login page); every admin
  * page and action verifies the session itself.
@@ -21,15 +23,18 @@ export function proxy(request: NextRequest) {
     return NextResponse.next();
   }
 
-  if (pathname === "/fr" || pathname.startsWith("/fr/")) {
+  const main = `/${DEFAULT_LANG}`;
+  const other = `/${OTHER_LANG}`;
+  if (pathname === main || pathname.startsWith(`${main}/`)) {
     const url = request.nextUrl.clone();
     url.pathname = pathname.slice(3) || "/";
-    return NextResponse.redirect(url, 308);
+    // Temporary: the main language is a setting, and a permanent redirect would outlive a change of it.
+    return NextResponse.redirect(url, 307);
   }
-  if (pathname === "/ar" || pathname.startsWith("/ar/")) return NextResponse.next();
+  if (pathname === other || pathname.startsWith(`${other}/`)) return NextResponse.next();
 
   const url = request.nextUrl.clone();
-  url.pathname = `/fr${pathname === "/" ? "" : pathname}`;
+  url.pathname = `${main}${pathname === "/" ? "" : pathname}`;
   return NextResponse.rewrite(url);
 }
 

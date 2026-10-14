@@ -6,6 +6,7 @@ import { formatTND } from "@/lib/money";
 import { formatPhone } from "@/lib/phone";
 import { cartReminderText, waLink } from "@/lib/messages";
 import { SITE_URL } from "@/lib/site";
+import { DEFAULT_LANG } from "@/i18n/lang";
 import { Badge, Empty, PageTitle, Stat } from "@/components/admin/ui";
 import { RemindButtons } from "./RemindButtons";
 
@@ -37,7 +38,8 @@ export default async function CartsPage() {
         <ul className="flex flex-col gap-2">
           {list.map(({ cart, value: v, items }) => {
             const url = `${SITE_URL}/panier/${cart.id}`;
-            const text = cartReminderText({ name: cart.name, locale: "fr", shop: settings.shop.name, url, items: items.map((i) => i.name) });
+            // In the shop's main language, the one the link opens in.
+            const text = cartReminderText({ name: cart.name, locale: DEFAULT_LANG, shop: settings.shop.name, url, items: items.map((i) => (DEFAULT_LANG === "ar" && i.nameAr) || i.name) });
             return (
               <li key={cart.id} className="flex flex-wrap items-center gap-3 rounded-2xl border border-line bg-white px-4 py-3">
                 <span className="min-w-0 flex-1">

@@ -1,12 +1,12 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
-import { dict, isLang } from "@/i18n";
+import { dict, href, isLang, languages } from "@/i18n";
 import { getShop } from "@/lib/catalog";
 import { Listing, parseSort } from "@/components/shop/Listing";
 
 export async function generateMetadata({ params }: PageProps<"/[lang]/boutique">): Promise<Metadata> {
   const { lang } = await params;
-  return { title: isLang(lang) ? dict(lang).nav.shop : "Boutique", alternates: { canonical: lang === "ar" ? "/ar/boutique" : "/boutique" } };
+  return { title: isLang(lang) ? dict(lang).nav.shop : "Boutique", alternates: isLang(lang) ? { canonical: href(lang, "/boutique"), languages: languages("/boutique") } : undefined };
 }
 
 export default async function ShopRoute({ params, searchParams }: PageProps<"/[lang]/boutique">) {

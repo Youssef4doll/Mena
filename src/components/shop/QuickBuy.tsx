@@ -30,7 +30,7 @@ export function QuickBuy({ slug, productId, lang }: { slug: string; productId: s
           setOpen(true);
           track("quick_buy_opened", { productId });
         }}
-        className="flex min-h-12 w-full items-center justify-center rounded-xl bg-navy px-1 text-[15px] font-bold whitespace-nowrap text-white transition hover:bg-night active:scale-[.98]"
+        className="flex min-h-12 w-full items-center justify-center rounded-xl bg-buy px-1 text-[15px] font-bold whitespace-nowrap text-night shadow-[inset_0_-3px_0_var(--color-buy-2)] transition [--focus-ring:var(--color-night)] hover:bg-buy-2 active:scale-[.98]"
         aria-haspopup="dialog"
         aria-label={t.product.buyNow}
       >

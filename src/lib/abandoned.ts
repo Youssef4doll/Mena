@@ -33,7 +33,7 @@ export async function abandonedCarts(days = 30, take = 200) {
   return carts
     .map((c, i) => {
       const q = quote(lines[i]);
-      const items = q.lines.map((l) => ({ name: l.name, qty: l.qty, variant: [l.variantName, l.offerLabel].filter(Boolean).join(" · ") || null }));
+      const items = q.lines.map((l) => ({ name: l.name, nameAr: l.nameAr, qty: l.qty, variant: [l.variantName, l.offerLabel].filter(Boolean).join(" · ") || null }));
       let value = q.subtotal;
       // Left before choosing an option (variant_required): valued at the cheapest option that can be sold.
       for (const l of mergeLines(lines[i])) {
@@ -42,7 +42,7 @@ export async function abandonedCarts(days = 30, take = 200) {
         const byPrice = [...p.variants].sort((a, b) => (a.price ?? p.price) - (b.price ?? p.price));
         const line = byPrice.map((v) => quote([{ ...l, variantId: v.id }]).lines[0]).find(Boolean);
         if (!line) continue;
-        items.push({ name: line.name, qty: line.qty, variant: [NO_OPTION, line.offerLabel].filter(Boolean).join(" · ") });
+        items.push({ name: line.name, nameAr: line.nameAr, qty: line.qty, variant: [NO_OPTION, line.offerLabel].filter(Boolean).join(" · ") });
         value += line.lineTotal;
       }
       return { cart: c, value, items };

@@ -26,7 +26,7 @@ export default async function OrderPage({ params }: PageProps<"/admin/commandes/
   const o = await prisma.order.findUnique({
     where: { id },
     include: {
-      items: { include: { product: { select: { slug: true, nameAr: true, supplierRef: true, supplierUrl: true, supplier: { select: { name: true, phone: true } }, images: { take: 1, orderBy: { sort: "asc" }, select: { mediaId: true } } } } } },
+      items: { include: { product: { select: { slug: true, nameAr: true, supplierRef: true, supplierUrl: true, supplier: { select: { name: true, phone: true } }, images: { where: { kind: "GALLERY" }, take: 1, orderBy: { sort: "asc" }, select: { mediaId: true } } } } } },
       history: { orderBy: { createdAt: "desc" } },
       calls: { orderBy: { createdAt: "desc" } },
       notifications: { orderBy: { createdAt: "desc" }, take: 10 },

@@ -4,6 +4,7 @@ import { Prisma } from "@prisma/client";
 import { prisma } from "./prisma";
 import type { CatalogProduct } from "./pricing";
 import { leadOffer, offerCompareAt, offerLastDay, offersApply } from "./offer-display";
+import { parseSpecs, parseVideo, soldStep } from "./product-content";
 
 /**
  * Storefront reads. Cached under one tag the back office expires on every
@@ -24,9 +25,9 @@ const cardSelect = {
   stockQty: true,
   available: true,
   createdAt: true,
-  images: { orderBy: { sort: "asc" }, take: 2, select: { mediaId: true, alt: true, media: { select: { width: true, height: true, blur: true } } } },
+  images: { where: { kind: "GALLERY" }, orderBy: { sort: "asc" }, take: 2, select: { mediaId: true, alt: true, media: { select: { width: true, height: true, blur: true } } } },
   variants: { select: { stockQty: true, available: true, price: true } },
-  offers: { where: { active: true }, select: { quantity: true, price: true, endsAt: true } },
+  offers: { where: { active: true }, select: { quantity: true, price: true, endsAt: true, label: true, labelAr: true, freeDelivery: true } },
 } satisfies Prisma.ProductSelect;
 
 type CardRow = Prisma.ProductGetPayload<{ select: typeof cardSelect }>;
@@ -62,9 +63,15 @@ export type ProductCard = {
   images: ImageRef[];
   stock: StockState;
   rating: { avg: number; count: number } | null;
+  /** Confirmed orders in 30 days, rounded down ("+20"); null under 10. */
+  sold: number | null;
+  /** The card's price includes delivery (its offer says so). */
+  freeDelivery: boolean;
+  /** The pack that saves the most per unit, as the shop named it. */
+  deal: { label: string; labelAr: string | null; quantity: number; freeDelivery: boolean } | null;
 };
 
-type PriceRow = { price: number; compareAt: number | null; variants: { price: number | null }[]; offers: { quantity: number; price: number; endsAt: Date | null }[] };
+type PriceRow = { price: number; compareAt: number | null; variants: { price: number | null }[]; offers: { quantity: number; price: number; endsAt: Date | null; label?: string; labelAr?: string | null; freeDelivery?: boolean }[] };
 
 /**
  * The price a list may show: what the product page will actually charge.
@@ -80,17 +87,55 @@ export function cardPrice(p: PriceRow, now = Date.now()) {
   return { price: minPrice, priceFrom: variantPrices.some((x) => x !== minPrice), packOf: null, compareAt: p.compareAt != null && p.compareAt > minPrice ? p.compareAt : null };
 }
 
-function toCard(p: CardRow, ratings: Map<string, { avg: number; count: number }>): ProductCard {
+/**
+ * What a card may add to its price: delivery included in the price shown,
+ * and the shop's best pack (lowest price per unit, below the lead offer's).
+ */
+export function cardDeal(p: PriceRow, now = Date.now()): Pick<ProductCard, "freeDelivery" | "deal"> {
+  const live = offersApply(p.price, p.variants) ? p.offers.filter((o) => !o.endsAt || o.endsAt.getTime() > now) : [];
+  const lead = leadOffer(live);
+  if (!lead) return { freeDelivery: false, deal: null };
+  const leadUnit = lead.price / lead.quantity;
+  const best = live
+    .filter((o) => o.quantity > lead.quantity && o.price / o.quantity < leadUnit && o.label)
+    .sort((a, b) => a.price / a.quantity - b.price / b.quantity)[0];
+  return {
+    freeDelivery: Boolean(lead.freeDelivery),
+    deal: best ? { label: best.label!, labelAr: best.labelAr ?? null, quantity: best.quantity, freeDelivery: Boolean(best.freeDelivery) } : null,
+  };
+}
+
+function toCard(p: CardRow, ratings: Map<string, { avg: number; count: number }>, sold: Map<string, number>): ProductCard {
   return {
     id: p.id,
     slug: p.slug,
     name: p.name,
     nameAr: p.nameAr,
     ...cardPrice(p),
+    ...cardDeal(p),
     images: p.images.map((i) => ({ id: i.mediaId, alt: i.alt, width: i.media.width, height: i.media.height, blur: i.media.blur })),
     stock: stockState(p),
     rating: ratings.get(p.id) ?? null,
+    sold: soldStep(sold.get(p.id) ?? 0),
   };
+}
+
+/**
+ * Orders of each product in the last 30 days that the shop confirmed (or got
+ * further): an order still waiting for its call, cancelled, refused at the door
+ * or returned is not counted as bought.
+ */
+async function soldFor(ids: string[]) {
+  if (ids.length === 0) return new Map<string, number>();
+  const since = new Date(Date.now() - 30 * 86_400_000);
+  const rows = await prisma.$queryRaw<{ productId: string; n: bigint }[]>`
+    SELECT oi."productId", COUNT(DISTINCT oi."orderId") AS n
+    FROM "OrderItem" oi JOIN "Order" o ON o.id = oi."orderId"
+    WHERE oi."productId" IN (${Prisma.join(ids)})
+      AND o."createdAt" >= ${since}
+      AND o.status IN ('CONFIRMED', 'SUPPLIER_ORDERED', 'SHIPPED', 'DELIVERED')
+    GROUP BY oi."productId"`;
+  return new Map(rows.map((r) => [r.productId, Number(r.n)]));
 }
 
 async function ratingsFor(ids: string[]) {
@@ -106,8 +151,9 @@ async function ratingsFor(ids: string[]) {
 
 async function cards(where: Prisma.ProductWhereInput, orderBy: Prisma.ProductOrderByWithRelationInput[], take: number) {
   const rows = await prisma.product.findMany({ where: { active: true, ...where }, orderBy, take, select: cardSelect });
-  const ratings = await ratingsFor(rows.map((r) => r.id));
-  return rows.map((r) => toCard(r, ratings));
+  const ids = rows.map((r) => r.id);
+  const [ratings, sold] = await Promise.all([ratingsFor(ids), soldFor(ids)]);
+  return rows.map((r) => toCard(r, ratings, sold));
 }
 
 /**
@@ -135,10 +181,11 @@ export const getHomeCategories = unstable_cache(
         },
       },
     });
-    const none = new Map<string, { avg: number; count: number }>();
-    return cats.map((c) => ({ ...c, products: c.products.map((p) => toCard(p, none)) }));
+    const ids = cats.flatMap((c) => c.products.map((p) => p.id));
+    const [ratings, sold] = await Promise.all([ratingsFor(ids), soldFor(ids)]);
+    return cats.map((c) => ({ ...c, products: c.products.map((p) => toCard(p, ratings, sold)) }));
   },
-  ["home-categories-v2"],
+  ["home-categories-v3"],
   { tags: [CATALOG_TAG], revalidate: TTL },
 );
 
@@ -162,7 +209,7 @@ export const getCategoryPage = unstable_cache(
     const products = sort === "popular" ? await popularIn({ categoryId: category.id }, 60) : await cards({ categoryId: category.id }, orderFor(sort), 60);
     return { category, products };
   },
-  ["category-page-v1"],
+  ["category-page-v2"],
   { tags: [CATALOG_TAG], revalidate: TTL },
 );
 
@@ -201,7 +248,7 @@ async function popularIn(where: Prisma.ProductWhereInput, take: number, fill = t
 
 export const getShop = unstable_cache(
   async (sort: SortKey) => (sort === "popular" ? popularIn({}, 120) : cards({}, orderFor(sort), 120)),
-  ["shop-v1"],
+  ["shop-v2"],
   { tags: [CATALOG_TAG], revalidate: TTL },
 );
 
@@ -223,7 +270,7 @@ export const getHome = unstable_cache(
     ]);
     return { featured, newest, bestsellers, reviews: reviews.map((r) => ({ ...r, createdAt: r.createdAt.toISOString() })) };
   },
-  ["home-v2"],
+  ["home-v3"],
   { tags: [CATALOG_TAG], revalidate: TTL },
 );
 
@@ -236,8 +283,13 @@ export const getProduct = unstable_cache(
         slug: true,
         name: true,
         nameAr: true,
+        summary: true,
+        summaryAr: true,
         description: true,
         descriptionAr: true,
+        specs: true,
+        specsAr: true,
+        videoUrl: true,
         price: true,
         compareAt: true,
         stockMode: true,
@@ -245,7 +297,7 @@ export const getProduct = unstable_cache(
         available: true,
         updatedAt: true,
         category: { select: { slug: true, name: true, nameAr: true } },
-        images: { orderBy: { sort: "asc" }, select: { mediaId: true, alt: true, media: { select: { width: true, height: true, blur: true } } } },
+        images: { orderBy: { sort: "asc" }, select: { mediaId: true, alt: true, kind: true, media: { select: { width: true, height: true, blur: true } } } },
         variants: { orderBy: { sort: "asc" }, select: { id: true, name: true, price: true, stockQty: true, available: true } },
         offers: {
           where: { active: true, OR: [{ endsAt: null }, { endsAt: { gt: new Date() } }] },
@@ -255,7 +307,7 @@ export const getProduct = unstable_cache(
       },
     });
     if (!p) return null;
-    const [reviews, agg, related, offerSales] = await Promise.all([
+    const [reviews, agg, related, offerSales, sold] = await Promise.all([
       prisma.review.findMany({
         where: { productId: p.id, status: "APPROVED" },
         orderBy: { createdAt: "desc" },
@@ -271,6 +323,7 @@ export const getProduct = unstable_cache(
             _count: { _all: true },
           })
         : Promise.resolve([] as { offerId: string | null; _count: { _all: number } }[]),
+      soldFor([p.id]),
     ]);
     // "Le plus choisi" is a fact or it is not shown: the offer ordered most in
     // 60 days, with at least 3 orders and clearly ahead of the next one.
@@ -293,12 +346,20 @@ export const getProduct = unstable_cache(
       slug: p.slug,
       name: p.name,
       nameAr: p.nameAr,
+      summary: p.summary,
+      summaryAr: p.summaryAr,
       description: p.description,
       descriptionAr: p.descriptionAr,
+      specs: parseSpecs(p.specs),
+      specsAr: p.specsAr?.trim() ? parseSpecs(p.specsAr) : null,
+      video: parseVideo(p.videoUrl),
       price: p.price,
       compareAt: p.compareAt != null && p.compareAt > p.price ? p.compareAt : null,
       category: p.category,
-      images: p.images.map((i) => ({ id: i.mediaId, alt: i.alt, width: i.media.width, height: i.media.height, blur: i.media.blur })),
+      images: p.images.filter((i) => i.kind === "GALLERY").map((i) => ({ id: i.mediaId, alt: i.alt, width: i.media.width, height: i.media.height, blur: i.media.blur })),
+      /** The long pictures under the description, in their order. */
+      detailImages: p.images.filter((i) => i.kind === "DETAIL").map((i) => ({ id: i.mediaId, alt: i.alt, width: i.media.width, height: i.media.height, blur: i.media.blur })),
+      sold: soldStep(sold.get(p.id) ?? 0),
       variants,
       stock: stockState(p),
       updatedAt: p.updatedAt.toISOString(),
@@ -309,7 +370,7 @@ export const getProduct = unstable_cache(
       related,
     };
   },
-  ["product-v2"],
+  ["product-v3"],
   { tags: [CATALOG_TAG], revalidate: TTL },
 );
 export type ProductPage = NonNullable<Awaited<ReturnType<typeof getProduct>>>;
@@ -340,7 +401,7 @@ export async function suggest(q: string) {
       where: { active: true, OR: [{ name: { contains: term, mode: "insensitive" } }, { nameAr: { contains: term, mode: "insensitive" } }] },
       orderBy: [{ featured: "desc" }, { createdAt: "desc" }],
       take: 6,
-      select: { slug: true, name: true, nameAr: true, price: true, compareAt: true, variants: cardSelect.variants, offers: cardSelect.offers, images: { orderBy: { sort: "asc" }, take: 1, select: { mediaId: true } } },
+      select: { slug: true, name: true, nameAr: true, price: true, compareAt: true, variants: cardSelect.variants, offers: cardSelect.offers, images: { where: { kind: "GALLERY" }, orderBy: { sort: "asc" }, take: 1, select: { mediaId: true } } },
     }),
     prisma.category.findMany({
       where: { active: true, OR: [{ name: { contains: term, mode: "insensitive" } }, { nameAr: { contains: term, mode: "insensitive" } }] },
@@ -371,7 +432,7 @@ export async function loadCatalog(ids: string[]): Promise<Map<string, CatalogPro
       stockMode: true,
       stockQty: true,
       available: true,
-      images: { orderBy: { sort: "asc" }, take: 1, select: { mediaId: true } },
+      images: { where: { kind: "GALLERY" }, orderBy: { sort: "asc" }, take: 1, select: { mediaId: true } },
       variants: { select: { id: true, name: true, price: true, stockQty: true, available: true } },
       offers: { select: { id: true, label: true, labelAr: true, quantity: true, price: true, freeDelivery: true, active: true, endsAt: true } },
     },

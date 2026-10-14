@@ -26,7 +26,7 @@ export default async function ProductsPage({ searchParams }: PageProps<"/admin/p
       select: {
         id: true, name: true, price: true, cost: true, active: true, featured: true, stockMode: true, stockQty: true, available: true, isDemo: true,
         category: { select: { name: true } }, supplier: { select: { name: true } },
-        images: { take: 1, orderBy: { sort: "asc" }, select: { mediaId: true } },
+        images: { where: { kind: "GALLERY" }, take: 1, orderBy: { sort: "asc" }, select: { mediaId: true } },
         variants: { select: { stockQty: true, available: true } },
       },
     }),

@@ -1,4 +1,4 @@
-/** Storefront copy, French (the default). Short, plain, no exclamation marks. */
+/** Storefront copy, French (the second language; Arabic is the main one). Short, plain, no exclamation marks. */
 export const fr = {
   dir: "ltr" as "ltr" | "rtl",
   nav: {
@@ -24,6 +24,8 @@ export const fr = {
     support: "Une question ?",
     supportSub: "Réponse sur WhatsApp",
     openBeforePaying: "Vous pouvez vérifier le colis avant de payer",
+    waBubble: "Une question ? Écrivez-nous sur WhatsApp",
+    waHello: "Bonjour, j'ai une question",
   },
   home: {
     shopNow: "Voir la boutique",
@@ -80,6 +82,16 @@ export const fr = {
     pack: (n: number) => `Lot de ${n}`,
     photo: (n: number, total: number) => `Photo ${n} sur ${total}`,
     save: (amount: string) => `−${amount}`,
+    soldSuffix: "commandes en 30 jours",
+    soldShort: "commandes",
+    specs: "Caractéristiques",
+    video: "Vidéo",
+    playVideo: "Lire la vidéo",
+    zoom: "Voir la photo en grand",
+    zoomIn: "Zoomer",
+    zoomOut: "Réduire",
+    oldPrice: "Ancien prix :",
+    moreAbout: "Tout savoir sur ce produit",
     whatsappText: (name: string, variant: string | null, price: string, url: string) =>
       `Bonjour, je voudrais commander : ${name}${variant ? ` (${variant})` : ""} — ${price}\n${url}`,
   },
@@ -134,8 +146,27 @@ export const fr = {
     termsLink: "conditions de vente",
   },
   cart: {
+    title: "Mon panier",
     delivery: "Livraison",
     total: "Total",
+    added: "Ajouté au panier",
+    already: "Déjà dans votre panier",
+    full: "Votre panier est plein : 30 produits au plus.",
+    checkout: (n: number) => `Commander mon panier (${n})`,
+    keepShopping: "Continuer mes achats",
+    empty: "Votre panier est vide.",
+    emptySub: "Ajoutez des produits depuis leur page, avec « Ajouter au panier ».",
+    items: (n: number) => `Articles (${n})`,
+    remove: "Retirer",
+    open: (n: number) => `Panier, ${n} article${n > 1 ? "s" : ""}`,
+    qtyReduced: (name: string, n: number) => `${name} : il n'en reste que ${n}.`,
+    gone: (name: string) => `${name} n'est plus disponible : retiré du panier.`,
+    offerGone: (name: string) => `L'offre sur ${name} n'est plus disponible : retirée du panier.`,
+    needsOption: (name: string) => `${name} : choisissez l'option sur la page du produit.`,
+    restored: "Nous avons retrouvé votre panier.",
+    unit: (price: string) => `${price} l'unité`,
+    submit: "Confirmer ma commande",
+    loading: "Un instant…",
   },
 
   checkout: {

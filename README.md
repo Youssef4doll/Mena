@@ -1,38 +1,40 @@
 # Mena
 
-Boutique en ligne pour la Tunisie : dropshipping, paiement à la livraison, français et arabe.
+Boutique en ligne pour la Tunisie : dropshipping, paiement à la livraison, en arabe tunisien d'abord (le français est sous `/fr`).
 
 - **Recherche marché** : [docs/RESEARCH.md](docs/RESEARCH.md)
 - **Mise en ligne et routine** : [docs/DEPLOIEMENT.md](docs/DEPLOIEMENT.md)
 
-| Accueil | Fiche produit | Commande | Arabe | Back-office |
+| Accueil | Fiche produit | Commande | Panier | Back-office |
 |---|---|---|---|---|
-| ![](docs/screenshots/accueil.webp) | ![](docs/screenshots/fiche-produit.webp) | ![](docs/screenshots/commande.webp) | ![](docs/screenshots/accueil-arabe.webp) | ![](docs/screenshots/admin-tableau-de-bord.webp) |
+| ![](docs/screenshots/accueil.webp) | ![](docs/screenshots/fiche-produit.webp) | ![](docs/screenshots/commande.webp) | ![](docs/screenshots/panier.webp) | ![](docs/screenshots/admin-tableau-de-bord.webp) |
 
 ## Boutique
 
 - Pensée pour des clients qui ne sont pas à l'aise avec les sites : gros caractères (Atkinson Hyperlegible), couleurs douces, contrastes vérifiés, cases bien visibles.
 - Accueil organisé comme Amazon : en-tête sombre avec une grande recherche, hautes cartes de catégories avec flèches, boîtes « 4 produits », rayons.
-- Fiche produit organisée comme les boutiques tunisiennes que les clients connaissent : photos (vignettes sur le côté sur ordinateur), prix, offres en cartes (image ×N, prix barré réel, % sur les lots), formulaire nom | téléphone et adresse | gouvernorat, gros bouton sombre. Sur téléphone, le nom et le prix tiennent sur le premier écran.
+- **Fiche produit comme Amazon**, sur téléphone d'abord : le nom et une description courte, les photos à faire glisser avec leurs vignettes et un compteur, la vidéo en 2e position (chargée seulement si on appuie), le plein écran avec zoom (le bouton Retour du téléphone le ferme), le prix avec le pourcentage en rouge et l'ancien prix réel, puis le formulaire de commande. Sous le formulaire : description détaillée, caractéristiques, grandes images de description, avis.
+- Le formulaire reste sur la fiche : offre (« 1 unité », « 2 + 1 offerte »…), nom, téléphone (+216, 8 chiffres), gouvernorat, adresse. **« Acheter maintenant »** (le bouton orange, le plus visible) commande tout de suite ; **« Ajouter au panier »** dessous, en plus discret. Une barre en bas de l'écran garde le prix, « Acheter maintenant » et le panier à portée de pouce.
+- **Panier** (`/panier`) pour commander plusieurs produits en une fois : même formulaire, mêmes contrôles serveur ; une ligne refusée (rupture, offre terminée) est retirée avec une phrase qui le dit. Compteur dans l'en-tête, fenêtre « Ajouté au panier » avec « Commander mon panier » ou « Continuer mes achats ».
+- **Cartes produit** qui se remarquent, avec des faits seulement : pourcentage réel en rouge, « Livraison offerte » quand le prix l'inclut, la meilleure offre lot, étoiles et « +20 commandes » réels, stock bas compté. Bouton « Acheter maintenant » qui ouvre la commande rapide.
 - Rapide sur téléphone : contenu principal affiché en 0,8 à 1,3 s en 4G lente avec un processeur ralenti ×4, sans décalage de mise en page.
-- **Pas de panier** : on commande sur la fiche produit, dans un seul formulaire. On choisit l'offre (« 1 unité », « 2 + 1 offerte »…), puis nom, téléphone (+216, 8 chiffres), gouvernorat, adresse, et on confirme. Paiement à la livraison, sans compte ni e-mail.
 - **« Acheter maintenant » sur chaque carte produit** (accueil, catégories, recherche) : le formulaire de commande s'ouvre par-dessus la liste, sans changer de page. Mêmes prix et mêmes contrôles serveur que la fiche.
 - Frais de livraison réels affichés dès le début (fourchette des tarifs des gouvernorats ouverts), puis le montant exact une fois le gouvernorat choisi ; total affiché avant de confirmer.
-- Le bouton « Confirmer ma commande » est le seul bouton ambre de la page ; juste dessous : rien à payer maintenant, colis vérifiable avant de payer (si activé).
-- Bouton WhatsApp sur chaque fiche, et confirmation WhatsApp proposée après la commande.
+- Juste sous les boutons : rien à payer maintenant, colis vérifiable avant de payer (si activé).
+- Bulle WhatsApp sur l'accueil et les listes (une petite phrase « Une question ? » la présente une fois par visite), bouton WhatsApp sur chaque fiche, et confirmation WhatsApp proposée après la commande.
 - Suivi de commande par lien secret (SMS) ou par numéro de commande + téléphone. Demande de retour et avis depuis la page de suivi.
-- Un formulaire laissé avec un numéro apparaît dans « Non terminées » pour une relance, avec un lien qui rouvre la fiche sur le même choix.
+- Un formulaire laissé avec un numéro apparaît dans « Non terminées » pour une relance, avec un lien qui rouvre la fiche sur le même choix (ou le panier, s'il y avait plusieurs produits).
 - SEO : métadonnées, sitemap FR/AR, données structurées produit. Pixels Meta, TikTok et GA4 (avec API serveur) chargés seulement après consentement.
 
-**Règle de la maison : n'afficher que des données réelles.** Pas de faux stock, de faux compte à rebours, de faux avis, de faux « X personnes regardent ». Un avis ne peut venir que d'une commande livrée, et n'est publié qu'après modération. Le prix barré d'un lot vient de l'offre « 1 unité » réelle ; « Le plus choisi » vient des commandes ; une date de fin d'offre est celle saisie dans le back-office.
+**Règle de la maison : n'afficher que des données réelles.** Pas de faux stock, de faux compte à rebours, de faux avis, de faux « X personnes regardent ». Un avis ne peut venir que d'une commande livrée, et n'est publié qu'après modération. Le prix barré d'un lot vient de l'offre « 1 unité » réelle ; « Le plus choisi » vient des commandes ; « +20 commandes » compte les commandes confirmées des 30 derniers jours, arrondi vers le bas, et ne s'affiche pas sous 10 ; une date de fin d'offre est celle saisie dans le back-office.
 
 **Le navigateur n'est jamais cru.** Le serveur recalcule prix, variantes, stock, remise, quantités et frais de livraison à chaque devis et à chaque commande. Une commande dont le total diffère de celui affiché est arrêtée, et le client voit le nouveau total.
 
 ## Back-office (`/admin`)
 
-Commandes (file de confirmation, appels notés, statuts, refus avec motif, liste noire), produits (photos, variantes, offres, coût fournisseur, stock), catégories, fournisseurs, clients, codes promo, commandes non terminées, retours, avis, paramètres. Exports CSV.
+Commandes (file de confirmation, appels notés, statuts, refus avec motif, liste noire), produits (description courte, photos, vidéo, caractéristiques, images de description, variantes, offres, coût fournisseur, stock), catégories, fournisseurs, clients, codes promo, commandes non terminées, retours, avis, paramètres. Exports CSV.
 
-**Analytics** : mesure d'audience interne, sans service extérieur. Temps réel, visiteurs, entonnoir (visite → fiche → formulaire commencé → téléphone saisi → commande → confirmée → livrée), conversion par source, campagne et appareil, CA, panier moyen, marge, produits vus mais pas achetés, recherches sans résultat, commandes non terminées, clics WhatsApp et appels, refus par gouvernorat, clients fidèles, cohortes, commandes par heure.
+**Analytics** : mesure d'audience interne, sans service extérieur. Temps réel, visiteurs, entonnoir (visite → fiche → formulaire commencé → téléphone saisi → commande → confirmée → livrée), conversion par source, campagne et appareil, CA, panier moyen, marge, produits vus mais pas achetés, recherches sans résultat, commandes non terminées, ajouts au panier et commandes par origine (fiche, commande rapide, panier), photos en plein écran et vidéos lancées, clics WhatsApp et appels, refus par gouvernorat, clients fidèles, cohortes, commandes par heure.
 
 ## Technique
 

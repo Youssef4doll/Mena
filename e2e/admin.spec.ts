@@ -2,7 +2,8 @@ import { test, expect, type Page } from "@playwright/test";
 
 async function placeOrder(page: Page, phone: string) {
   // Arrives from an ad and orders at once: the ad must still get the credit.
-  await page.goto("/produit/diffuseur-huiles-essentielles?utm_source=facebook&utm_medium=paid&utm_campaign=e2e-oct");
+  // French, under /fr: Arabic is the shop's main language, at the root.
+  await page.goto("/fr/produit/diffuseur-huiles-essentielles?utm_source=facebook&utm_medium=paid&utm_campaign=e2e-oct");
   await page.getByTestId("name").fill("Sami Trabelsi");
   await page.getByTestId("phone").fill(phone);
   await page.getByTestId("governorate").selectOption("Tunis");
@@ -41,7 +42,7 @@ test("the back office takes an order from call to verified review", async ({ pag
   await expect(admin.getByRole("link", { name: "Demander un avis sur WhatsApp" })).toBeVisible();
 
   // The customer (same browser that ordered) reviews from the tracking page.
-  await page.goto(`/suivi/${ref}`);
+  await page.goto(`/fr/suivi/${ref}`);
   await expect(page.getByText("Livrée").first()).toBeVisible();
   await page.getByRole("radio").nth(4).click();
   await page.getByPlaceholder("Votre avis (facultatif)").fill(reviewText);
@@ -49,7 +50,7 @@ test("the back office takes an order from call to verified review", async ({ pag
   await expect(page.getByText("Merci pour votre avis.")).toBeVisible();
 
   // Not public until approved.
-  await page.goto("/produit/diffuseur-huiles-essentielles");
+  await page.goto("/fr/produit/diffuseur-huiles-essentielles");
   await expect(page.getByText(reviewText)).toHaveCount(0);
 
   await admin.goto("/admin/avis");
@@ -57,7 +58,7 @@ test("the back office takes an order from call to verified review", async ({ pag
   await mine.getByRole("button", { name: "Publier" }).click();
   await expect(mine).toHaveCount(0);
 
-  await page.goto("/produit/diffuseur-huiles-essentielles");
+  await page.goto("/fr/produit/diffuseur-huiles-essentielles");
   await expect(page.getByText(reviewText)).toBeVisible();
   await expect(page.getByText("Client livré").first()).toBeVisible();
 

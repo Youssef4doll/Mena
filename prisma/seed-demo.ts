@@ -1,7 +1,9 @@
 /**
  * A demo catalogue so the shop can be seen before the real products are in.
  * Every row is marked isDemo; Back office → Produits → "Supprimer la démo"
- * removes them all. No reviews, no orders, no sales are invented.
+ * removes them all. No reviews, no orders, no sales are invented. Running it
+ * again on an older demo brings it up to date (texts, pictures) without
+ * touching anything the shop wrote.
  */
 import { PrismaClient } from "@prisma/client";
 import sharp from "sharp";
@@ -77,6 +79,136 @@ function demoOffers(price: number) {
     { label: "Achetez 2, la 3e offerte", labelAr: "اشري 2 والثالثة هدية", quantity: 3, price: price * 2, freeDelivery: true, sort: 2 },
   ];
 }
+/** The product page's texts for the demo: a line under the name, the Arabic description, the specs. */
+const CONTENT: Record<string, { summary: string; summaryAr: string; descriptionAr: string; specs: string; specsAr: string }> = {
+  "lampe-de-chevet-tactile": {
+    summary: "Un toucher sur le pied pour allumer : trois intensités, une lumière chaude et douce pour lire le soir.",
+    summaryAr: "تمسّ الساق تشعل: 3 درجات ضو، ضو دافي ومريح للقراية في الليل.",
+    descriptionAr: "تمسّة وحدة على الساق وتختار قدّاش تحب الضو: خفيف، متوسّط ولا قوي. الضو دافي وما يتعبش العينين.\n\nطولها 32 صم. الكابل USB-C معاها.",
+    specs: "Hauteur : 32 cm\nLumière : chaude, 3 intensités\nAlimentation : câble USB-C (fourni)\nDans la boîte : 1 lampe, 1 câble",
+    specsAr: "الطول: 32 صم\nالضو: دافي، 3 درجات\nالشحن: كابل USB-C (معاها)\nفي الكرطونة: لمبة وكابل",
+  },
+  "diffuseur-huiles-essentielles": {
+    summary: "Une brume fine et silencieuse qui parfume la pièce, avec sept couleurs de veilleuse. S'arrête seul quand il est vide.",
+    summaryAr: "بخار رقيق وبلا حس يعطّر البيت، و7 ألوان ضو. يطفى وحدو كي يفرغ الماء.",
+    descriptionAr: "حطّ شوية ماء وقطرات من الزيت اللي تحبّو، وهو يعمل بخار رقيق يعطّر البيت بلا حس.\n\nخزّان 300 مل. يطفى وحدو كي يفرغ. 7 ألوان ضو تنجم تخليها ولا تطفيها.",
+    specs: "Réservoir : 300 ml\nArrêt automatique : oui, quand le réservoir est vide\nVeilleuse : 7 couleurs\nBruit : très faible\nDans la boîte : 1 diffuseur, 1 câble, 1 gobelet doseur",
+    specsAr: "الخزّان: 300 مل\nيطفى وحدو: إيه، كي يفرغ الماء\nالضو: 7 ألوان\nالحس: خفيف برشا\nفي الكرطونة: الموزّع، كابل، كاس قياس",
+  },
+  "set-6-verres-ambres": {
+    summary: "Six verres épais teintés ambre, 300 ml, qui passent au lave-vaisselle.",
+    summaryAr: "6 كيسان بلّار خشين لون عنبري، 300 مل، يتغسلو في الماكينة.",
+    descriptionAr: "بلّار خشين ولونو عنبري يعطي حس للطاولة. كل كاس 300 مل.\n\nيتغسلو في ماكينة الماعون بلا مشكل.",
+    specs: "Contenance : 300 ml par verre\nMatière : verre épais teinté\nLave-vaisselle : oui\nDans la boîte : 6 verres",
+    specsAr: "السعة: 300 مل للكاس\nالمادة: بلّار خشين ملوّن\nماكينة الماعون: إيه\nفي الكرطونة: 6 كيسان",
+  },
+  "brosse-soufflante-3-en-1": {
+    summary: "Sèche, lisse et donne du volume en un seul geste, avec trois températures.",
+    summaryAr: "تنشّف، تملّس وتعطي حجم في نفس الوقت، بـ 3 درجات سخانة.",
+    descriptionAr: "فرشاة وسشوار في وقت واحد: تنشّف الشعر وتملّسو وتعطيه حجم.\n\n3 درجات سخانة وزر بارد باش تثبّت التسريحة.",
+    specs: "Températures : 3, et air froid\nUsage : sécher, lisser, donner du volume\nCâble : rotatif",
+    specsAr: "السخانة: 3 درجات وهواء بارد\nتنشّف، تملّس، تعطي حجم\nالكابل: يدور",
+  },
+  "montre-minimaliste": {
+    summary: "Boîtier fin de 38 mm et bracelet en maille milanaise réglable.",
+    summaryAr: "ساعة رقيقة 38 مم، بسوار حديد مضفور يتعدّل.",
+    descriptionAr: "ساعة بسيطة وأنيقة، تمشي مع كل لبسة. السوار يتعدّل على قدّ يدّك.\n\nما يضرّهاش رشّ الماء.",
+    specs: "Boîtier : 38 mm, acier\nBracelet : maille milanaise réglable\nÉtanchéité : aux éclaboussures",
+    specsAr: "الساعة: 38 مم، حديد\nالسوار: مضفور ويتعدّل\nالماء: ما يضرّهاش الرش",
+  },
+  "sac-bandouliere-cuir-vegan": {
+    summary: "Petit sac qui garde l'essentiel : téléphone, portefeuille, clés. Bandoulière réglable.",
+    summaryAr: "صاك صغير يهز الأساسي: التليفون، البزطام والمفاتح. الحزام يتعدّل.",
+    descriptionAr: "صاك خفيف يهز التليفون والبزطام والمفاتح. الحزام يتعدّل ويتنحّى.",
+    specs: "Matière : cuir végan\nBandoulière : réglable et amovible",
+    specsAr: "المادة: جلد نباتي\nالحزام: يتعدّل ويتنحّى",
+  },
+  "ecouteurs-sans-fil": {
+    summary: "Bluetooth 5.3, six heures d'écoute et vingt-quatre heures avec le boîtier.",
+    summaryAr: "بلوتوث 5.3، 6 سوايع سماع و24 ساعة بالعلبة متاعهم.",
+    descriptionAr: "سماعات بلا خيط، تتربط بالتليفون في ثانية. 6 سوايع سماع، و24 ساعة كي تشحنهم في العلبة.\n\nتمسّة على السماعة تحبّس ولا تبدّل الأغنية.",
+    specs: "Bluetooth : 5.3\nAutonomie : 6 h (24 h avec le boîtier)\nCommandes : tactiles",
+    specsAr: "البلوتوث: 5.3\nالشحن: 6 سوايع (24 بالعلبة)\nالتحكّم: باللمس",
+  },
+  "miroir-led-maquillage": {
+    summary: "Lumière réglable en trois teintes, rechargeable, pied orientable.",
+    summaryAr: "ضو يتعدّل في 3 ألوان، يتشحن، والساق تدور.",
+    descriptionAr: "مراية بضو LED تتعدّل: أبيض، دافي ولا بيناتهم. تتشحن وما تحتاجش كابل ديما.",
+    specs: "Lumière : LED, 3 teintes\nAlimentation : rechargeable\nPied : orientable",
+    specsAr: "الضو: LED، 3 ألوان\nالشحن: يتشحن\nالساق: تدور",
+  },
+  "tapis-berbere-120x170": {
+    summary: "Motif losange, poils courts faciles à entretenir, dos antidérapant.",
+    summaryAr: "نقشة معيّنات، صوف قصير ساهل في التنظيف، وما يزلقش.",
+    descriptionAr: "زربية بنقشة بربرية تعطي دفء للبيت. الصوف قصير وساهل في التنظيف، والظهر ما يزلقش.",
+    specs: "Dimensions : 120 × 170 cm\nPoils : courts\nDos : antidérapant",
+    specsAr: "القياس: 120 × 170 صم\nالصوف: قصير\nالظهر: ما يزلقش",
+  },
+  "mixeur-portable": {
+    summary: "Smoothies et jus en trente secondes, rechargeable en USB.",
+    summaryAr: "عصير وسموذي في 30 ثانية، يتشحن بـ USB.",
+    descriptionAr: "خلاط صغير تهزّو معاك: عصير ولا سموذي في 30 ثانية. يتشحن بـ USB.",
+    specs: "Gobelet : 400 ml\nAlimentation : rechargeable USB",
+    specsAr: "الكاس: 400 مل\nالشحن: USB",
+  },
+  "organisateur-maquillage-rotatif": {
+    summary: "Tourne sur lui-même, plateaux réglables : tout se range et se trouve vite.",
+    summaryAr: "يدور على روحو والرفوف تتعدّل: كل شي يتنظّم ويتلقى بالزربة.",
+    descriptionAr: "منظّم يدور 360 درجة، والرفوف تتعدّل على قدّ الحوايج متاعك: فرشات، روج، كريمات.",
+    specs: "Rotation : 360°\nPlateaux : réglables",
+    specsAr: "يدور: 360 درجة\nالرفوف: تتعدّل",
+  },
+  "plaid-tricot": {
+    summary: "Grosse maille douce, 130 × 160 cm, lavable à 30 °C.",
+    summaryAr: "تريكو خشين وناعم، 130 × 160 صم، يتغسل على 30 درجة.",
+    descriptionAr: "غطاء تريكو خشين وناعم، يدفّيك على الكنابة ولا في الفرش. يتغسل في الماكينة على 30 درجة.",
+    specs: "Dimensions : 130 × 160 cm\nLavage : 30 °C",
+    specsAr: "القياس: 130 × 160 صم\nالغسيل: 30 درجة",
+  },
+};
+
+/** A long description picture, Amazon-style: a headline and three points with their icons. */
+async function longPicture(seed: number, title: string, points: string[]) {
+  const [bg, mid, accent] = PALETTES[seed % PALETTES.length];
+  const rows = points
+    .map(
+      (p, i) => `<g transform="translate(0 ${560 + i * 380})">
+    <rect x="90" y="0" width="1020" height="320" rx="40" fill="#fff" fill-opacity=".8"/>
+    <circle cx="250" cy="160" r="96" fill="${accent}"/>
+    <text x="250" y="190" text-anchor="middle" font-family="DejaVu Sans" font-weight="bold" font-size="90" fill="#fff">${i + 1}</text>
+    <text x="400" y="185" font-family="DejaVu Sans" font-weight="bold" font-size="58" fill="#1c2633">${p}</text>
+  </g>`,
+    )
+    .join("");
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="1800" viewBox="0 0 1200 1800">
+  <defs><linearGradient id="g" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="${bg}"/><stop offset="1" stop-color="${mid}"/></linearGradient></defs>
+  <rect width="1200" height="1800" fill="url(#g)"/>
+  <text x="600" y="300" text-anchor="middle" font-family="DejaVu Sans" font-weight="bold" font-size="84" fill="${accent}">${title}</text>
+  <rect x="480" y="360" width="240" height="12" rx="6" fill="${accent}" fill-opacity=".5"/>
+  ${rows}
+</svg>`;
+  const buf = await sharp(Buffer.from(svg)).webp({ quality: 82 }).toBuffer({ resolveWithObject: true });
+  const tiny = await sharp(buf.data).resize(16).webp({ quality: 40 }).toBuffer();
+  return prisma.media.create({
+    data: { mime: "image/webp", width: buf.info.width, height: buf.info.height, bytes: new Uint8Array(buf.data), blur: `data:image/webp;base64,${tiny.toString("base64")}` },
+  });
+}
+
+/** Two demo products get a full set: more pictures and long description pictures. */
+const RICH: Record<string, { extra: number; long: { title: string; points: string[] }[] }> = {
+  "diffuseur-huiles-essentielles": {
+    extra: 3,
+    long: [
+      { title: "Silencieux et sûr", points: ["Brume fine, sans bruit", "Arrêt quand il est vide", "300 ml : toute la nuit"] },
+      { title: "Comment l'utiliser", points: ["Remplir d'eau", "3 à 5 gouttes d'huile", "Appuyer, c'est parti"] },
+    ],
+  },
+  "lampe-de-chevet-tactile": {
+    extra: 2,
+    long: [{ title: "Un toucher suffit", points: ["Faible pour la nuit", "Moyen pour se détendre", "Fort pour lire"] }],
+  },
+};
+
 const WITH_OFFERS = new Set(["diffuseur-huiles-essentielles", "set-6-verres-ambres", "brosse-soufflante-3-en-1", "lampe-de-chevet-tactile"]);
 
 /** Brings an older demo catalogue up to date (offers, card titles). Safe to run again. */
@@ -86,6 +218,28 @@ async function upgrade() {
     if (!WITH_OFFERS.has(p.slug)) continue;
     const row = await prisma.product.findFirst({ where: { slug: p.slug, isDemo: true }, select: { id: true, price: true, _count: { select: { offers: true } } } });
     if (row && row._count.offers === 0) await prisma.productOffer.createMany({ data: demoOffers(row.price).map((o) => ({ ...o, productId: row.id })) });
+  }
+  // Texts for the new product page, only where the shop has not written its own.
+  for (const [slug, c] of Object.entries(CONTENT)) {
+    await prisma.product.updateMany({ where: { slug, isDemo: true, summary: "" }, data: c });
+  }
+  for (const [i, p] of PRODUCTS.entries()) await richImages(p, i);
+}
+
+async function richImages(p: Demo, i: number) {
+  const rich = RICH[p.slug];
+  if (!rich) return;
+  const row = await prisma.product.findFirst({ where: { slug: p.slug, isDemo: true }, select: { id: true, images: { select: { kind: true } } } });
+  if (!row || row.images.some((x) => x.kind === "DETAIL")) return;
+  const label = p.name.split(" ")[0];
+  let sort = row.images.length;
+  for (let n = 0; n < rich.extra; n++) {
+    const m = await picture(i + 3 + n, SHAPES[p.shape], label);
+    await prisma.productImage.create({ data: { productId: row.id, mediaId: m.id, sort: sort++ } });
+  }
+  for (const [n, l] of rich.long.entries()) {
+    const m = await longPicture(i + n, l.title, l.points);
+    await prisma.productImage.create({ data: { productId: row.id, mediaId: m.id, sort: n, kind: "DETAIL" } });
   }
 }
 
@@ -133,7 +287,7 @@ async function main() {
     const imgs = [await picture(i, SHAPES[p.shape], p.name.split(" ")[0]), await picture(i + 2, SHAPES[p.shape], p.name.split(" ")[0])];
     await prisma.product.create({
       data: {
-        slug: p.slug, name: p.name, nameAr: p.nameAr, description: p.description, price: p.price, compareAt: p.compareAt ?? null, cost: p.cost,
+        slug: p.slug, name: p.name, nameAr: p.nameAr, description: p.description, ...CONTENT[p.slug], price: p.price, compareAt: p.compareAt ?? null, cost: p.cost,
         categoryId: cats.get(p.cat), active: true, featured: Boolean(p.featured), isDemo: true,
         stockMode: p.tracked != null ? "TRACKED" : "SUPPLIER", stockQty: p.tracked ?? 0, available: true,
         images: { create: imgs.map((m, n) => ({ mediaId: m.id, sort: n })) },
@@ -142,6 +296,7 @@ async function main() {
       },
     });
   }
+  for (const [i, p] of PRODUCTS.entries()) await richImages(p, i);
   console.log(`Demo catalogue: ${CATS.length} categories, ${PRODUCTS.length} products.`);
 }
 
