@@ -267,6 +267,7 @@ export const fr = {
     none: (q: string) => `Aucun produit pour « ${q} ».`,
     noneHelp: "Essayez un autre mot, ou demandez-nous sur WhatsApp : nous pouvons peut-être le trouver.",
     suggestions: "Suggestions",
+    typed: (q: string) => `Vous avez écrit « ${q} ». Voici les produits les plus proches.`,
     categories: "Catégories",
   },
   category: {

@@ -21,6 +21,7 @@ export function WhatsAppFloat({ lang, phone }: { lang: Lang; phone: string }) {
   const [hint, setHint] = useState(false);
   const hidden = !phone || /\/(produit|commande|panier)(\/|$)/.test(pathname);
 
+  // Once per visit, after the customer has started to look around (a first scroll), for ten seconds.
   useEffect(() => {
     if (hidden) return;
     let seen = false;
@@ -28,16 +29,26 @@ export function WhatsAppFloat({ lang, phone }: { lang: Lang; phone: string }) {
       seen = sessionStorage.getItem(SEEN) === "1";
     } catch {}
     if (seen) return;
-    const show = setTimeout(() => {
-      setHint(true);
-      try {
-        sessionStorage.setItem(SEEN, "1");
-      } catch {}
-    }, 3500);
-    const hide = setTimeout(() => setHint(false), 14_000);
+    let show = 0;
+    let hide = 0;
+    const onScroll = () => {
+      if (scrollY < 250 || show) return;
+      removeEventListener("scroll", onScroll);
+      show = window.setTimeout(() => {
+        setHint(true);
+        try {
+          sessionStorage.setItem(SEEN, "1");
+        } catch {}
+        hide = window.setTimeout(() => setHint(false), 10_000);
+      }, 1200);
+    };
+    addEventListener("scroll", onScroll, { passive: true });
     return () => {
+      removeEventListener("scroll", onScroll);
       clearTimeout(show);
       clearTimeout(hide);
+      // Leaving for a page without the button ends the hint; it does not come back.
+      setHint(false);
     };
   }, [hidden]);
 
@@ -49,13 +60,13 @@ export function WhatsAppFloat({ lang, phone }: { lang: Lang; phone: string }) {
     pixelContact();
   };
   return (
-    <div className="fixed bottom-4 end-4 z-30 flex items-end gap-2 pb-[env(safe-area-inset-bottom)]">
+    <div className="wa-float fixed bottom-4 end-4 z-30 flex items-end gap-2 pb-[env(safe-area-inset-bottom)]">
       {hint && (
-        <div className="relative mb-2 flex max-w-[220px] animate-fade items-start gap-1 rounded-2xl rounded-ee-md bg-white py-2.5 ps-3.5 pe-1 text-[16px] font-bold leading-snug text-ink shadow-lift" role="status">
+        <div className="relative mb-2 flex max-w-[190px] animate-fade items-start gap-0.5 rounded-2xl rounded-ee-md bg-white py-2 ps-3 pe-0.5 text-[16px] font-bold leading-snug text-ink shadow-lift sm:max-w-[230px]" role="status">
           <a href={link} target="_blank" rel="noopener" onClick={() => open("bubble")} className="py-0.5">
             {t.trust.waBubble}
           </a>
-          <button type="button" onClick={() => setHint(false)} className="-mt-1 flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-muted hover:bg-sand" aria-label={t.nav.close}>
+          <button type="button" onClick={() => setHint(false)} className="-my-1 flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-muted hover:bg-sand" aria-label={t.nav.close}>
             <IconClose className="h-5 w-5" />
           </button>
         </div>

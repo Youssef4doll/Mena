@@ -19,9 +19,15 @@ export function switchHref(lang: Lang, pathname: string): string {
   return href(lang === "fr" ? "ar" : "fr", bare);
 }
 
-/** hreflang alternates of a page, for metadata and the sitemap. */
-export function languages(path: string, base = ""): Record<Lang, string> {
-  return { fr: `${base}${href("fr", path)}`, ar: `${base}${href("ar", path)}` };
+/** hreflang alternates of a page, for metadata and the sitemap; x-default is the main language. */
+export function languages(path: string, base = ""): Record<Lang | "x-default", string> {
+  return { fr: `${base}${href("fr", path)}`, ar: `${base}${href("ar", path)}`, "x-default": `${base}${href(DEFAULT_LANG, path)}` };
+}
+
+/** Title, canonical address and language versions of a simple page. */
+export function pageMeta(lang: string, path: string, title: (t: Dict) => string) {
+  if (!isLang(lang)) return {};
+  return { title: title(dict(lang)), alternates: { canonical: href(lang, path), languages: languages(path) } };
 }
 
 export function pick<T extends string | null | undefined>(lang: Lang, frText: string, arText: T): string {

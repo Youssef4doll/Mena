@@ -26,7 +26,7 @@ export async function GET(request: Request, ctx: RouteContext<"/api/cart/[id]">)
       const v = p.variants.find((x) => x.id === l.variantId) ?? null;
       const o = (p.offers ?? []).find((x) => x.id === l.offerId && x.active && (!x.endsAt || x.endsAt > now)) ?? null;
       const qty = typeof l.qty === "number" && Number.isInteger(l.qty) ? Math.min(10, Math.max(1, l.qty)) : 1;
-      return [{ productId: p.id, variantId: v?.id ?? null, offerId: o?.id ?? null, qty: o ? 1 : qty, slug: p.slug, name: p.name, nameAr: p.nameAr, variantName: v?.name ?? null, offerLabel: o?.label ?? null, offerLabelAr: o?.labelAr ?? null, imageId: p.imageId }];
+      return [{ productId: p.id, variantId: v?.id ?? null, offerId: o?.id ?? null, qty: o ? 1 : qty, slug: p.slug, name: p.name, nameAr: p.nameAr, variantName: v?.name ?? null, variantNameAr: v?.nameAr ?? null, offerLabel: o?.label ?? null, offerLabelAr: o?.labelAr ?? null, imageId: p.imageId }];
     }),
   });
 }

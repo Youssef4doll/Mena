@@ -1,6 +1,7 @@
+import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { dict, href, isLang, pick, type Lang } from "@/i18n";
+import { dict, href, isLang, languages, pick, type Lang } from "@/i18n";
 import { getHome, getHomeCategories } from "@/lib/catalog";
 import { getSettings } from "@/lib/settings";
 import { formatTND } from "@/lib/money";
@@ -11,9 +12,14 @@ import { Stars } from "@/components/shop/Stars";
 import { Img, Placeholder } from "@/components/shop/Img";
 import { IconChevron } from "@/components/shop/Icons";
 import { Scroller } from "@/components/shop/Scroller";
-import { JsonLd, organizationLd } from "@/lib/seo";
+import { JsonLd, organizationLd, websiteLd } from "@/lib/seo";
 
 export const revalidate = 60;
+
+export async function generateMetadata({ params }: PageProps<"/[lang]">): Promise<Metadata> {
+  const { lang } = await params;
+  return isLang(lang) ? { alternates: { canonical: href(lang, "/"), languages: languages("/") } } : {};
+}
 
 /** Soft card backgrounds, in order: one per category, never a colour that shouts. */
 const TINTS = ["bg-tint-1", "bg-tint-2", "bg-tint-3", "bg-tint-4", "bg-tint-5", "bg-tint-6"];
@@ -39,6 +45,7 @@ export default async function Home({ params }: PageProps<"/[lang]">) {
   return (
     <>
       <JsonLd data={organizationLd(settings)} />
+      <JsonLd data={websiteLd(settings, lang)} />
 
       {/* ------------------------------------------- welcome, one line */}
       <section className="bg-gradient-to-b from-sea-soft to-cream">

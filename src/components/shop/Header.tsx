@@ -71,7 +71,7 @@ export function Header({ lang, categories, announcement, phone }: { lang: Lang; 
       <header className="z-30 bg-night text-white md:sticky md:top-0 [--focus-ring:var(--color-amber)]">
         {/* Tight on a phone: menu, logo, search, language and basket fit on one line from 360 px. */}
         <div className="mx-auto flex max-w-6xl flex-wrap items-center gap-x-2 gap-y-2 px-3 py-2 sm:gap-x-3 sm:px-4">
-          <button ref={openBtn} type="button" onClick={() => setMenu(true)} className="-ms-1 flex h-11 w-10 items-center justify-center rounded-xl text-white hover:bg-white/10" aria-label={t.nav.menu}>
+          <button ref={openBtn} type="button" onClick={() => setMenu(true)} className="-ms-1.5 flex h-11 w-11 items-center justify-center rounded-xl text-white hover:bg-white/10" aria-label={t.nav.menu}>
             <IconMenu className="h-6 w-6" />
           </button>
           <Link href={href(lang, "/")} className="flex items-center rounded-lg px-0.5 py-1 hover:ring-1 hover:ring-white/40" aria-label="Mena">
@@ -92,7 +92,7 @@ export function Header({ lang, categories, announcement, phone }: { lang: Lang; 
                   flushSync(() => setSearchAt(pathname));
                   document.querySelector<HTMLInputElement>("header input[name=q]")?.focus();
                 }}
-                className="flex h-11 w-10 items-center justify-center rounded-xl text-white hover:bg-white/10 md:hidden"
+                className="flex h-11 w-11 items-center justify-center rounded-xl text-white hover:bg-white/10 md:hidden"
                 aria-label={t.nav.search}
               >
                 <IconSearch className="h-6 w-6" />
@@ -107,7 +107,7 @@ export function Header({ lang, categories, announcement, phone }: { lang: Lang; 
                 }}
                 className="hidden flex-col items-end rounded-lg px-3 py-1 leading-tight hover:ring-1 hover:ring-white/40 lg:flex"
               >
-                <span className="text-[13px] text-white/75">{t.trust.support}</span>
+                <span className="text-[14px] text-white/80">{t.trust.support}</span>
                 <span className="text-[16px] font-bold text-white ltr-nums">{formatPhone(phone)}</span>
               </a>
             )}
@@ -205,7 +205,7 @@ function CartLink({ lang }: { lang: Lang }) {
       <span className="relative" dir="ltr">
         <IconCart className="h-8 w-8" />
         {n > 0 && (
-          <span className="absolute -top-1.5 left-[9px] flex h-5 min-w-5 items-center justify-center rounded-full bg-buy px-1 text-[13px] font-bold leading-none text-night" aria-hidden data-testid="cart-count">
+          <span className="absolute -top-2 left-[8px] flex h-[22px] min-w-[22px] items-center justify-center rounded-full bg-buy px-1 text-[14px] font-bold leading-none text-night" aria-hidden data-testid="cart-count">
             {n}
           </span>
         )}
@@ -215,7 +215,7 @@ function CartLink({ lang }: { lang: Lang }) {
   );
 }
 
-type Suggestion = { products: { slug: string; name: string; nameAr: string | null; price: number; imageId: string | null }[]; categories: Cat[] };
+type Suggestion = { completions: string[]; products: { slug: string; name: string; nameAr: string | null; price: number; imageId: string | null }[]; categories: Cat[] };
 
 function SearchFromUrl({ lang }: { lang: Lang }) {
   const pathname = usePathname();
@@ -223,7 +223,25 @@ function SearchFromUrl({ lang }: { lang: Lang }) {
   return <SearchBox lang={lang} urlQ={pathname.endsWith("/recherche") ? (params.get("q") ?? "") : ""} />;
 }
 
-/** One wide search box, with suggestions under it as soon as two letters are typed. */
+/** "lampe de chevet" after "lam": the typed part as typed, the rest in bold, as Google shows it. */
+function Completion({ text, typed }: { text: string; typed: string }) {
+  const n = typed.trim().length;
+  const starts = text.slice(0, n).toLocaleLowerCase() === typed.trim().toLocaleLowerCase();
+  return starts ? (
+    <span>
+      {text.slice(0, n)}
+      <strong>{text.slice(n)}</strong>
+    </span>
+  ) : (
+    <strong>{text}</strong>
+  );
+}
+
+/**
+ * One wide search box. From two letters: what it may be completing (found
+ * even with a typing mistake), the products with their picture and price,
+ * the categories. Arrows and Enter work as in any search engine.
+ */
 function SearchBox({ lang, urlQ }: { lang: Lang; urlQ: string }) {
   const t = dict(lang);
   const router = useRouter();
@@ -233,9 +251,10 @@ function SearchBox({ lang, urlQ }: { lang: Lang; urlQ: string }) {
   const setQ = (v: string) => setTyped({ at: urlQ, q: v });
   const [s, setS] = useState<Suggestion | null>(null);
   const [open, setOpen] = useState(false);
+  const [active, setActive] = useState(-1);
   const box = useRef<HTMLDivElement>(null);
   const term = q.trim();
-  // Suggestions only for a real term; a stale answer for a shorter one is never shown.
+  // Suggestions only for a real term; while the next answer is on its way, the last one stays.
   const shown = open && term.length >= 2 ? s : null;
 
   useEffect(() => {
@@ -246,7 +265,7 @@ function SearchBox({ lang, urlQ }: { lang: Lang; urlQ: string }) {
         .then((r) => (r.ok ? r.json() : null))
         .then((d) => d && setS(d))
         .catch(() => {});
-    }, 180);
+    }, 150);
     return () => {
       clearTimeout(id);
       ctrl.abort();
@@ -261,12 +280,30 @@ function SearchBox({ lang, urlQ }: { lang: Lang; urlQ: string }) {
     return () => removeEventListener("pointerdown", close);
   }, []);
 
+  // Every line of the list, in order, with where it leads.
+  const items = shown
+    ? [
+        ...shown.completions.map((c) => ({ key: `q:${c}`, to: href(lang, `/recherche?q=${encodeURIComponent(c)}`), kind: "completion" as const, c })),
+        ...shown.categories.map((c) => ({ key: `c:${c.slug}`, to: href(lang, `/categorie/${c.slug}`), kind: "category" as const, cat: c })),
+        ...shown.products.map((p) => ({ key: `p:${p.slug}`, to: href(lang, `/produit/${p.slug}`), kind: "product" as const, p })),
+      ]
+    : [];
+  const go = (i: number) => {
+    const it = items[i];
+    if (!it) return;
+    setOpen(false);
+    track("search_suggestion_clicked", { props: { q: term, kind: it.kind } });
+    if (it.kind === "completion") setQ(it.c);
+    router.push(it.to);
+  };
+
   return (
     <div ref={box} className="relative">
       <form
         role="search"
         onSubmit={(e) => {
           e.preventDefault();
+          if (active >= 0 && items[active]) return go(active);
           setOpen(false);
           if (term) router.push(href(lang, `/recherche?q=${encodeURIComponent(term)}`));
         }}
@@ -277,47 +314,77 @@ function SearchBox({ lang, urlQ }: { lang: Lang; urlQ: string }) {
           onChange={(e) => {
             setQ(e.target.value);
             setOpen(true);
+            setActive(-1);
           }}
           onFocus={() => setOpen(true)}
+          onKeyDown={(e) => {
+            if (!items.length) return;
+            if (e.key === "ArrowDown") {
+              e.preventDefault();
+              setActive((a) => (a + 1) % items.length);
+            } else if (e.key === "ArrowUp") {
+              e.preventDefault();
+              setActive((a) => (a <= 0 ? items.length - 1 : a - 1));
+            } else if (e.key === "Escape") setOpen(false);
+          }}
           placeholder={t.nav.searchPlaceholder}
           className="min-w-0 flex-1 bg-transparent px-4 text-[17px] text-ink outline-none placeholder:text-placeholder"
           enterKeyHint="search"
           name="q"
           autoComplete="off"
+          role="combobox"
+          aria-expanded={items.length > 0}
+          aria-controls="search-list"
+          aria-autocomplete="list"
+          aria-activedescendant={active >= 0 && items[active] ? `sg-${active}` : undefined}
           aria-label={t.nav.search}
         />
         <button type="submit" className="flex w-14 items-center justify-center bg-amber text-night hover:bg-amber-2" aria-label={t.nav.search}>
           <IconSearch className="h-6 w-6" />
         </button>
       </form>
-      {shown && (shown.products.length > 0 || shown.categories.length > 0) && (
-        <div className="absolute inset-x-0 top-full z-40 mt-1 max-h-[70vh] overflow-y-auto rounded-xl border border-line bg-white p-2 text-ink shadow-lift [--focus-ring:var(--color-sea)]">
-          {shown.categories.map((c) => (
-            <Link key={c.slug} href={href(lang, `/categorie/${c.slug}`)} onClick={() => { setOpen(false); track("search_suggestion_clicked", { props: { q: term, kind: "category" } }); }} className="flex min-h-11 items-center rounded-lg px-3 text-[16px] font-bold text-sea-2 hover:bg-sand">
-              {pick(lang, c.name, c.nameAr)}
-            </Link>
-          ))}
-          {shown.products.map((p) => (
-            <Link
-              key={p.slug}
-              href={href(lang, `/produit/${p.slug}`)}
-              onClick={() => {
-                setOpen(false);
-                track("search_suggestion_clicked", { props: { q: term, kind: "product" } });
-              }}
-              className="flex items-center gap-3 rounded-lg px-2 py-2 hover:bg-sand"
-            >
-              <span className="relative h-12 w-12 shrink-0 overflow-hidden rounded-lg bg-sand">
-                {p.imageId && (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img src={`/api/img/${p.imageId}/96`} alt="" className="h-full w-full object-cover" />
+      {items.length > 0 && (
+        <ul id="search-list" role="listbox" aria-label={t.search.suggestions} className="absolute inset-x-0 top-full z-40 mt-1 max-h-[70vh] overflow-y-auto rounded-xl border border-line bg-white p-1.5 text-ink shadow-lift" data-testid="suggestions">
+          {items.map((it, i) => (
+            <li key={it.key} id={`sg-${i}`} role="option" aria-selected={i === active}>
+              <Link
+                href={it.to}
+                onClick={(e) => {
+                  e.preventDefault();
+                  go(i);
+                }}
+                onPointerEnter={() => setActive(i)}
+                tabIndex={-1}
+                className={`flex min-h-12 items-center gap-3 rounded-lg px-2.5 py-1.5 ${i === active ? "bg-sand" : ""} ${it.kind === "product" && items[i - 1]?.kind !== "product" ? "mt-1 border-t border-line pt-2.5" : ""}`}
+              >
+                {it.kind === "completion" ? (
+                  <>
+                    <IconSearch className="h-5 w-5 shrink-0 text-muted" />
+                    <span className="min-w-0 flex-1 truncate text-[17px]" dir="auto">
+                      <Completion text={it.c} typed={term} />
+                    </span>
+                  </>
+                ) : it.kind === "category" ? (
+                  <>
+                    <IconChevron className="h-5 w-5 shrink-0 text-sea" />
+                    <span className="flex-1 text-[16px] font-bold text-sea-2">{pick(lang, it.cat.name, it.cat.nameAr)}</span>
+                  </>
+                ) : (
+                  <>
+                    <span className="relative h-12 w-12 shrink-0 overflow-hidden rounded-lg bg-sand">
+                      {it.p.imageId && (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img src={`/api/img/${it.p.imageId}/96`} alt="" className="h-full w-full object-cover" />
+                      )}
+                    </span>
+                    <span className="min-w-0 flex-1 text-[16px] leading-snug text-ink">{pick(lang, it.p.name, it.p.nameAr)}</span>
+                    <span className="shrink-0 text-[16px] font-bold price-nums ltr-nums">{formatTND(it.p.price, lang)}</span>
+                  </>
                 )}
-              </span>
-              <span className="flex-1 text-[16px] text-ink">{pick(lang, p.name, p.nameAr)}</span>
-              <span className="text-[16px] font-bold ltr-nums">{formatTND(p.price, lang)}</span>
-            </Link>
+              </Link>
+            </li>
           ))}
-        </div>
+        </ul>
       )}
     </div>
   );

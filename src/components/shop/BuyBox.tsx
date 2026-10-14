@@ -85,6 +85,7 @@ export function choiceItem(p: P, c: BuyChoice): CartItem | null {
     name: p.name,
     nameAr: p.nameAr,
     variantName: c.variant?.name ?? null,
+    variantNameAr: c.variant?.nameAr ?? null,
     offerLabel: c.offer?.label ?? null,
     offerLabelAr: c.offer?.labelAr ?? null,
     imageId: p.images[0]?.id ?? null,
@@ -157,7 +158,7 @@ export function BuyBox({ p, lang, settings, url, choice, idp = "bb", onAdded }: 
     document.getElementById(id("variants"))?.scrollIntoView({ behavior: "smooth", block: "center" });
     document.querySelector<HTMLButtonElement>(`#${id("variants")} button:not(:disabled)`)?.focus({ preventScroll: true });
   }
-  const optionLabel = [variant?.name, offer ? pick(lang, offer.label, offer.labelAr) : null].filter(Boolean).join(" — ") || null;
+  const optionLabel = [variant ? pick(lang, variant.name, variant.nameAr) : null, offer ? pick(lang, offer.label, offer.labelAr) : null].filter(Boolean).join(" — ") || null;
 
   return (
     // The whole box is the place "Acheter maintenant" brings the reader back to.
@@ -192,7 +193,7 @@ export function BuyBox({ p, lang, settings, url, choice, idp = "bb", onAdded }: 
         <div id={id("variants")} className="flex scroll-mt-24 flex-col gap-2" role="group" aria-labelledby={id("variants-label")}>
           <p id={id("variants-label")} className={`text-[19px] font-bold ${variantError && needsVariant ? "text-danger" : "text-ink"}`} aria-live="polite">
             {variantError && needsVariant ? t.buy.variantError : t.product.choose}
-            {variant && <span className="font-normal text-muted"> : {variant.name}</span>}
+            {variant && <span className="font-normal text-muted">{lang === "ar" ? ": " : " : "}{pick(lang, variant.name, variant.nameAr)}</span>}
           </p>
           {/* Tiles like the shops customers know: the name, its price when it differs, and whether it is there. */}
           <div className="grid grid-cols-[repeat(auto-fill,minmax(104px,1fr))] gap-2">
@@ -210,7 +211,7 @@ export function BuyBox({ p, lang, settings, url, choice, idp = "bb", onAdded }: 
                   variant?.id === v.id ? "border-sea bg-sea-soft ring-2 ring-sea/30" : "border-field bg-white hover:border-sea/60"
                 } disabled:cursor-not-allowed disabled:border-dashed disabled:border-line disabled:bg-sand/50`}
               >
-                <span className={`text-[16px] leading-tight ${variant?.id === v.id ? "font-bold text-sea-2" : "text-ink"} ${v.soldOut ? "text-muted line-through" : ""}`}>{v.name}</span>
+                <span className={`text-[16px] leading-tight ${variant?.id === v.id ? "font-bold text-sea-2" : "text-ink"} ${v.soldOut ? "text-muted line-through" : ""}`}>{pick(lang, v.name, v.nameAr)}</span>
                 {v.soldOut ? (
                   <span className="text-[14px] text-muted">{t.product.out}</span>
                 ) : (

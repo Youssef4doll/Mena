@@ -80,8 +80,9 @@ function demoOffers(price: number) {
   ];
 }
 /** The product page's texts for the demo: a line under the name, the Arabic description, the specs. */
-const CONTENT: Record<string, { summary: string; summaryAr: string; descriptionAr: string; specs: string; specsAr: string }> = {
+const CONTENT: Record<string, { keywords: string; summary: string; summaryAr: string; descriptionAr: string; specs: string; specsAr: string }> = {
   "lampe-de-chevet-tactile": {
+    keywords: "lampe, veilleuse, lampe de nuit, lampe tactile, lamba, lampa, ضو, لمبة, ضو سرير",
     summary: "Un toucher sur le pied pour allumer : trois intensités, une lumière chaude et douce pour lire le soir.",
     summaryAr: "تمسّ الساق تشعل: 3 درجات ضو، ضو دافي ومريح للقراية في الليل.",
     descriptionAr: "تمسّة وحدة على الساق وتختار قدّاش تحب الضو: خفيف، متوسّط ولا قوي. الضو دافي وما يتعبش العينين.\n\nطولها 32 صم. الكابل USB-C معاها.",
@@ -89,6 +90,7 @@ const CONTENT: Record<string, { summary: string; summaryAr: string; descriptionA
     specsAr: "الطول: 32 صم\nالضو: دافي، 3 درجات\nالشحن: كابل USB-C (معاها)\nفي الكرطونة: لمبة وكابل",
   },
   "diffuseur-huiles-essentielles": {
+    keywords: "diffuseur, humidificateur, parfum maison, huile essentielle, brumisateur, difuseur, مبخرة, معطر, بخار",
     summary: "Une brume fine et silencieuse qui parfume la pièce, avec sept couleurs de veilleuse. S'arrête seul quand il est vide.",
     summaryAr: "بخار رقيق وبلا حس يعطّر البيت، و7 ألوان ضو. يطفى وحدو كي يفرغ الماء.",
     descriptionAr: "حطّ شوية ماء وقطرات من الزيت اللي تحبّو، وهو يعمل بخار رقيق يعطّر البيت بلا حس.\n\nخزّان 300 مل. يطفى وحدو كي يفرغ. 7 ألوان ضو تنجم تخليها ولا تطفيها.",
@@ -96,6 +98,7 @@ const CONTENT: Record<string, { summary: string; summaryAr: string; descriptionA
     specsAr: "الخزّان: 300 مل\nيطفى وحدو: إيه، كي يفرغ الماء\nالضو: 7 ألوان\nالحس: خفيف برشا\nفي الكرطونة: الموزّع، كابل، كاس قياس",
   },
   "set-6-verres-ambres": {
+    keywords: "verres, verre, gobelets, kes, kisen, كيسان, كاس, بلار",
     summary: "Six verres épais teintés ambre, 300 ml, qui passent au lave-vaisselle.",
     summaryAr: "6 كيسان بلّار خشين لون عنبري، 300 مل، يتغسلو في الماكينة.",
     descriptionAr: "بلّار خشين ولونو عنبري يعطي حس للطاولة. كل كاس 300 مل.\n\nيتغسلو في ماكينة الماعون بلا مشكل.",
@@ -103,6 +106,7 @@ const CONTENT: Record<string, { summary: string; summaryAr: string; descriptionA
     specsAr: "السعة: 300 مل للكاس\nالمادة: بلّار خشين ملوّن\nماكينة الماعون: إيه\nفي الكرطونة: 6 كيسان",
   },
   "brosse-soufflante-3-en-1": {
+    keywords: "brosse soufflante, sèche-cheveux, seche cheveux, lisseur, brushing, sechouar, سشوار, فرشاة شعر",
     summary: "Sèche, lisse et donne du volume en un seul geste, avec trois températures.",
     summaryAr: "تنشّف، تملّس وتعطي حجم في نفس الوقت، بـ 3 درجات سخانة.",
     descriptionAr: "فرشاة وسشوار في وقت واحد: تنشّف الشعر وتملّسو وتعطيه حجم.\n\n3 درجات سخانة وزر بارد باش تثبّت التسريحة.",
@@ -110,6 +114,7 @@ const CONTENT: Record<string, { summary: string; summaryAr: string; descriptionA
     specsAr: "السخانة: 3 درجات وهواء بارد\nتنشّف، تملّس، تعطي حجم\nالكابل: يدور",
   },
   "montre-minimaliste": {
+    keywords: "montre, montre femme, montre homme, sa3a, ساعة, مونتر",
     summary: "Boîtier fin de 38 mm et bracelet en maille milanaise réglable.",
     summaryAr: "ساعة رقيقة 38 مم، بسوار حديد مضفور يتعدّل.",
     descriptionAr: "ساعة بسيطة وأنيقة، تمشي مع كل لبسة. السوار يتعدّل على قدّ يدّك.\n\nما يضرّهاش رشّ الماء.",
@@ -117,6 +122,7 @@ const CONTENT: Record<string, { summary: string; summaryAr: string; descriptionA
     specsAr: "الساعة: 38 مم، حديد\nالسوار: مضفور ويتعدّل\nالماء: ما يضرّهاش الرش",
   },
   "sac-bandouliere-cuir-vegan": {
+    keywords: "sac, sac à main, sacoche, bandoulière, sak, صاك, ساك",
     summary: "Petit sac qui garde l'essentiel : téléphone, portefeuille, clés. Bandoulière réglable.",
     summaryAr: "صاك صغير يهز الأساسي: التليفون، البزطام والمفاتح. الحزام يتعدّل.",
     descriptionAr: "صاك خفيف يهز التليفون والبزطام والمفاتح. الحزام يتعدّل ويتنحّى.",
@@ -124,6 +130,7 @@ const CONTENT: Record<string, { summary: string; summaryAr: string; descriptionA
     specsAr: "المادة: جلد نباتي\nالحزام: يتعدّل ويتنحّى",
   },
   "ecouteurs-sans-fil": {
+    keywords: "écouteurs, ecouteur, airpods, bluetooth, kit, casque, سماعات, ايربودز",
     summary: "Bluetooth 5.3, six heures d'écoute et vingt-quatre heures avec le boîtier.",
     summaryAr: "بلوتوث 5.3، 6 سوايع سماع و24 ساعة بالعلبة متاعهم.",
     descriptionAr: "سماعات بلا خيط، تتربط بالتليفون في ثانية. 6 سوايع سماع، و24 ساعة كي تشحنهم في العلبة.\n\nتمسّة على السماعة تحبّس ولا تبدّل الأغنية.",
@@ -131,6 +138,7 @@ const CONTENT: Record<string, { summary: string; summaryAr: string; descriptionA
     specsAr: "البلوتوث: 5.3\nالشحن: 6 سوايع (24 بالعلبة)\nالتحكّم: باللمس",
   },
   "miroir-led-maquillage": {
+    keywords: "miroir, miroir lumineux, maquillage, mraya, mirwar, مراية, مرايه",
     summary: "Lumière réglable en trois teintes, rechargeable, pied orientable.",
     summaryAr: "ضو يتعدّل في 3 ألوان، يتشحن، والساق تدور.",
     descriptionAr: "مراية بضو LED تتعدّل: أبيض، دافي ولا بيناتهم. تتشحن وما تحتاجش كابل ديما.",
@@ -138,6 +146,7 @@ const CONTENT: Record<string, { summary: string; summaryAr: string; descriptionA
     specsAr: "الضو: LED، 3 ألوان\nالشحن: يتشحن\nالساق: تدور",
   },
   "tapis-berbere-120x170": {
+    keywords: "tapis, zarbia, zarbiya, berbère, زربية, سجاد",
     summary: "Motif losange, poils courts faciles à entretenir, dos antidérapant.",
     summaryAr: "نقشة معيّنات، صوف قصير ساهل في التنظيف، وما يزلقش.",
     descriptionAr: "زربية بنقشة بربرية تعطي دفء للبيت. الصوف قصير وساهل في التنظيف، والظهر ما يزلقش.",
@@ -145,6 +154,7 @@ const CONTENT: Record<string, { summary: string; summaryAr: string; descriptionA
     specsAr: "القياس: 120 × 170 صم\nالصوف: قصير\nالظهر: ما يزلقش",
   },
   "mixeur-portable": {
+    keywords: "mixeur, blender, jus, smoothie, mixer, خلاط, ميكسور",
     summary: "Smoothies et jus en trente secondes, rechargeable en USB.",
     summaryAr: "عصير وسموذي في 30 ثانية، يتشحن بـ USB.",
     descriptionAr: "خلاط صغير تهزّو معاك: عصير ولا سموذي في 30 ثانية. يتشحن بـ USB.",
@@ -152,6 +162,7 @@ const CONTENT: Record<string, { summary: string; summaryAr: string; descriptionA
     specsAr: "الكاس: 400 مل\nالشحن: USB",
   },
   "organisateur-maquillage-rotatif": {
+    keywords: "organisateur, rangement, maquillage, boîte, منظم, رفوف",
     summary: "Tourne sur lui-même, plateaux réglables : tout se range et se trouve vite.",
     summaryAr: "يدور على روحو والرفوف تتعدّل: كل شي يتنظّم ويتلقى بالزربة.",
     descriptionAr: "منظّم يدور 360 درجة، والرفوف تتعدّل على قدّ الحوايج متاعك: فرشات، روج، كريمات.",
@@ -159,6 +170,7 @@ const CONTENT: Record<string, { summary: string; summaryAr: string; descriptionA
     specsAr: "يدور: 360 درجة\nالرفوف: تتعدّل",
   },
   "plaid-tricot": {
+    keywords: "plaid, couverture, jeté, tricot, ghta, غطاء, كوفرطة",
     summary: "Grosse maille douce, 130 × 160 cm, lavable à 30 °C.",
     summaryAr: "تريكو خشين وناعم، 130 × 160 صم، يتغسل على 30 درجة.",
     descriptionAr: "غطاء تريكو خشين وناعم، يدفّيك على الكنابة ولا في الفرش. يتغسل في الماكينة على 30 درجة.",
@@ -166,6 +178,9 @@ const CONTENT: Record<string, { summary: string; summaryAr: string; descriptionA
     specsAr: "القياس: 130 × 160 صم\nالغسيل: 30 درجة",
   },
 };
+
+/** Option names in Arabic, for the demo's options. */
+const OPTION_AR: Record<string, string> = { Blanc: "أبيض", Noir: "أكحل", Bois: "خشب", Argent: "فضّي", Doré: "ذهبي", Camel: "كاميل", Crème: "كريمي", Écru: "بيج فاتح", Terracotta: "طوبي", Gris: "رمادي" };
 
 /** A long description picture, Amazon-style: a headline and three points with their icons. */
 async function longPicture(seed: number, title: string, points: string[]) {
@@ -222,6 +237,10 @@ async function upgrade() {
   // Texts for the new product page, only where the shop has not written its own.
   for (const [slug, c] of Object.entries(CONTENT)) {
     await prisma.product.updateMany({ where: { slug, isDemo: true, summary: "" }, data: c });
+    await prisma.product.updateMany({ where: { slug, isDemo: true, keywords: "" }, data: { keywords: c.keywords } });
+  }
+  for (const [name, nameAr] of Object.entries(OPTION_AR)) {
+    await prisma.productVariant.updateMany({ where: { name, nameAr: null, product: { isDemo: true } }, data: { nameAr } });
   }
   for (const [i, p] of PRODUCTS.entries()) await richImages(p, i);
 }
@@ -291,7 +310,7 @@ async function main() {
         categoryId: cats.get(p.cat), active: true, featured: Boolean(p.featured), isDemo: true,
         stockMode: p.tracked != null ? "TRACKED" : "SUPPLIER", stockQty: p.tracked ?? 0, available: true,
         images: { create: imgs.map((m, n) => ({ mediaId: m.id, sort: n })) },
-        variants: p.variants ? { create: p.variants.map((v, n) => ({ name: v.name, price: v.price ?? null, stockQty: v.stock ?? 0, available: true, sort: n })) } : undefined,
+        variants: p.variants ? { create: p.variants.map((v, n) => ({ name: v.name, nameAr: OPTION_AR[v.name] ?? null, price: v.price ?? null, stockQty: v.stock ?? 0, available: true, sort: n })) } : undefined,
         offers: WITH_OFFERS.has(p.slug) ? { create: demoOffers(p.price) } : undefined,
       },
     });

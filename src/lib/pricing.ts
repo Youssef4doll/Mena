@@ -34,6 +34,7 @@ export type CatalogOffer = {
 export type CatalogVariant = {
   id: string;
   name: string;
+  nameAr?: string | null;
   price: number | null;
   stockQty: number;
   available: boolean;
@@ -62,6 +63,7 @@ export type PricedLine = {
   name: string;
   nameAr: string | null;
   variantName: string | null;
+  variantNameAr: string | null;
   imageId: string | null;
   /** With an offer: the line total spread over the units, rounded (display and analytics only). */
   unitPrice: number;
@@ -78,6 +80,8 @@ export type PricedLine = {
 export type LineProblem = {
   productId: string;
   variantId: string | null;
+  /** The offer of the refused line (null for a line sold by the unit), so a basket knows which line it is. */
+  offerId?: string | null;
   kind: "not_found" | "unavailable" | "variant_required" | "qty_reduced" | "offer_unavailable";
   /** For qty_reduced, and for an offer larger than the stock: what is left. */
   available?: number;
@@ -150,6 +154,9 @@ export function priceCart(args: {
   const priced: PricedLine[] = [];
   let costKnown = true;
   let costTotal = 0;
+  // Units already taken by earlier lines of the same product and option: two lines never sell the same stock twice.
+  const used = new Map<string, number>();
+  const usedKey = (p: CatalogProduct, v: CatalogVariant | null) => `${p.id}|${v?.id ?? ""}`;
 
   for (const l of mergeLines(args.lines)) {
     const p = args.catalog.get(l.productId);
@@ -170,15 +177,16 @@ export function priceCart(args: {
       // Offers are set at the product's price: an option with its own price is not sold through them.
       const ownPrice = v != null && v.price != null && v.price !== p.price;
       if (!offer || !offerLive(offer, args.now) || offer.quantity < 1 || ownPrice) {
-        problems.push({ productId: p.id, variantId: v?.id ?? null, kind: "offer_unavailable" });
+        problems.push({ productId: p.id, variantId: v?.id ?? null, offerId: l.offerId, kind: "offer_unavailable" });
         continue;
       }
       // An offer is all or nothing: never a smaller quantity at the offer's price.
-      const left = sellable(p, v);
+      const left = sellable(p, v) - (used.get(usedKey(p, v)) ?? 0);
       if (left < offer.quantity) {
-        problems.push({ productId: p.id, variantId: v?.id ?? null, kind: "unavailable", available: left });
+        problems.push({ productId: p.id, variantId: v?.id ?? null, offerId: offer.id, kind: "unavailable", available: Math.max(0, left) });
         continue;
       }
+      used.set(usedKey(p, v), (used.get(usedKey(p, v)) ?? 0) + offer.quantity);
       if (p.cost == null) costKnown = false;
       else costTotal += p.cost * offer.quantity;
       priced.push({
@@ -188,6 +196,7 @@ export function priceCart(args: {
         name: p.name,
         nameAr: p.nameAr,
         variantName: v?.name ?? null,
+        variantNameAr: v?.nameAr ?? null,
         imageId: p.imageId,
         unitPrice: Math.round(offer.price / offer.quantity),
         unitCost: p.cost,
@@ -201,16 +210,17 @@ export function priceCart(args: {
       continue;
     }
 
-    const max = Math.min(MAX_QTY_PER_LINE, sellable(p, v));
+    const max = Math.min(MAX_QTY_PER_LINE, sellable(p, v) - (used.get(usedKey(p, v)) ?? 0));
     if (max <= 0) {
-      problems.push({ productId: p.id, variantId: v?.id ?? null, kind: "unavailable" });
+      problems.push({ productId: p.id, variantId: v?.id ?? null, offerId: null, kind: "unavailable", ...(used.has(usedKey(p, v)) ? { available: 0 } : {}) });
       continue;
     }
     let qty = l.qty;
     if (qty > max) {
       qty = max;
-      problems.push({ productId: p.id, variantId: v?.id ?? null, kind: "qty_reduced", available: max });
+      problems.push({ productId: p.id, variantId: v?.id ?? null, offerId: null, kind: "qty_reduced", available: max });
     }
+    used.set(usedKey(p, v), (used.get(usedKey(p, v)) ?? 0) + qty);
     const unitPrice = v?.price ?? p.price;
     if (p.cost == null) costKnown = false;
     else costTotal += p.cost * qty;
@@ -221,6 +231,7 @@ export function priceCart(args: {
       name: p.name,
       nameAr: p.nameAr,
       variantName: v?.name ?? null,
+      variantNameAr: v?.nameAr ?? null,
       imageId: p.imageId,
       unitPrice,
       unitCost: p.cost,

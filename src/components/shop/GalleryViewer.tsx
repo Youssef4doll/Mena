@@ -5,6 +5,7 @@ import { useEffect, useRef, useState } from "react";
 import { dict, type Lang } from "@/i18n";
 import type { ImageRef } from "@/lib/catalog";
 import { IconClose, IconExpand, IconMinus } from "./Icons";
+import { useFocusTrap } from "@/lib/client/focus-trap";
 
 /**
  * The pictures in full screen, on white: swiped one by one, the counter and
@@ -21,6 +22,14 @@ export function GalleryViewer({ images, start, name, lang, onClose }: { images: 
   const zoomBox = useRef<HTMLDivElement>(null);
   const closing = useRef(false);
   const pushed = useRef(false);
+  const root = useRef<HTMLDivElement>(null);
+  const thumbs = useRef<HTMLDivElement>(null);
+  useFocusTrap(root, true);
+
+  // The thumbnail of the photo on screen stays in view in the strip.
+  useEffect(() => {
+    thumbs.current?.querySelector<HTMLElement>(`[data-i="${i}"]`)?.scrollIntoView({ block: "nearest", inline: "nearest" });
+  }, [i]);
 
   // Opening adds a history entry; Back (or the close button, which goes back) closes it.
   // Added once, even when the effect runs twice (React's development checks).
@@ -103,7 +112,7 @@ export function GalleryViewer({ images, start, name, lang, onClose }: { images: 
   }
 
   return (
-    <div className="fixed inset-0 z-[70] flex animate-fade touch-manipulation flex-col bg-white" role="dialog" aria-modal="true" aria-label={name}>
+    <div ref={root} className="fixed inset-0 z-[70] flex animate-fade touch-manipulation flex-col bg-white" role="dialog" aria-modal="true" aria-label={name}>
       <div className="flex items-center justify-between gap-3 border-b border-line px-3 py-2">
         <span className="px-2 text-[17px] font-bold text-ink" aria-live="polite">
           <span className="ltr-nums">
@@ -153,12 +162,15 @@ export function GalleryViewer({ images, start, name, lang, onClose }: { images: 
       </div>
 
       {images.length > 1 && (
-        <div className="flex justify-center gap-2 overflow-x-auto border-t border-line px-3 py-2.5 pb-[max(.625rem,env(safe-area-inset-bottom))] no-scrollbar">
+        // Centred when they fit, scrollable from the first one when they do not.
+        <div ref={thumbs} className="overflow-x-auto border-t border-line px-3 py-2.5 pb-[max(.625rem,env(safe-area-inset-bottom))] no-scrollbar">
+          <div className="mx-auto flex w-max gap-2">
           {images.map((img, n) => (
-            <button key={img.id} type="button" onClick={() => go(n)} className={`relative h-14 w-14 shrink-0 overflow-hidden rounded-lg border-2 ${n === i ? "border-sea ring-2 ring-sea/30" : "border-line"}`} aria-label={t.product.photo(n + 1, images.length)} aria-current={n === i}>
+            <button key={img.id} data-i={n} type="button" onClick={() => go(n)} className={`relative h-14 w-14 shrink-0 overflow-hidden rounded-lg border-2 ${n === i ? "border-sea ring-2 ring-sea/30" : "border-line"}`} aria-label={t.product.photo(n + 1, images.length)} aria-current={n === i}>
               <Image src={`/api/img/${img.id}`} alt="" fill sizes="64px" className="object-cover" />
             </button>
           ))}
+          </div>
         </div>
       )}
     </div>

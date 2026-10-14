@@ -5,6 +5,7 @@ import { useEffect, useRef, useState } from "react";
 import { dict, href, pick, type Lang } from "@/i18n";
 import { cartCount, onCartAdded, useCart, type AddResult, type CartItem } from "@/lib/client/cart";
 import { IconCheck, IconClose } from "./Icons";
+import { useFocusTrap } from "@/lib/client/focus-trap";
 
 /**
  * Told by any "Ajouter au panier" on the page: what was added, and the two
@@ -16,6 +17,8 @@ export function CartAdded({ lang }: { lang: Lang }) {
   const [shown, setShown] = useState<{ item: CartItem; result: AddResult } | null>(null);
   const n = cartCount(useCart());
   const primary = useRef<HTMLAnchorElement>(null);
+  const panel = useRef<HTMLDivElement>(null);
+  useFocusTrap(panel, shown != null, true);
 
   useEffect(() => onCartAdded((a) => setShown(a)), []);
 
@@ -36,13 +39,13 @@ export function CartAdded({ lang }: { lang: Lang }) {
   if (!shown) return null;
   const { item, result } = shown;
   const title = result === "full" ? t.cart.full : result === "already" ? t.cart.already : t.cart.added;
-  const option = [item.variantName, item.offerLabel ? pick(lang, item.offerLabel, item.offerLabelAr) : null].filter(Boolean).join(" · ");
+  const option = [item.variantName ? pick(lang, item.variantName, item.variantNameAr) : null, item.offerLabel ? pick(lang, item.offerLabel, item.offerLabelAr) : null].filter(Boolean).join(" · ");
   const close = () => setShown(null);
 
   return (
     <div className="fixed inset-0 z-[60] flex items-end justify-center md:items-start md:justify-end md:p-6" role="dialog" aria-modal="true" aria-labelledby="cart-added-title">
       <button type="button" className="absolute inset-0 animate-fade bg-night/40 md:bg-night/20" onClick={close} aria-label={t.nav.close} tabIndex={-1} />
-      <div className="relative w-full animate-sheet-up rounded-t-3xl bg-white px-4 pb-[max(1rem,env(safe-area-inset-bottom))] pt-4 shadow-lift md:max-w-sm md:animate-fade md:rounded-2xl md:p-5">
+      <div ref={panel} className="relative w-full animate-sheet-up rounded-t-3xl bg-white px-4 pb-[max(1rem,env(safe-area-inset-bottom))] pt-4 shadow-lift md:max-w-sm md:animate-fade md:rounded-2xl md:p-5">
         <div className="flex items-start justify-between gap-3">
           <p id="cart-added-title" className={`flex items-center gap-2 text-[19px] font-bold ${result === "full" ? "text-clay" : "text-olive"}`} role="status">
             {result !== "full" && (

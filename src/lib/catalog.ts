@@ -5,6 +5,7 @@ import { prisma } from "./prisma";
 import type { CatalogProduct } from "./pricing";
 import { leadOffer, offerCompareAt, offerLastDay, offersApply } from "./offer-display";
 import { parseSpecs, parseVideo, soldStep } from "./product-content";
+import { complete, normalize, rank, tokenize } from "./search";
 
 /**
  * Storefront reads. Cached under one tag the back office expires on every
@@ -71,7 +72,24 @@ export type ProductCard = {
   deal: { label: string; labelAr: string | null; quantity: number; freeDelivery: boolean } | null;
 };
 
-type PriceRow = { price: number; compareAt: number | null; variants: { price: number | null }[]; offers: { quantity: number; price: number; endsAt: Date | null; label?: string; labelAr?: string | null; freeDelivery?: boolean }[] };
+type PriceRow = {
+  price: number;
+  compareAt: number | null;
+  variants: { price: number | null; stockQty?: number; available?: boolean }[];
+  offers: { quantity: number; price: number; endsAt: Date | null; label?: string; labelAr?: string | null; freeDelivery?: boolean }[];
+  stockMode?: "TRACKED" | "SUPPLIER";
+  stockQty?: number;
+};
+
+/**
+ * The offers a card may speak of: switched on, not ended, and — when the shop
+ * counts its stock — not bigger than what is left, as the product page does.
+ */
+function liveOffers(p: PriceRow, now: number) {
+  if (!offersApply(p.price, p.variants)) return [];
+  const cap = p.stockMode === "TRACKED" ? (p.variants.length ? Math.max(0, ...p.variants.map((v) => v.stockQty ?? 0)) : (p.stockQty ?? 0)) : Infinity;
+  return p.offers.filter((o) => (!o.endsAt || o.endsAt.getTime() > now) && o.quantity <= cap);
+}
 
 /**
  * The price a list may show: what the product page will actually charge.
@@ -79,7 +97,7 @@ type PriceRow = { price: number; compareAt: number | null; variants: { price: nu
  * otherwise the lowest option price, "from" when options differ.
  */
 export function cardPrice(p: PriceRow, now = Date.now()) {
-  const live = offersApply(p.price, p.variants) ? p.offers.filter((o) => !o.endsAt || o.endsAt.getTime() > now) : [];
+  const live = liveOffers(p, now);
   const lead = leadOffer(live);
   if (lead) return { price: lead.price, priceFrom: false, packOf: lead.quantity > 1 ? lead.quantity : null, compareAt: offerCompareAt(live, lead, p.compareAt) };
   const variantPrices = p.variants.map((v) => v.price ?? p.price);
@@ -92,7 +110,7 @@ export function cardPrice(p: PriceRow, now = Date.now()) {
  * and the shop's best pack (lowest price per unit, below the lead offer's).
  */
 export function cardDeal(p: PriceRow, now = Date.now()): Pick<ProductCard, "freeDelivery" | "deal"> {
-  const live = offersApply(p.price, p.variants) ? p.offers.filter((o) => !o.endsAt || o.endsAt.getTime() > now) : [];
+  const live = liveOffers(p, now);
   const lead = leadOffer(live);
   if (!lead) return { freeDelivery: false, deal: null };
   const leadUnit = lead.price / lead.quantity;
@@ -185,7 +203,7 @@ export const getHomeCategories = unstable_cache(
     const [ratings, sold] = await Promise.all([ratingsFor(ids), soldFor(ids)]);
     return cats.map((c) => ({ ...c, products: c.products.map((p) => toCard(p, ratings, sold)) }));
   },
-  ["home-categories-v3"],
+  ["home-categories-v4"],
   { tags: [CATALOG_TAG], revalidate: TTL },
 );
 
@@ -209,7 +227,7 @@ export const getCategoryPage = unstable_cache(
     const products = sort === "popular" ? await popularIn({ categoryId: category.id }, 60) : await cards({ categoryId: category.id }, orderFor(sort), 60);
     return { category, products };
   },
-  ["category-page-v2"],
+  ["category-page-v3"],
   { tags: [CATALOG_TAG], revalidate: TTL },
 );
 
@@ -248,7 +266,7 @@ async function popularIn(where: Prisma.ProductWhereInput, take: number, fill = t
 
 export const getShop = unstable_cache(
   async (sort: SortKey) => (sort === "popular" ? popularIn({}, 120) : cards({}, orderFor(sort), 120)),
-  ["shop-v2"],
+  ["shop-v3"],
   { tags: [CATALOG_TAG], revalidate: TTL },
 );
 
@@ -270,7 +288,7 @@ export const getHome = unstable_cache(
     ]);
     return { featured, newest, bestsellers, reviews: reviews.map((r) => ({ ...r, createdAt: r.createdAt.toISOString() })) };
   },
-  ["home-v3"],
+  ["home-v4"],
   { tags: [CATALOG_TAG], revalidate: TTL },
 );
 
@@ -290,6 +308,10 @@ export const getProduct = unstable_cache(
         specs: true,
         specsAr: true,
         videoUrl: true,
+        seoTitle: true,
+        seoTitleAr: true,
+        seoDescription: true,
+        seoDescriptionAr: true,
         price: true,
         compareAt: true,
         stockMode: true,
@@ -298,7 +320,7 @@ export const getProduct = unstable_cache(
         updatedAt: true,
         category: { select: { slug: true, name: true, nameAr: true } },
         images: { orderBy: { sort: "asc" }, select: { mediaId: true, alt: true, kind: true, media: { select: { width: true, height: true, blur: true } } } },
-        variants: { orderBy: { sort: "asc" }, select: { id: true, name: true, price: true, stockQty: true, available: true } },
+        variants: { orderBy: { sort: "asc" }, select: { id: true, name: true, nameAr: true, price: true, stockQty: true, available: true } },
         offers: {
           where: { active: true, OR: [{ endsAt: null }, { endsAt: { gt: new Date() } }] },
           orderBy: [{ sort: "asc" }, { quantity: "asc" }],
@@ -333,6 +355,7 @@ export const getProduct = unstable_cache(
     const variants = p.variants.map((v) => ({
       id: v.id,
       name: v.name,
+      nameAr: v.nameAr,
       price: v.price ?? p.price,
       soldOut: tracked ? v.stockQty <= 0 : !v.available || !p.available,
       lowQty: tracked && v.stockQty > 0 && v.stockQty <= 5 ? v.stockQty : null,
@@ -353,6 +376,10 @@ export const getProduct = unstable_cache(
       specs: parseSpecs(p.specs),
       specsAr: p.specsAr?.trim() ? parseSpecs(p.specsAr) : null,
       video: parseVideo(p.videoUrl),
+      seoTitle: p.seoTitle,
+      seoTitleAr: p.seoTitleAr,
+      seoDescription: p.seoDescription,
+      seoDescriptionAr: p.seoDescriptionAr,
       price: p.price,
       compareAt: p.compareAt != null && p.compareAt > p.price ? p.compareAt : null,
       category: p.category,
@@ -370,48 +397,106 @@ export const getProduct = unstable_cache(
       related,
     };
   },
-  ["product-v3"],
+  ["product-v5"],
   { tags: [CATALOG_TAG], revalidate: TTL },
 );
 export type ProductPage = NonNullable<Awaited<ReturnType<typeof getProduct>>>;
 
-/** Accent-insensitive enough for French and Arabic without an extension: ILIKE on names and descriptions. */
-export async function searchProducts(q: string, take = 40) {
-  const term = q.trim().slice(0, 80);
-  if (term.length < 2) return [];
-  const words = term.split(/\s+/).filter((w) => w.length >= 2).slice(0, 5);
-  const where: Prisma.ProductWhereInput = {
-    AND: words.map((w) => ({
-      OR: [
-        { name: { contains: w, mode: "insensitive" } },
-        { nameAr: { contains: w, mode: "insensitive" } },
-        { description: { contains: w, mode: "insensitive" } },
-        { category: { name: { contains: w, mode: "insensitive" } } },
-      ],
-    })),
-  };
-  return cards(where, [{ featured: "desc" }, { createdAt: "desc" }], take);
+/** A product's former address → its current one (the shop renamed it): old links and Google results still arrive. */
+export const productMovedTo = unstable_cache(
+  async (slug: string) => (await prisma.product.findFirst({ where: { oldSlugs: { has: slug }, active: true }, select: { slug: true } }))?.slug ?? null,
+  ["product-moved-v1"],
+  { tags: [CATALOG_TAG], revalidate: TTL },
+);
+
+/**
+ * What the search looks through, kept in memory for a few minutes: for each
+ * product on sale its words (names in both languages, the keywords the shop
+ * typed, the category, the short description), and the phrases offered as
+ * completions. See ./search for how a query is matched.
+ */
+const getSearchIndex = unstable_cache(
+  async () => {
+    const [rows, cats] = await Promise.all([
+      prisma.product.findMany({
+        where: { active: true },
+        orderBy: [{ featured: "desc" }, { createdAt: "desc" }],
+        select: { id: true, name: true, nameAr: true, keywords: true, summary: true, summaryAr: true, featured: true, category: { select: { name: true, nameAr: true } }, variants: { select: { name: true, nameAr: true } } },
+      }),
+      prisma.category.findMany({ where: { active: true, products: { some: { active: true } } }, select: { slug: true, name: true, nameAr: true } }),
+    ]);
+    return {
+      docs: rows.map((r) => ({
+        id: r.id,
+        featured: r.featured,
+        fields: [
+          { tokens: tokenize(`${r.name} ${r.nameAr ?? ""}`), weight: 3 },
+          { tokens: tokenize(r.keywords), weight: 2.5 },
+          { tokens: tokenize(`${r.category?.name ?? ""} ${r.category?.nameAr ?? ""}`), weight: 1.5 },
+          // "montre dorée", "لمبة كحلة": the options are words of the product too.
+          { tokens: tokenize(r.variants.map((v) => `${v.name} ${v.nameAr ?? ""}`).join(" ")), weight: 1.5 },
+          { tokens: tokenize(`${r.summary} ${r.summaryAr ?? ""}`), weight: 1 },
+        ],
+      })),
+      categories: cats.map((c) => ({ ...c, doc: { id: c.slug, fields: [{ tokens: tokenize(`${c.name} ${c.nameAr ?? ""}`), weight: 3 }] } })),
+      // Completions, in the language of what is typed (Arabic letters get Arabic phrases): the shop's
+      // own names. Keywords help to find, but are not offered as text (they hold misspellings on purpose).
+      phrases: {
+        fr: [...cats.map((c) => c.name), ...rows.map((r) => r.name)],
+        ar: [...cats.map((c) => c.nameAr ?? ""), ...rows.map((r) => r.nameAr ?? "")].filter(Boolean),
+      },
+    };
+  },
+  ["search-index-v2"],
+  { tags: [CATALOG_TAG], revalidate: 300 },
+);
+
+const ARABIC = /[\u0600-\u06ff]/;
+
+/** The products a query finds, best first, even with a typing mistake. */
+async function findProducts(q: string, opts: { prefix: boolean; limit: number }) {
+  const index = await getSearchIndex();
+  const featured = new Set(index.docs.filter((d) => d.featured).map((d) => d.id));
+  const ranked = rank(q, index.docs, opts).map((r) => ({ ...r, score: r.score + (featured.has(r.id) ? 0.02 : 0) }));
+  ranked.sort((a, b) => b.score - a.score);
+  return { ranked, index };
 }
 
+/**
+ * The results page. When the best result was found by correcting a word,
+ * the corrected query is returned, for "Résultats pour « lampe »".
+ */
+export async function searchProducts(q: string, take = 40): Promise<{ products: ProductCard[]; corrected: string | null }> {
+  const term = q.trim().slice(0, 80);
+  if (term.length < 2) return { products: [], corrected: null };
+  const { ranked } = await findProducts(term, { prefix: true, limit: take });
+  if (ranked.length === 0) return { products: [], corrected: null };
+  const order = ranked.map((r) => r.id);
+  const list = await cards({ id: { in: order } }, [], order.length);
+  list.sort((a, b) => order.indexOf(a.id) - order.indexOf(b.id));
+  const fix = ranked[0].corrected;
+  const corrected = fix.size ? tokenize(term).filter((w, i, a) => a.indexOf(w) === i).map((w) => fix.get(w) ?? w).join(" ") : null;
+  return { products: list, corrected: corrected && corrected !== normalize(term) ? corrected : null };
+}
+
+/** As the customer types: completions (Google's grey lines), products with their picture and price, categories. */
 export async function suggest(q: string) {
   const term = q.trim().slice(0, 60);
-  if (term.length < 2) return { products: [], categories: [] };
-  const [products, categories] = await Promise.all([
-    prisma.product.findMany({
-      where: { active: true, OR: [{ name: { contains: term, mode: "insensitive" } }, { nameAr: { contains: term, mode: "insensitive" } }] },
-      orderBy: [{ featured: "desc" }, { createdAt: "desc" }],
-      take: 6,
-      select: { slug: true, name: true, nameAr: true, price: true, compareAt: true, variants: cardSelect.variants, offers: cardSelect.offers, images: { where: { kind: "GALLERY" }, orderBy: { sort: "asc" }, take: 1, select: { mediaId: true } } },
-    }),
-    prisma.category.findMany({
-      where: { active: true, OR: [{ name: { contains: term, mode: "insensitive" } }, { nameAr: { contains: term, mode: "insensitive" } }] },
-      take: 3,
-      select: { slug: true, name: true, nameAr: true },
-    }),
-  ]);
+  if (term.length < 2) return { completions: [], products: [], categories: [] };
+  const { ranked, index } = await findProducts(term, { prefix: true, limit: 6 });
+  const ids = ranked.map((r) => r.id);
+  const rows = ids.length
+    ? await prisma.product.findMany({
+        where: { id: { in: ids }, active: true },
+        select: { id: true, slug: true, name: true, nameAr: true, price: true, compareAt: true, variants: cardSelect.variants, offers: cardSelect.offers, images: { where: { kind: "GALLERY" }, orderBy: { sort: "asc" }, take: 1, select: { mediaId: true } } },
+      })
+    : [];
+  rows.sort((a, b) => ids.indexOf(a.id) - ids.indexOf(b.id));
+  const categories = rank(term, index.categories.map((c) => c.doc), { prefix: true, limit: 3 }).map((r) => index.categories.find((c) => c.slug === r.id)!);
   return {
-    products: products.map((p) => ({ slug: p.slug, name: p.name, nameAr: p.nameAr, price: cardPrice(p).price, imageId: p.images[0]?.mediaId ?? null })),
-    categories,
+    completions: complete(term, ARABIC.test(term) ? index.phrases.ar : index.phrases.fr, 4),
+    products: rows.map((p) => ({ slug: p.slug, name: p.name, nameAr: p.nameAr, price: cardPrice(p).price, imageId: p.images[0]?.mediaId ?? null })),
+    categories: categories.map(({ slug, name, nameAr }) => ({ slug, name, nameAr })),
   };
 }
 
@@ -433,7 +518,7 @@ export async function loadCatalog(ids: string[]): Promise<Map<string, CatalogPro
       stockQty: true,
       available: true,
       images: { where: { kind: "GALLERY" }, orderBy: { sort: "asc" }, take: 1, select: { mediaId: true } },
-      variants: { select: { id: true, name: true, price: true, stockQty: true, available: true } },
+      variants: { select: { id: true, name: true, nameAr: true, price: true, stockQty: true, available: true } },
       offers: { select: { id: true, label: true, labelAr: true, quantity: true, price: true, freeDelivery: true, active: true, endsAt: true } },
     },
   });

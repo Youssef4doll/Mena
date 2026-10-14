@@ -316,17 +316,18 @@ async function contacts(from: Date, to: Date) {
  * pictures were used.
  */
 async function basket(from: Date, to: Date) {
-  const [r] = await prisma.$queryRaw<{ added: bigint; viewed: bigint; product: bigint; quick: bigint; cart: bigint; videos: bigint; zooms: bigint }[]>`
+  const [r] = await prisma.$queryRaw<{ added: bigint; viewed: bigint; product: bigint; unknown: bigint; quick: bigint; cart: bigint; videos: bigint; zooms: bigint }[]>`
     SELECT COUNT(DISTINCT "sessionId") FILTER (WHERE name = 'add_to_cart') AS added,
       COUNT(DISTINCT "sessionId") FILTER (WHERE name = 'cart_viewed') AS viewed,
-      COUNT(*) FILTER (WHERE name = 'order_placed' AND COALESCE(props->>'origin', 'product') = 'product') AS product,
+      COUNT(*) FILTER (WHERE name = 'order_placed' AND props->>'origin' = 'product') AS product,
+      COUNT(*) FILTER (WHERE name = 'order_placed' AND props->>'origin' IS NULL) AS unknown,
       COUNT(*) FILTER (WHERE name = 'order_placed' AND props->>'origin' = 'quick') AS quick,
       COUNT(*) FILTER (WHERE name = 'order_placed' AND props->>'origin' = 'cart') AS cart,
       COUNT(DISTINCT "sessionId") FILTER (WHERE name = 'video_played') AS videos,
       COUNT(DISTINCT "sessionId") FILTER (WHERE name = 'gallery_zoomed') AS zooms
     FROM "AnalyticsEvent" WHERE "createdAt" >= ${from} AND "createdAt" < ${to}
       AND name IN ('add_to_cart', 'cart_viewed', 'order_placed', 'video_played', 'gallery_zoomed')`;
-  return { added: n(r.added), viewed: n(r.viewed), orders: { product: n(r.product), quick: n(r.quick), cart: n(r.cart) }, videos: n(r.videos), zooms: n(r.zooms) };
+  return { added: n(r.added), viewed: n(r.viewed), orders: { product: n(r.product), quick: n(r.quick), cart: n(r.cart), unknown: n(r.unknown) }, videos: n(r.videos), zooms: n(r.zooms) };
 }
 
 export async function getAnalytics(r: Range) {

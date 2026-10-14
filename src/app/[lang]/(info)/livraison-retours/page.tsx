@@ -1,13 +1,15 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
-import { dict, isLang } from "@/i18n";
+import { dict, isLang, pageMeta } from "@/i18n";
 import { getSettings } from "@/lib/settings";
 import { formatTND } from "@/lib/money";
 import { GOVERNORATES, governorateLabel } from "@/lib/governorates";
 import { deliveryRangeLabel } from "@/lib/delivery";
 import { Prose } from "../Prose";
 
-export const metadata: Metadata = { title: "Livraison et retours" };
+export async function generateMetadata({ params }: PageProps<"/[lang]/livraison-retours">): Promise<Metadata> {
+  return pageMeta((await params).lang, "/livraison-retours", (t) => t.footer.deliveryReturns);
+}
 
 /** Built from the delivery settings: the table customers read is the one the checkout charges. */
 export default async function DeliveryRoute({ params }: PageProps<"/[lang]/livraison-retours">) {

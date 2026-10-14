@@ -35,7 +35,7 @@ export function ProductCard({ p, lang, priority = false }: { p: Card; lang: Lang
             )}
           </div>
           {!out && p.freeDelivery && (
-            <span className="absolute bottom-2 start-2 inline-flex items-center gap-1 rounded-lg bg-white/95 px-2 py-1 text-[13px] font-bold text-olive shadow-soft">
+            <span className="absolute bottom-2 start-2 inline-flex items-center gap-1 rounded-lg bg-white/95 px-2 py-1 text-[14px] font-bold leading-tight text-olive shadow-soft">
               <IconTruck className="h-4 w-4 shrink-0" />
               {t.buy.freeDelivery}
             </span>

@@ -163,6 +163,7 @@ export default async function AnalyticsPage({ searchParams }: PageProps<"/admin/
             <div><dt className="text-xs text-muted">Commandes depuis le panier</dt><dd className="text-xl font-semibold">{a.basket.orders.cart}</dd></div>
             <div><dt className="text-xs text-muted">Visites avec ajout au panier</dt><dd className="text-xl font-semibold">{a.basket.added}</dd></div>
             <div><dt className="text-xs text-muted">Visites qui ont ouvert le panier</dt><dd className="text-xl font-semibold">{a.basket.viewed}</dd></div>
+            {a.basket.orders.unknown > 0 && <div><dt className="text-xs text-muted">Origine non enregistrée (avant le 14 octobre)</dt><dd className="text-xl font-semibold">{a.basket.orders.unknown}</dd></div>}
           </dl>
         </Card>
         <Card title="Photos et vidéo" hint="Visites où le client a ouvert les photos en plein écran, ou lancé la vidéo d'un produit.">

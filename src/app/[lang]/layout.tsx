@@ -2,7 +2,7 @@ import type { Metadata, Viewport } from "next";
 import { notFound } from "next/navigation";
 import { Atkinson_Hyperlegible_Next, IBM_Plex_Sans_Arabic } from "next/font/google";
 import "../globals.css";
-import { dict, isLang, languages, LOCALES, type Lang } from "@/i18n";
+import { dict, isLang, LOCALES, type Lang } from "@/i18n";
 import { getSettings } from "@/lib/settings";
 import { getCategories } from "@/lib/catalog";
 import { Header } from "@/components/shop/Header";
@@ -32,7 +32,6 @@ export async function generateMetadata({ params }: LayoutProps<"/[lang]">): Prom
     title: { default: `${s.shop.name} — ${ar ? s.shop.taglineAr : s.shop.tagline}`, template: `%s · ${s.shop.name}` },
     description: ar ? s.shop.taglineAr : s.shop.tagline,
     openGraph: { siteName: s.shop.name, locale: ar ? "ar_TN" : "fr_TN", type: "website" },
-    alternates: { languages: languages("/") },
   };
 }
 

@@ -8,12 +8,15 @@ import { CATALOG_TAG } from "@/lib/catalog";
 import { importImageFromUrl, storeImage, MAX_UPLOAD } from "@/lib/media";
 import { slugify } from "@/lib/slug";
 import { parseVideo } from "@/lib/product-content";
+import Anthropic from "@anthropic-ai/sdk";
+import { translateProduct, translationReady, type ProductTexts, type TranslateMode } from "@/lib/translate";
 
 type Result = { ok: true; id?: string; message?: string } | { ok: false; error: string };
 
 const variant = z.object({
   id: z.string().max(40).optional(),
   name: z.string().trim().min(1).max(60),
+  nameAr: z.string().trim().max(60).optional(),
   sku: z.string().trim().max(60).optional(),
   price: z.number().int().min(0).nullable(),
   stockQty: z.number().int().min(0).max(1_000_000),
@@ -43,6 +46,11 @@ const product = z.object({
   specs: z.string().max(4000),
   specsAr: z.string().max(4000),
   videoUrl: z.string().trim().max(500),
+  keywords: z.string().max(1000),
+  seoTitle: z.string().trim().max(120),
+  seoTitleAr: z.string().trim().max(120),
+  seoDescription: z.string().trim().max(320),
+  seoDescriptionAr: z.string().trim().max(320),
   price: z.number().int().min(0).max(100_000_000),
   compareAt: z.number().int().min(0).nullable(),
   cost: z.number().int().min(0).nullable(),
@@ -84,16 +92,26 @@ export async function saveProduct(id: string | null, raw: ProductInput): Promise
   const data = {
     name: d.name, nameAr: d.nameAr || null, slug, summary: d.summary, summaryAr: d.summaryAr || null, description: d.description, descriptionAr: d.descriptionAr || null,
     specs: d.specs.trim(), specsAr: d.specsAr.trim() || null, videoUrl: d.videoUrl || null,
+    keywords: d.keywords.trim(), seoTitle: d.seoTitle, seoTitleAr: d.seoTitleAr || null, seoDescription: d.seoDescription, seoDescriptionAr: d.seoDescriptionAr || null,
     price: d.price, compareAt: d.compareAt, cost: d.cost, categoryId: d.categoryId, supplierId: d.supplierId,
     supplierRef: d.supplierRef || null, supplierUrl: d.supplierUrl || null, stockMode: d.stockMode, stockQty: d.stockQty,
     available: d.available, active: d.active, featured: d.featured,
   };
+  // A new address keeps the old one working: links already shared and Google's result are redirected.
+  const before = id ? await prisma.product.findUnique({ where: { id }, select: { slug: true, oldSlugs: true } }) : null;
+  const oldSlugs = before && before.slug !== slug ? [...new Set([before.slug, ...before.oldSlugs])].filter((x) => x !== slug).slice(0, 20) : (before?.oldSlugs.filter((x) => x !== slug) ?? []);
+  if (oldSlugs.length) {
+    const other = await prisma.product.findFirst({ where: { slug: { in: oldSlugs }, ...(id ? { id: { not: id } } : {}) }, select: { slug: true } });
+    if (other) return { ok: false, error: `L'ancienne adresse « ${other.slug} » est déjà prise par un autre produit.` };
+  }
   const saved = await prisma.$transaction(async (tx) => {
-    const p = id ? await tx.product.update({ where: { id }, data }) : await tx.product.create({ data });
+    // Another product that had this address before gives it up.
+    await tx.$executeRaw`UPDATE "Product" SET "oldSlugs" = array_remove("oldSlugs", ${slug}) WHERE ${slug} = ANY("oldSlugs") AND id <> ${id ?? ""}`;
+    const p = id ? await tx.product.update({ where: { id }, data: { ...data, oldSlugs } }) : await tx.product.create({ data });
     const keep = d.variants.filter((v) => v.id).map((v) => v.id!);
     await tx.productVariant.deleteMany({ where: { productId: p.id, id: { notIn: keep } } });
     for (const [i, v] of d.variants.entries()) {
-      const vd = { name: v.name, sku: v.sku || null, price: v.price, stockQty: v.stockQty, available: v.available, sort: i };
+      const vd = { name: v.name, nameAr: v.nameAr || null, sku: v.sku || null, price: v.price, stockQty: v.stockQty, available: v.available, sort: i };
       if (v.id) await tx.productVariant.updateMany({ where: { id: v.id, productId: p.id }, data: vd });
       else await tx.productVariant.create({ data: { ...vd, productId: p.id } });
     }
@@ -206,4 +224,38 @@ export async function deleteDemo(): Promise<Result> {
   await prisma.media.deleteMany({ where: { id: { in: media }, images: { none: {} } } });
   done();
   return { ok: true, message: `${demo.length} produits de démonstration supprimés.` };
+}
+
+const texts = z.object({
+  name: z.string().max(140),
+  nameAr: z.string().max(140),
+  summary: z.string().max(300),
+  summaryAr: z.string().max(300),
+  description: z.string().max(8000),
+  descriptionAr: z.string().max(8000),
+  specs: z.string().max(4000),
+  specsAr: z.string().max(4000),
+  keywords: z.string().max(1000),
+  variants: z.array(z.object({ name: z.string().max(60), nameAr: z.string().max(60) })).max(60),
+  offers: z.array(z.object({ label: z.string().max(80), labelAr: z.string().max(80) })).max(8),
+});
+
+/**
+ * Translates the product's texts (French ↔ Tunisian Arabic) and writes its
+ * search keywords. Nothing is saved: the editor shows the result, to read
+ * again before "Enregistrer".
+ */
+export async function translateTexts(raw: ProductTexts, mode: TranslateMode): Promise<{ ok: true; texts: ProductTexts } | { ok: false; error: string }> {
+  await requireAdmin();
+  if (!translationReady()) return { ok: false, error: "Traduction automatique non configurée : ajoutez la variable ANTHROPIC_API_KEY dans Vercel (Settings → Environment Variables), puis redéployez." };
+  const parsed = texts.safeParse(raw);
+  if (!parsed.success) return { ok: false, error: "Textes trop longs pour être traduits." };
+  try {
+    return { ok: true, texts: await translateProduct(parsed.data, mode === "to-ar" ? "to-ar" : "fill") };
+  } catch (e) {
+    if (e instanceof Anthropic.AuthenticationError) return { ok: false, error: "La clé ANTHROPIC_API_KEY est refusée : vérifiez-la dans Vercel." };
+    if (e instanceof Anthropic.RateLimitError) return { ok: false, error: "Trop de traductions d'un coup : réessayez dans une minute." };
+    if (e instanceof Anthropic.APIError) return { ok: false, error: "Le service de traduction ne répond pas pour le moment. Réessayez plus tard." };
+    return { ok: false, error: e instanceof Error ? e.message : "Traduction impossible." };
+  }
 }

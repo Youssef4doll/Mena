@@ -1,10 +1,12 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
-import { isLang } from "@/i18n";
+import { isLang, pageMeta } from "@/i18n";
 import { getSettings } from "@/lib/settings";
 import { Prose } from "../Prose";
 
-export const metadata: Metadata = { title: "Conditions de vente" };
+export async function generateMetadata({ params }: PageProps<"/[lang]/conditions">): Promise<Metadata> {
+  return pageMeta((await params).lang, "/conditions", (t) => t.footer.terms);
+}
 
 /**
  * A plain starting text, filled from the settings. The shop should have it

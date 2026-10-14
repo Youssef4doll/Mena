@@ -72,6 +72,15 @@ model Product {
   specsAr       String?
   /// A YouTube link or a direct .mp4 address, shown with the pictures.
   videoUrl      String?
+  /// Other names and spellings customers type ("lamba", "veilleuse"): found by the search, never shown.
+  keywords      String           @default("")
+  /// What Google shows; empty = made from the name, the category and the short description.
+  seoTitle      String           @default("")
+  seoTitleAr    String?
+  seoDescription String          @default("")
+  seoDescriptionAr String?
+  /// Addresses the product had before: old links and Google results are sent to the current one.
+  oldSlugs      String[]         @default([])
   /// Selling price, millimes.
   price         Int
   /// A real previous price. Shown struck through only when higher than
@@ -106,6 +115,7 @@ model Product {
 
   @@index([active, categoryId])
   @@index([featured])
+  @@index([oldSlugs], type: Gin)
 }
 
 model ProductImage {
@@ -135,6 +145,8 @@ model ProductVariant {
   product    Product     @relation(fields: [productId], references: [id], onDelete: Cascade)
   /// "Noir / M", as the customer reads it.
   name       String
+  /// The same in Arabic ("أكحل"); the French name is shown when empty.
+  nameAr     String?
   sku        String?
   /// Overrides the product price when set, millimes.
   price      Int?

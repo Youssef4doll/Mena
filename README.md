@@ -22,6 +22,8 @@ Boutique en ligne pour la Tunisie : dropshipping, paiement à la livraison, en a
 - Frais de livraison réels affichés dès le début (fourchette des tarifs des gouvernorats ouverts), puis le montant exact une fois le gouvernorat choisi ; total affiché avant de confirmer.
 - Juste sous les boutons : rien à payer maintenant, colis vérifiable avant de payer (si activé).
 - Bulle WhatsApp sur l'accueil et les listes (une petite phrase « Une question ? » la présente une fois par visite), bouton WhatsApp sur chaque fiche, et confirmation WhatsApp proposée après la commande.
+- **Recherche comme Google** : complétion pendant la frappe, produits avec photo et prix dès deux lettres, fautes de frappe pardonnées (« lamep de chevt » → « lampe de chevet »), en français, en arabe et en tunisien écrit en lettres latines grâce aux mots-clés de chaque produit ; la page de résultats dit quel mot a été corrigé.
+- **Référencement Google** : titre de page fait des mots du produit puis de sa catégorie (comme Amazon), description qui reprend le nom, le prix réel et le paiement à la livraison, adresses lisibles, ancienne adresse redirigée quand un produit change de nom, hreflang arabe/français + x-default, données structurées (produit avec livraison et retours, liste de catégorie, recherche du site, fil d'Ariane), plan du site avec les photos.
 - Suivi de commande par lien secret (SMS) ou par numéro de commande + téléphone. Demande de retour et avis depuis la page de suivi.
 - Un formulaire laissé avec un numéro apparaît dans « Non terminées » pour une relance, avec un lien qui rouvre la fiche sur le même choix (ou le panier, s'il y avait plusieurs produits).
 - SEO : métadonnées, sitemap FR/AR, données structurées produit. Pixels Meta, TikTok et GA4 (avec API serveur) chargés seulement après consentement.
@@ -32,7 +34,7 @@ Boutique en ligne pour la Tunisie : dropshipping, paiement à la livraison, en a
 
 ## Back-office (`/admin`)
 
-Commandes (file de confirmation, appels notés, statuts, refus avec motif, liste noire), produits (description courte, photos, vidéo, caractéristiques, images de description, variantes, offres, coût fournisseur, stock), catégories, fournisseurs, clients, codes promo, commandes non terminées, retours, avis, paramètres. Exports CSV.
+Commandes (file de confirmation, appels notés, statuts, refus avec motif, liste noire), produits (traduction automatique en arabe tunisien, description courte, photos, vidéo, caractéristiques, images de description, mots-clés de recherche, titre et description pour Google avec aperçu, variantes en deux langues, offres, coût fournisseur, stock), catégories, fournisseurs, clients, codes promo, commandes non terminées, retours, avis, paramètres. Exports CSV.
 
 **Analytics** : mesure d'audience interne, sans service extérieur. Temps réel, visiteurs, entonnoir (visite → fiche → formulaire commencé → téléphone saisi → commande → confirmée → livrée), conversion par source, campagne et appareil, CA, panier moyen, marge, produits vus mais pas achetés, recherches sans résultat, commandes non terminées, ajouts au panier et commandes par origine (fiche, commande rapide, panier), photos en plein écran et vidéos lancées, clics WhatsApp et appels, refus par gouvernorat, clients fidèles, cohortes, commandes par heure.
 

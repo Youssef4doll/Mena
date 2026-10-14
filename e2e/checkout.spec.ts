@@ -184,3 +184,22 @@ test("Acheter maintenant on a card orders without leaving the list", async ({ pa
   await sheet.getByTestId("place-order").click();
   await expect(page).toHaveURL(/\/commande\/merci\/MN-/);
 });
+
+test("search finds the product despite a typing mistake, and completes like Google", async ({ page }) => {
+  await page.goto(`${FR}/`);
+  const box = page.getByRole("combobox", { name: "Rechercher" }).first();
+  await box.fill("difus");
+  const list = page.getByTestId("suggestions");
+  await expect(list.getByText("Diffuseur d'huiles essentielles").first()).toBeVisible();
+  // Arrow down picks the completion, Enter searches it.
+  await box.press("ArrowDown");
+  await box.press("Enter");
+  await expect(page).toHaveURL(/\/fr\/recherche\?q=Diffuseur/);
+  // A mistake in a full search: the page says what it searched instead.
+  await page.goto(`${FR}/recherche?q=${encodeURIComponent("lamep de chevt")}`);
+  await expect(page.getByRole("heading", { level: 1 })).toContainText("lampe de chevet");
+  await expect(page.getByText("Vous avez écrit « lamep de chevt »")).toBeVisible();
+  // Tunisian written in Latin letters, through the product's keywords.
+  await page.goto(`${FR}/recherche?q=lamba`);
+  await expect(page.getByText("Lampe de chevet tactile").first()).toBeVisible();
+});

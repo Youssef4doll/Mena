@@ -56,7 +56,7 @@ test("tracked stock caps the quantity", () => {
   const catalog = new Map([["p1", product({ stockMode: "TRACKED", stockQty: 2 })]]);
   const q = priceCart({ ...base, catalog, lines: [{ productId: "p1", qty: 5 }] });
   assert.equal(q.lines[0].qty, 2);
-  assert.deepEqual(q.problems, [{ productId: "p1", variantId: null, kind: "qty_reduced", available: 2 }]);
+  assert.deepEqual(q.problems, [{ productId: "p1", variantId: null, offerId: null, kind: "qty_reduced", available: 2 }]);
 });
 
 test("unavailable, inactive, unknown and invalid lines are dropped", () => {
@@ -199,5 +199,20 @@ test("an offer is refused on an option that has its own price", () => {
 test("an offer larger than the stock says how many are left", () => {
   const catalog = new Map([["p1", product({ offers, stockMode: "TRACKED", stockQty: 2 })]]);
   const q = priceCart({ ...base, catalog, lines: [{ productId: "p1", offerId: "o3", qty: 1 }] });
-  assert.deepEqual(q.problems[0], { productId: "p1", variantId: null, kind: "unavailable", available: 2 });
+  assert.deepEqual(q.problems[0], { productId: "p1", variantId: null, offerId: "o3", kind: "unavailable", available: 2 });
+});
+
+test("two lines of the same product share its counted stock", () => {
+  const catalog = new Map([["p1", product({ offers, stockMode: "TRACKED", stockQty: 4 })]]);
+  // A 3-pack and 2 more by the unit: 5 asked, 4 in stock. The pack is served, the units are cut to 1.
+  const q = priceCart({ ...base, catalog, lines: [{ productId: "p1", offerId: "o3", qty: 1 }, { productId: "p1", qty: 2 }] });
+  assert.equal(q.lines.reduce((n, l) => n + l.qty, 0), 4);
+  assert.deepEqual(q.problems, [{ productId: "p1", variantId: null, offerId: null, kind: "qty_reduced", available: 1 }]);
+  // The other way round, the pack no longer fits and says so, for that line.
+  const r = priceCart({ ...base, catalog, lines: [{ productId: "p1", qty: 2 }, { productId: "p1", offerId: "o3", qty: 1 }] });
+  assert.equal(r.lines.length, 1);
+  assert.deepEqual(r.problems, [{ productId: "p1", variantId: null, offerId: "o3", kind: "unavailable", available: 2 }]);
+  // Supplier stock is not counted: both lines go through.
+  const s = priceCart({ ...base, catalog: new Map([["p1", product({ offers })]]), lines: [{ productId: "p1", offerId: "o3", qty: 1 }, { productId: "p1", qty: 2 }] });
+  assert.equal(s.problems.length, 0);
 });

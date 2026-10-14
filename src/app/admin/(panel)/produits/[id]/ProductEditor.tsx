@@ -1,25 +1,58 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useRef, useState, useTransition } from "react";
-import { deleteImage, deleteProduct, importImage, moveImage, saveProduct, setImageAlt, uploadImages, type ProductInput } from "../actions";
+import { useRef, useState, useSyncExternalStore, useTransition } from "react";
+import { deleteImage, deleteProduct, importImage, moveImage, saveProduct, setImageAlt, translateTexts, uploadImages, type ProductInput } from "../actions";
+import type { ProductTexts } from "@/lib/translate-merge";
 import { parseTND, toInputTND, formatTND } from "@/lib/money";
 import { offerCompareAt } from "@/lib/offer-display";
 import { slugify } from "@/lib/slug";
 import { parseSpecs, parseVideo } from "@/lib/product-content";
 import { shrinkForUpload } from "@/lib/client/shrink-image";
+import { SEO_DESCRIPTION_MAX, SEO_TITLE_MAX, productDescription, productTitle } from "@/lib/seo";
 import { Card, btn, input, label } from "@/components/admin/ui";
 
-type Opt = { id: string; name: string };
+type Opt = { id: string; name: string; nameAr?: string | null };
 type Img = { id: string; mediaId: string; alt: string; kind: "GALLERY" | "DETAIL"; width: number; height: number };
 
 const EMPTY: ProductInput = {
-  name: "", nameAr: "", slug: "", summary: "", summaryAr: "", description: "", descriptionAr: "", specs: "", specsAr: "", videoUrl: "", price: 0, compareAt: null, cost: null, categoryId: null, supplierId: null,
+  name: "", nameAr: "", slug: "", summary: "", summaryAr: "", description: "", descriptionAr: "", specs: "", specsAr: "", videoUrl: "", keywords: "", seoTitle: "", seoTitleAr: "", seoDescription: "", seoDescriptionAr: "", price: 0, compareAt: null, cost: null, categoryId: null, supplierId: null,
   supplierRef: "", supplierUrl: "", stockMode: "SUPPLIER", stockQty: 0, available: true, active: false, featured: false, variants: [], offers: [],
 };
 
 type Msg = { ok: boolean; text: string };
-type Props = { id: string | null; version: string; initial: ProductInput | null; images: Img[]; categories: Opt[]; suppliers: Opt[] };
+type Props = { id: string | null; version: string; initial: ProductInput | null; images: Img[]; categories: Opt[]; suppliers: Opt[]; shopName: string; siteUrl: string; everywhere: boolean; oldSlugs: string[]; aiReady: boolean };
+
+/** The texts a translation reads and writes. */
+const textsOf = (p: ProductInput): ProductTexts => ({
+  name: p.name, nameAr: p.nameAr, summary: p.summary, summaryAr: p.summaryAr, description: p.description, descriptionAr: p.descriptionAr,
+  specs: p.specs, specsAr: p.specsAr, keywords: p.keywords,
+  variants: p.variants.map((v) => ({ name: v.name, nameAr: v.nameAr ?? "" })),
+  offers: p.offers.map((o) => ({ label: o.label, labelAr: o.labelAr })),
+});
+const withTexts = (p: ProductInput, t: ProductTexts): ProductInput => ({
+  ...p, ...t,
+  variants: p.variants.map((v, i) => ({ ...v, name: t.variants[i]?.name ?? v.name, nameAr: t.variants[i]?.nameAr ?? v.nameAr })),
+  offers: p.offers.map((o, i) => ({ ...o, label: t.offers[i]?.label ?? o.label, labelAr: t.offers[i]?.labelAr ?? o.labelAr })),
+});
+/** A text written in one language only, or no keywords yet: something for the translation to do. */
+function missing(p: ProductInput): boolean {
+  const one = (a: string | undefined, b: string | undefined) => Boolean(a?.trim()) !== Boolean(b?.trim());
+  return (
+    one(p.name, p.nameAr) || one(p.summary, p.summaryAr) || one(p.description, p.descriptionAr) || one(p.specs, p.specsAr) ||
+    (!p.keywords.trim() && Boolean(p.name.trim() || p.nameAr.trim())) ||
+    p.variants.some((v) => one(v.name, v.nameAr)) || p.offers.some((o) => one(o.label, o.labelAr))
+  );
+}
+const AUTO = "mena_admin_autotranslate";
+const noopSubscribe = () => () => {};
+const readAuto = () => {
+  try {
+    return localStorage.getItem(AUTO) ?? "1";
+  } catch {
+    return "1";
+  }
+};
 
 /** "3" → 3; empty, decimal or outside 1–50 → null. */
 function offerQty(s: string | undefined): number | null {
@@ -36,7 +69,7 @@ export function ProductEditor(props: Props) {
   return <Form key={props.version} {...props} msg={msg} setMsg={setMsg} />;
 }
 
-function Form({ id, initial, images, categories, suppliers, msg, setMsg }: Props & { msg: Msg | null; setMsg: (m: Msg | null) => void }) {
+function Form({ id, initial, images, categories, suppliers, shopName, siteUrl, everywhere, oldSlugs, aiReady, msg, setMsg }: Props & { msg: Msg | null; setMsg: (m: Msg | null) => void }) {
   const router = useRouter();
   const [p, setP] = useState<ProductInput>(initial ?? EMPTY);
   const [money, setMoney] = useState({ price: toInputTND(initial?.price || null), compareAt: toInputTND(initial?.compareAt), cost: toInputTND(initial?.cost) });
@@ -47,7 +80,29 @@ function Form({ id, initial, images, categories, suppliers, msg, setMsg }: Props
   // Read once, to tell which end dates have passed.
   const [now] = useState(() => Date.now());
   const [pending, start] = useTransition();
+  const [translating, setTranslating] = useState(false);
+  // On by default; the choice is remembered in this browser (read after hydration, so the page never disagrees).
+  const stored = useSyncExternalStore(noopSubscribe, readAuto, () => "1");
+  const [autoPick, setAuto] = useState<boolean | null>(null);
+  const auto = autoPick ?? stored !== "0";
   const set = <K extends keyof ProductInput>(k: K, v: ProductInput[K]) => setP((x) => ({ ...x, [k]: v }));
+
+  /** Asks the server for the translation and puts it in the form; nothing is saved here. */
+  async function translate(from: ProductInput, mode: "fill" | "to-ar"): Promise<ProductInput | null> {
+    setTranslating(true);
+    try {
+      const r = await translateTexts(textsOf(from), mode);
+      if (!r.ok) {
+        setMsg({ ok: false, text: r.error });
+        return null;
+      }
+      const next = withTexts(from, r.texts);
+      setP(next);
+      return next;
+    } finally {
+      setTranslating(false);
+    }
+  }
 
   const price = parseTND(money.price);
   const cost = money.cost ? parseTND(money.cost) : null;
@@ -92,9 +147,19 @@ function Form({ id, initial, images, categories, suppliers, msg, setMsg }: Props
     const badOffer = offers.findIndex((o) => !o.label.trim() || o.price <= 0);
     if (badOffer >= 0) return setMsg({ ok: false, text: `Offre ${badOffer + 1} : nom, quantité et prix total sont obligatoires.` });
     start(async () => {
-      const r = await saveProduct(id, { ...p, price: priceM, compareAt: compareM, cost: costM, variants, offers });
+      // Automatic translation of what is missing, then the save.
+      let texts = p;
+      let translated = false;
+      if (aiReady && auto && missing(p)) {
+        const t = await translate(p, "fill");
+        if (t) {
+          texts = t;
+          translated = true;
+        }
+      }
+      const r = await saveProduct(id, { ...p, ...textsOf(texts), price: priceM, compareAt: compareM, cost: costM, variants: variants.map((v, i) => ({ ...v, nameAr: texts.variants[i]?.nameAr ?? v.nameAr })), offers: offers.map((o, i) => ({ ...o, labelAr: texts.offers[i]?.labelAr ?? o.labelAr, label: texts.offers[i]?.label ?? o.label })) });
       if (!r.ok) return setMsg({ ok: false, text: r.error });
-      setMsg({ ok: true, text: r.message ?? "Enregistré." });
+      setMsg({ ok: true, text: translated ? "Produit enregistré, avec la traduction automatique : relisez les textes en arabe." : (r.message ?? "Enregistré.") });
       if (!id && r.id) router.replace(`/admin/produits/${r.id}`);
       else router.refresh();
     });
@@ -103,12 +168,40 @@ function Form({ id, initial, images, categories, suppliers, msg, setMsg }: Props
   return (
     <div className="grid gap-4 lg:grid-cols-[1fr_360px]">
       <div className="flex min-w-0 flex-col gap-4">
-        <Card title="Texte" hint="La boutique s'affiche d'abord en arabe : remplissez les champs en arabe, le français sert aux clients qui changent de langue (et quand un champ arabe est vide).">
+        <Card title="Texte" hint="La boutique s'affiche d'abord en arabe. Écrivez dans une langue : la traduction automatique écrit l'autre (en arabe tunisien), et les mots-clés de recherche. Relisez toujours ce qu'elle écrit.">
           <div className="grid gap-3">
+            <div className="flex flex-wrap items-center gap-2 rounded-xl bg-sea-soft p-2.5" data-testid="translate-bar">
+              {aiReady ? (
+                <>
+                  <button type="button" disabled={translating || pending} className={btn.sea} onClick={() => translate(p, "fill").then((t) => t && setMsg({ ok: true, text: "Traduction ajoutée dans les champs vides. Relisez puis enregistrez." }))}>
+                    {translating ? "Traduction…" : "Traduire ce qui manque"}
+                  </button>
+                  <button type="button" disabled={translating || pending} className={btn.ghost} onClick={() => confirm("Réécrire tous les textes arabes à partir du français ?") && translate(p, "to-ar").then((t) => t && setMsg({ ok: true, text: "Textes arabes réécrits depuis le français. Relisez puis enregistrez." }))}>
+                    Retraduire l&apos;arabe depuis le français
+                  </button>
+                  <label className="ms-auto flex items-center gap-1.5 text-sm">
+                    <input
+                      type="checkbox"
+                      checked={auto}
+                      onChange={(e) => {
+                        setAuto(e.target.checked);
+                        try {
+                          localStorage.setItem(AUTO, e.target.checked ? "1" : "0");
+                        } catch {}
+                      }}
+                    />
+                    Traduire automatiquement en enregistrant
+                  </label>
+                </>
+              ) : (
+                <p className="text-sm text-ink-2">Traduction automatique en arabe tunisien : ajoutez la variable <code>ANTHROPIC_API_KEY</code> dans Vercel, puis redéployez (voir docs/DEPLOIEMENT.md).</p>
+              )}
+            </div>
             <div className="grid gap-3 sm:grid-cols-2">
               <label className={label}>Nom (français)<input className={input} value={p.name} onChange={(e) => set("name", e.target.value)} onBlur={() => !p.slug && set("slug", slugify(p.name))} /></label>
               <label className={label}>Nom (arabe)<input className={input} dir="rtl" value={p.nameAr} onChange={(e) => set("nameAr", e.target.value)} /></label>
             </div>
+            <p className="-mt-1 text-xs text-muted">Comme sur Amazon, mettez dans le nom les mots que les clients tapent sur Google : « Lampe de chevet tactile LED rechargeable, 3 intensités » plutôt que « Lampe ». C&apos;est le titre de la page et le début du résultat Google.</p>
             <label className={label}>
               Adresse de la page
               <span className="flex items-center gap-1 text-xs text-muted">/produit/<input className={input} value={p.slug} onChange={(e) => set("slug", e.target.value)} /></span>
@@ -141,6 +234,8 @@ function Form({ id, initial, images, categories, suppliers, msg, setMsg }: Props
             </label>
           </div>
         </Card>
+
+        <Seo p={p} set={set} price={unitOffer ?? price ?? 0} category={categories.find((c) => c.id === p.categoryId) ?? null} shopName={shopName} siteUrl={siteUrl} everywhere={everywhere} oldSlugs={oldSlugs} />
 
         {id ? (
           <>
@@ -230,8 +325,9 @@ function Form({ id, initial, images, categories, suppliers, msg, setMsg }: Props
         <Card title="Variantes" hint="Taille, couleur… Laissez vide si le produit n'a pas d'option. Le prix d'une variante remplace celui du produit s'il est rempli, sur un produit sans offre.">
           <div className="flex flex-col gap-2">
             {p.variants.map((v, i) => (
-              <div key={v.id ?? `n${i}`} className="grid grid-cols-2 gap-2 rounded-xl border border-line p-2 sm:grid-cols-[1fr_110px_90px_auto_auto]">
+              <div key={v.id ?? `n${i}`} className="grid grid-cols-2 gap-2 rounded-xl border border-line p-2 sm:grid-cols-[1fr_1fr_110px_90px_auto_auto]">
                 <input className={input} placeholder="Nom (Noir / M)" value={v.name} onChange={(e) => set("variants", p.variants.map((x, j) => (j === i ? { ...x, name: e.target.value } : x)))} />
+                <input className={input} dir="rtl" placeholder="بالعربي (أكحل)" value={v.nameAr ?? ""} onChange={(e) => set("variants", p.variants.map((x, j) => (j === i ? { ...x, nameAr: e.target.value } : x)))} />
                 <input className={input} placeholder="Prix (option)" inputMode="decimal" value={vPrices[i] ?? ""} onChange={(e) => setVPrices(vPrices.map((x, j) => (j === i ? e.target.value : x)))} />
                 {p.stockMode === "TRACKED" ? (
                   <input className={input} type="number" min={0} placeholder="Stock" value={v.stockQty} onChange={(e) => set("variants", p.variants.map((x, j) => (j === i ? { ...x, stockQty: Math.max(0, Number(e.target.value) || 0) } : x)))} />
@@ -244,7 +340,7 @@ function Form({ id, initial, images, categories, suppliers, msg, setMsg }: Props
                 <button type="button" className="text-sm text-clay" onClick={() => { set("variants", p.variants.filter((_, j) => j !== i)); setVPrices(vPrices.filter((_, j) => j !== i)); }}>Retirer</button>
               </div>
             ))}
-            <button type="button" className={`${btn.ghost} self-start`} onClick={() => { set("variants", [...p.variants, { name: "", sku: "", price: null, stockQty: 0, available: true }]); setVPrices([...vPrices, ""]); }}>
+            <button type="button" className={`${btn.ghost} self-start`} onClick={() => { set("variants", [...p.variants, { name: "", nameAr: "", sku: "", price: null, stockQty: 0, available: true }]); setVPrices([...vPrices, ""]); }}>
               + Ajouter une variante
             </button>
           </div>
@@ -334,6 +430,57 @@ function Form({ id, initial, images, categories, suppliers, msg, setMsg }: Props
         </div>
       </div>
     </div>
+  );
+}
+
+/**
+ * What Google will show, in both languages, with the shop's own title and
+ * description when they are typed, and the automatic ones (made from the
+ * name, the category, the short description and the price) otherwise. The
+ * keywords feed the shop's own search.
+ */
+function Seo({ p, set, price, category, shopName, siteUrl, everywhere, oldSlugs }: { p: ProductInput; set: <K extends keyof ProductInput>(k: K, v: ProductInput[K]) => void; price: number; category: Opt | null; shopName: string; siteUrl: string; everywhere: boolean; oldSlugs: string[] }) {
+  const base = { ...p, price, category: category ? { name: category.name, nameAr: category.nameAr ?? null } : null, offers: [], variants: [] };
+  const host = siteUrl.replace(/^https?:\/\//, "");
+  const preview = (lang: "ar" | "fr") => ({
+    url: `${host}${lang === "fr" ? "/fr" : ""}/produit/${p.slug || slugify(p.name)}`,
+    title: `${productTitle(base, lang)} · ${shopName}`,
+    description: productDescription(base, lang, everywhere),
+  });
+  return (
+    <Card title="Google et recherche" hint="Laissez vide pour que la boutique compose le titre et la description à partir du nom, de la catégorie, de la description courte et du prix ; l'aperçu montre le résultat. Google affiche environ 60 caractères de titre et 155 de description.">
+      <div className="grid gap-3">
+        <label className={label}>
+          Mots-clés de recherche
+          <textarea rows={2} className={`${input} h-auto py-2`} value={p.keywords} onChange={(e) => set("keywords", e.target.value)} placeholder="veilleuse, lampe de nuit, lamba, lampa, ضو سرير" />
+          <span className="text-xs font-normal text-muted">Séparés par des virgules : autres noms, fautes fréquentes, mots en arabe et en tunisien écrit en lettres latines. Jamais affichés ; la recherche de la boutique les trouve.</span>
+        </label>
+        <div className="grid gap-3 sm:grid-cols-2">
+          <Counted label="Titre pour Google (français)" value={p.seoTitle} max={SEO_TITLE_MAX} onChange={(v) => set("seoTitle", v)} rows={2} placeholder={productTitle({ ...base, seoTitle: "" }, "fr")} />
+          <Counted label="Titre pour Google (arabe)" value={p.seoTitleAr} max={SEO_TITLE_MAX} onChange={(v) => set("seoTitleAr", v)} rows={2} rtl placeholder={productTitle({ ...base, seoTitleAr: "" }, "ar")} />
+          <Counted label="Description pour Google (français)" value={p.seoDescription} max={SEO_DESCRIPTION_MAX} onChange={(v) => set("seoDescription", v)} rows={3} placeholder={productDescription({ ...base, seoDescription: "" }, "fr", everywhere)} />
+          <Counted label="Description pour Google (arabe)" value={p.seoDescriptionAr} max={SEO_DESCRIPTION_MAX} onChange={(v) => set("seoDescriptionAr", v)} rows={3} rtl placeholder={productDescription({ ...base, seoDescriptionAr: "" }, "ar", everywhere)} />
+        </div>
+        <div className="grid gap-2 sm:grid-cols-2">
+          {(["ar", "fr"] as const).map((lang) => {
+            const g = preview(lang);
+            return (
+              <div key={lang} className="rounded-xl border border-line bg-white p-3" dir={lang === "ar" ? "rtl" : "ltr"}>
+                <p className="text-[11px] uppercase tracking-wide text-muted" dir="ltr">Aperçu Google · {lang === "ar" ? "arabe" : "français"}</p>
+                <p className="mt-1 truncate text-xs text-[#202124]" dir="ltr">{g.url}</p>
+                <p className="mt-0.5 text-[17px] leading-snug text-[#1a0dab]">{g.title}</p>
+                <p className="mt-0.5 text-[13px] leading-snug text-[#4d5156]">{g.description}</p>
+              </div>
+            );
+          })}
+        </div>
+        {oldSlugs.length > 0 && (
+          <p className="text-xs text-muted">
+            Anciennes adresses, redirigées vers l&apos;adresse actuelle : {oldSlugs.map((s) => `/produit/${s}`).join(", ")}
+          </p>
+        )}
+      </div>
+    </Card>
   );
 }
 

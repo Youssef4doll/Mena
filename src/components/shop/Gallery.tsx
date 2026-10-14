@@ -85,7 +85,7 @@ export function Gallery({ slides, name, productId, badge, lang }: { slides: Slid
           aria-label={name}
         >
           {slides.map((s, n) => (
-            <div key={n} className="relative h-full w-full shrink-0 snap-center snap-always" aria-label={t.product.photo(n + 1, slides.length)} role="group" aria-roledescription="slide">
+            <div key={n} className="relative h-full w-full shrink-0 snap-center snap-always" aria-label={s.kind === "image" ? t.product.photo(photos.indexOf(s.image) + 1, photos.length) : t.product.video} role="group" aria-roledescription="slide">
               {s.kind === "image" ? (
                 <button type="button" onClick={() => open(photos.indexOf(s.image))} onPointerDown={preloadViewer} className="block h-full w-full cursor-zoom-in [--focus-offset:-3px]" aria-label={t.product.zoom}>
                   <Image
@@ -123,11 +123,16 @@ export function Gallery({ slides, name, productId, badge, lang }: { slides: Slid
             </div>
           ))}
         </div>
+        {/* Photos are counted as the full-screen viewer counts them; the video says what it is. */}
         {slides.length > 1 && (
           <span className="pointer-events-none absolute end-3 top-3 rounded-full bg-night/75 px-2.5 py-1 text-[14px] font-bold text-white" aria-hidden>
-            <span className="ltr-nums">
-              {i + 1}/{slides.length}
-            </span>
+            {slides[i]?.kind === "image" ? (
+              <span className="ltr-nums">
+                {photos.indexOf((slides[i] as { image: ImageRef }).image) + 1}/{photos.length}
+              </span>
+            ) : (
+              t.product.video
+            )}
           </span>
         )}
         {slides[i]?.kind === "image" && (
@@ -146,7 +151,7 @@ export function Gallery({ slides, name, productId, badge, lang }: { slides: Slid
               type="button"
               onClick={() => go(n)}
               className={`relative h-16 w-16 shrink-0 overflow-hidden rounded-xl border-2 bg-white transition md:h-[72px] md:w-[72px] ${i === n ? "border-sea ring-2 ring-sea/30" : "border-line hover:border-sea/50"}`}
-              aria-label={s.kind === "video" ? t.product.playVideo : t.product.photo(n + 1, slides.length)}
+              aria-label={s.kind === "video" ? t.product.playVideo : t.product.photo(photos.indexOf(s.image) + 1, photos.length)}
               aria-current={i === n}
             >
               {s.kind === "image" ? (
@@ -178,6 +183,5 @@ function VideoPlayer({ video, title }: { video: Video; title: string }) {
         className="absolute inset-0 h-full w-full border-0 bg-black"
       />
     );
-  // eslint-disable-next-line jsx-a11y/media-has-caption
   return <video src={video.src} controls autoPlay playsInline className="absolute inset-0 h-full w-full bg-black object-contain" title={title} />;
 }

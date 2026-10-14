@@ -18,6 +18,7 @@ export type CartItem = {
   name: string;
   nameAr: string | null;
   variantName: string | null;
+  variantNameAr?: string | null;
   offerLabel: string | null;
   offerLabelAr: string | null;
   imageId: string | null;
@@ -55,6 +56,7 @@ function clean(raw: unknown): CartItem[] {
       name,
       nameAr: str(o.nameAr),
       variantName: str(o.variantName),
+      variantNameAr: str(o.variantNameAr),
       offerLabel: str(o.offerLabel),
       offerLabelAr: str(o.offerLabelAr),
       imageId: str(o.imageId, 40),

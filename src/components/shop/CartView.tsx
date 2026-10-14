@@ -63,17 +63,23 @@ export function CartView({ lang, settings }: { lang: Lang; settings: PublicSetti
     if (q.problems.length === 0) return;
     const said: string[] = [];
     for (const pr of q.problems) {
-      const same = items.filter((i) => i.productId === pr.productId && (i.variantId ?? null) === (pr.variantId ?? null));
-      const label = same[0] ? name(same[0]) : "";
+      const option = items.filter((i) => i.productId === pr.productId && (i.variantId ?? null) === (pr.variantId ?? null));
+      // The server names the refused line by its offer; only that line changes.
+      const lines = pr.offerId !== undefined ? option.filter((i) => (i.offerId ?? null) === (pr.offerId ?? null)) : option;
+      const label = lines[0] ? name(lines[0]) : option[0] ? name(option[0]) : "";
       if (pr.kind === "qty_reduced" && pr.available != null) {
-        for (const i of same) if (!i.offerId) setCartQty(itemKey(i), pr.available);
+        for (const i of lines) if (!i.offerId) setCartQty(itemKey(i), pr.available);
         said.push(t.cart.qtyReduced(label, pr.available));
-      } else if (pr.kind === "offer_unavailable" || (pr.kind === "unavailable" && pr.available && same.some((i) => i.offerId))) {
-        for (const i of same) if (i.offerId) removeFromCart(itemKey(i));
+      } else if (pr.kind === "offer_unavailable" || (pr.kind === "unavailable" && lines.some((i) => i.offerId))) {
+        for (const i of lines) if (i.offerId) removeFromCart(itemKey(i));
         said.push(t.cart.offerGone(label));
       } else if (pr.kind === "variant_required") {
-        for (const i of same) removeFromCart(itemKey(i));
+        for (const i of lines) removeFromCart(itemKey(i));
         said.push(t.cart.needsOption(label));
+      } else if (pr.kind === "unavailable") {
+        // That option is sold out; the product's other options stay.
+        for (const i of lines) removeFromCart(itemKey(i));
+        said.push(t.cart.gone(label));
       } else {
         for (const i of items.filter((x) => x.productId === pr.productId)) removeFromCart(itemKey(i));
         said.push(t.cart.gone(label));
@@ -87,7 +93,7 @@ export function CartView({ lang, settings }: { lang: Lang; settings: PublicSetti
 
   // The title is drawn at once, in the same place whatever the basket holds: the page never jumps.
   const title = (
-    <h1 id="cart-title" className="text-[26px] font-bold leading-tight text-ink md:text-[32px]">
+    <h1 id="cart-title" tabIndex={-1} className="text-[26px] font-bold leading-tight text-ink outline-none md:text-[32px]">
       {t.cart.title} {hydrated && items.length > 0 && <span className="font-normal text-muted ltr-nums">({units})</span>}
     </h1>
   );
@@ -129,7 +135,7 @@ export function CartView({ lang, settings }: { lang: Lang; settings: PublicSetti
           {items.map((i) => {
             const key = itemKey(i);
             const pl = priced(i);
-            const option = [i.variantName, i.offerLabel ? pick(lang, i.offerLabel, i.offerLabelAr) : null].filter(Boolean).join(" · ");
+            const option = [i.variantName ? pick(lang, i.variantName, i.variantNameAr) : null, i.offerLabel ? pick(lang, i.offerLabel, i.offerLabelAr) : null].filter(Boolean).join(" · ");
             return (
               <li key={key} className="flex gap-3 p-3" data-testid="cart-line">
                 <Link href={href(lang, `/produit/${i.slug}`)} className="relative h-24 w-24 shrink-0 overflow-hidden rounded-xl bg-sand" prefetch={false}>
@@ -139,7 +145,7 @@ export function CartView({ lang, settings }: { lang: Lang; settings: PublicSetti
                   )}
                 </Link>
                 <div className="flex min-w-0 flex-1 flex-col gap-1">
-                  <Link href={href(lang, `/produit/${i.slug}`)} className="line-clamp-2 text-[17px] font-bold leading-snug text-ink" prefetch={false}>
+                  <Link href={href(lang, `/produit/${i.slug}`)} className="-my-1 line-clamp-2 py-1 text-[17px] font-bold leading-snug text-ink" prefetch={false}>
                     {name(i)}
                   </Link>
                   {option && <span className="text-[15px] text-muted">{option}</span>}
@@ -148,7 +154,7 @@ export function CartView({ lang, settings }: { lang: Lang; settings: PublicSetti
                   <div className="mt-1 flex flex-wrap items-center justify-between gap-2">
                     {i.offerId ? (
                       // An offer is a fixed pack: its size is said, nothing to change.
-                      pl && pl.qty > 1 ? <span className="rounded-lg bg-sea-soft px-2.5 py-1 text-[15px] font-bold text-sea-2">{t.buy.units(pl.qty)}</span> : <span />
+                      pl && pl.qty > 1 && !(i.offerLabel ?? "").includes(String(pl.qty)) ? <span className="rounded-lg bg-sea-soft px-2.5 py-1 text-[15px] font-bold text-sea-2">{t.buy.units(pl.qty)}</span> : <span />
                     ) : (
                       <div className="inline-flex h-11 items-center rounded-xl border-2 border-field" role="group" aria-label={t.buy.quantity}>
                         <button type="button" className="flex h-11 w-11 items-center justify-center disabled:opacity-30" disabled={i.qty <= 1} onClick={() => { setNotices([]); setCartQty(key, i.qty - 1); }} aria-label={t.buy.qtyLess}>
@@ -162,11 +168,16 @@ export function CartView({ lang, settings }: { lang: Lang; settings: PublicSetti
                     )}
                     <button
                       type="button"
-                      className="min-h-11 px-2 text-[15px] text-clay underline underline-offset-4"
+                      className="min-h-11 min-w-11 px-3 text-[15px] text-clay underline underline-offset-4"
+                      data-remove={key}
                       onClick={() => {
                         setNotices([]);
+                        // Keyboard and screen-reader users stay where they were: the next line, or the title.
+                        const at = items.findIndex((x) => itemKey(x) === key);
+                        const next = items[at + 1] ?? items[at - 1];
                         removeFromCart(key);
                         track("remove_from_cart", { productId: i.productId });
+                        requestAnimationFrame(() => (next ? document.querySelector<HTMLElement>(`[data-remove="${CSS.escape(itemKey(next))}"]`) : document.getElementById("cart-title"))?.focus());
                       }}
                     >
                       {t.cart.remove}

@@ -17,19 +17,21 @@ export default async function SearchRoute({ params, searchParams }: PageProps<"/
   const t = dict(lang);
   const raw = (await searchParams).q;
   const q = (Array.isArray(raw) ? raw[0] : raw ?? "").trim().slice(0, 80);
-  const [results, settings] = await Promise.all([searchProducts(q), getSettings()]);
+  const [{ products: results, corrected }, settings] = await Promise.all([searchProducts(q), getSettings()]);
 
   return (
     <div className="mx-auto max-w-6xl px-4 pt-6">
       {q && (
         <>
-          <TrackView name="search" props={{ q: q.toLowerCase(), results: results.length }} />
+          <TrackView name="search" props={{ q: q.toLowerCase(), results: results.length, corrected: Boolean(corrected) }} />
           <SearchPixel q={q} />
         </>
       )}
       {q && results.length > 0 && (
         <>
-          <h1 className="mb-4 text-[20px] font-bold">{t.search.results(results.length, q)}</h1>
+          {/* A word was corrected: the customer sees what was searched instead, like Google. */}
+          <h1 className="text-[20px] font-bold">{t.search.results(results.length, corrected ?? q)}</h1>
+          {corrected ? <p className="mb-4 mt-1 text-[16px] text-muted">{t.search.typed(q)}</p> : <div className="mb-4" />}
           <ProductGrid products={results} lang={lang} priorityFirst={4} />
         </>
       )}

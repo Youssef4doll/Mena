@@ -1,16 +1,16 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { notFound } from "next/navigation";
+import { notFound, permanentRedirect } from "next/navigation";
 import { dict, href, isLang, languages, pick } from "@/i18n";
-import { getProduct } from "@/lib/catalog";
+import { getProduct, productMovedTo } from "@/lib/catalog";
 import { getSettings } from "@/lib/settings";
 import { publicSettings } from "@/lib/settings-schema";
 import { ProductView } from "@/components/shop/ProductView";
 import { ProductGrid } from "@/components/shop/ProductCard";
-import { JsonLd, breadcrumbLd, productLd } from "@/lib/seo";
+import { JsonLd, breadcrumbLd, productDescription, productLd, productTitle } from "@/lib/seo";
 import { SITE_URL } from "@/lib/site";
-import { formatTND } from "@/lib/money";
 import { leadOffer } from "@/lib/offer-display";
+import { deliversEverywhere } from "@/lib/governorates";
 
 export const revalidate = 60;
 
@@ -20,16 +20,23 @@ export function generateStaticParams() {
 
 export async function generateMetadata({ params }: PageProps<"/[lang]/produit/[slug]">): Promise<Metadata> {
   const { lang, slug } = await params;
-  const p = await getProduct(slug);
+  const [p, settings] = await Promise.all([getProduct(slug), getSettings()]);
   if (!p || !isLang(lang)) return {};
-  const name = pick(lang, p.name, p.nameAr);
-  const desc = (pick(lang, p.summary, p.summaryAr) || pick(lang, p.description, p.descriptionAr)).slice(0, 155) || `${name} — ${formatTND(leadOffer(p.offers)?.price ?? p.price, lang)}`;
+  const title = productTitle(p, lang);
+  const description = productDescription(p, lang, deliversEverywhere(settings.delivery.zones));
   const path = `/produit/${p.slug}`;
   return {
-    title: name,
-    description: desc,
+    title,
+    description,
     alternates: { canonical: href(lang, path), languages: languages(path) },
-    openGraph: { title: name, description: desc, type: "website", images: p.images[0] ? [{ url: `/api/img/${p.images[0].id}/1080`, width: 1080 }] : [] },
+    openGraph: {
+      title,
+      description,
+      type: "website",
+      locale: lang === "ar" ? "ar_TN" : "fr_TN",
+      url: href(lang, path),
+      images: p.images.slice(0, 4).map((i) => ({ url: `/api/img/${i.id}/1080`, width: 1080, height: Math.round((1080 * i.height) / Math.max(1, i.width)), alt: i.alt ?? pick(lang, p.name, p.nameAr) })),
+    },
   };
 }
 
@@ -37,14 +44,23 @@ export default async function ProductPageRoute({ params }: PageProps<"/[lang]/pr
   const { lang, slug } = await params;
   if (!isLang(lang)) notFound();
   const [p, settings] = await Promise.all([getProduct(slug), getSettings()]);
-  if (!p) notFound();
+  if (!p) {
+    // Renamed: the old address leads to the new one, for good (Google moves its result over).
+    const moved = await productMovedTo(slug);
+    if (moved) permanentRedirect(href(lang, `/produit/${moved}`));
+    notFound();
+  }
   const t = dict(lang);
   const url = `${SITE_URL}${href(lang, `/produit/${p.slug}`)}`;
   const { related, ...product } = p;
 
   return (
     <>
-      <JsonLd data={productLd(p, settings, url)} />
+      {/* What Facebook, WhatsApp and Pinterest show with a shared link: the real price (React puts these in <head>). */}
+      <meta property="product:price:amount" content={((leadOffer(p.offers)?.price ?? Math.min(p.price, ...p.variants.map((v) => v.price))) / 1000).toFixed(3)} />
+      <meta property="product:price:currency" content="TND" />
+      <meta property="product:availability" content={p.stock.kind === "out" ? "out of stock" : "in stock"} />
+      <JsonLd data={productLd(p, settings, url, lang)} />
       <JsonLd
         data={breadcrumbLd([
           { name: t.nav.home, url: `${SITE_URL}${href(lang, "/")}` },

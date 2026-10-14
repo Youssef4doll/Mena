@@ -1,10 +1,12 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
-import { isLang } from "@/i18n";
+import { isLang, pageMeta } from "@/i18n";
 import { getSettings } from "@/lib/settings";
 import { Prose } from "../Prose";
 
-export const metadata: Metadata = { title: "Confidentialité" };
+export async function generateMetadata({ params }: PageProps<"/[lang]/confidentialite">): Promise<Metadata> {
+  return pageMeta((await params).lang, "/confidentialite", (t) => t.footer.privacy);
+}
 
 export default async function PrivacyRoute({ params }: PageProps<"/[lang]/confidentialite">) {
   const { lang } = await params;

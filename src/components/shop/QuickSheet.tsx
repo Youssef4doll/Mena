@@ -10,6 +10,7 @@ import { leadOffer } from "@/lib/offer-display";
 import { SITE_URL } from "@/lib/site";
 import { BuyBox, useBuyChoice } from "./BuyBox";
 import { IconClose } from "./Icons";
+import { useFocusTrap } from "@/lib/client/focus-trap";
 
 /**
  * The quick order form: a sheet from the bottom on a phone, a window on a
@@ -20,6 +21,8 @@ export function QuickSheet({ slug, lang, onClose }: { slug: string; lang: Lang; 
   // undefined: loading; null: could not load.
   const [data, setData] = useState<QuickData | null | undefined>(undefined);
   const closeBtn = useRef<HTMLButtonElement>(null);
+  const panel = useRef<HTMLDivElement>(null);
+  useFocusTrap(panel, true);
 
   useEffect(() => {
     let live = true;
@@ -52,7 +55,7 @@ export function QuickSheet({ slug, lang, onClose }: { slug: string; lang: Lang; 
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-center md:items-center md:p-6" role="dialog" aria-modal="true" aria-labelledby="qb-title">
       <button type="button" className="absolute inset-0 animate-fade bg-ink/50" onClick={onClose} aria-label={t.nav.close} tabIndex={-1} />
-      <div className="relative flex max-h-[94dvh] w-full animate-sheet-up flex-col overflow-hidden rounded-t-3xl bg-cream shadow-lift md:max-w-xl md:rounded-3xl">
+      <div ref={panel} className="relative flex max-h-[94dvh] w-full animate-sheet-up flex-col overflow-hidden rounded-t-3xl bg-cream shadow-lift md:max-w-xl md:rounded-3xl">
         <div className="flex items-center gap-3 border-b border-line bg-white px-4 py-3">
           <span className="relative h-14 w-14 shrink-0 overflow-hidden rounded-xl bg-sand">
             {image && (

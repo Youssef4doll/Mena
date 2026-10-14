@@ -27,6 +27,7 @@ Le code est sur [github.com/Youssef4doll/Mena](https://github.com/Youssef4doll/M
 | `ADMIN_EMAIL` | votre e-mail de connexion au back-office |
 | `ADMIN_PASSWORD` | un mot de passe d'au moins 10 caractères |
 | `NEXT_PUBLIC_SITE_URL` | `https://mena.tn` (votre domaine, sans `/` à la fin) |
+| `ANTHROPIC_API_KEY` | facultatif : la traduction automatique en arabe tunisien dans le back-office. Créez une clé sur [platform.claude.com](https://platform.claude.com) (*API Keys*). Elle reste sur le serveur, jamais dans le navigateur. Quelques centimes par produit traduit. |
 | `NEXT_PUBLIC_DEFAULT_LANG` | facultatif. Sans elle, la boutique s'ouvre **en arabe** (`mena.tn/…`) et le français est sous `mena.tn/fr/…`. Mettez `fr` pour l'inverse. |
 
 4. *Deploy*. À chaque déploiement, la base est mise à jour et le compte admin suit `ADMIN_EMAIL` / `ADMIN_PASSWORD`. Pour changer de mot de passe : modifiez `ADMIN_PASSWORD`, puis *Redeploy*. Une variable ajoutée ou modifiée ne compte qu'au déploiement suivant.
@@ -51,7 +52,9 @@ Un `.tn` s'achète chez un registrar agréé par l'ATI. Dans Vercel, *Settings �
 
 *Produits → Nouveau produit*. La boutique s'affiche d'abord en arabe : remplissez les champs en arabe ; le français sert aux clients qui passent en français (et remplace un champ arabe laissé vide). Pour chaque produit :
 
-- **nom** et **description courte** : une ou deux phrases sous le nom, le premier texte lu (300 caractères au plus) ;
+- **traduction automatique** : écrivez dans une seule langue (français ou arabe). En haut de la carte *Texte*, « Traduire ce qui manque » écrit l'autre langue en arabe tunisien (ou en français), les noms des options, des offres, et les mots-clés de recherche. Case cochée « Traduire automatiquement en enregistrant » : c'est fait à chaque enregistrement, seulement pour les champs vides. Relisez toujours le texte arabe. Il faut la variable `ANTHROPIC_API_KEY` (étape 3) ;
+- **nom** : comme sur Amazon, mettez-y les mots que les clients tapent sur Google (« Lampe de chevet tactile LED rechargeable » plutôt que « Lampe ») ;
+- **description courte** : une ou deux phrases sous le nom, le premier texte lu (300 caractères au plus) ;
 - **photos du produit** : 4 à 8, carrées de préférence (le produit seul, en situation, de près, ses dimensions). Téléversez-les depuis le téléphone ou l'ordinateur (elles sont allégées avant l'envoi), ou collez le lien d'une photo du fournisseur (elle est copiée chez vous). La première est la photo principale. Le client les fait glisser, et les ouvre en plein écran avec un zoom ;
 - **vidéo** (facultatif) : un lien YouTube (vidéo ou Short) ou l'adresse `https://` d'un fichier `.mp4`. Elle s'affiche en 2e position dans les photos et ne se charge que si le client appuie dessus ;
 - **description détaillée**, **caractéristiques** (une par ligne, « Matière : inox ») et **images de description** : les grandes images verticales qui expliquent le produit, comme sur Amazon. Tout cela s'affiche sous le formulaire de commande, les images l'une sous l'autre en pleine largeur ;
@@ -66,6 +69,14 @@ Un `.tn` s'achète chez un registrar agréé par l'ATI. Dans Vercel, *Settings �
 - « Le plus choisi » n'apparaît que si une offre a vraiment été commandée au moins 3 fois en 60 jours, et plus que les autres.
 - Les offres s'appliquent au prix du produit. Si une variante a son propre prix, retirez-le, ou retirez les offres.
 - Un lot plus grand que le stock compté est grisé automatiquement.
+
+**Google et recherche** (carte du produit) :
+
+- **mots-clés de recherche** : autres noms, fautes fréquentes, mots en arabe et en tunisien écrit en lettres latines (« lamba », « zarbia », « sechouar »). Jamais affichés ; la recherche de la boutique les trouve. La traduction automatique les propose ;
+- **titre et description pour Google** : laissez vide, la boutique les compose (nom, catégorie, description courte, prix, paiement à la livraison) ; l'aperçu montre le résultat Google en arabe et en français ;
+- **adresse de la page** : si vous la changez, l'ancienne continue de mener au produit (redirection permanente), pour les liens déjà partagés et pour Google.
+
+La recherche de la boutique trouve un produit même avec une faute de frappe (« lamep » → lampe, « difusseur » → diffuseur), en français, en arabe ou en tunisien en lettres latines, par son nom, ses options, sa catégorie, ses mots-clés et sa description courte. Elle complète ce que le client tape, comme Google.
 
 **Ce que la boutique affiche d'elle-même, seulement quand c'est vrai** : « +20 commandes » sur les cartes et les fiches (commandes confirmées des 30 derniers jours, arrondies vers le bas, rien en dessous de 10) ; « Livraison offerte » quand le prix affiché l'inclut ; l'offre lot la plus avantageuse ; le pourcentage, calculé sur un prix réel.
 

@@ -1,11 +1,13 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
-import { dict, isLang } from "@/i18n";
+import { dict, isLang, pageMeta } from "@/i18n";
 import { getSettings } from "@/lib/settings";
 import { Prose } from "../Prose";
 import { IconMessenger, IconWhatsApp } from "@/components/shop/Icons";
 
-export const metadata: Metadata = { title: "Contact" };
+export async function generateMetadata({ params }: PageProps<"/[lang]/contact">): Promise<Metadata> {
+  return pageMeta((await params).lang, "/contact", (t) => t.footer.contact);
+}
 
 export default async function ContactRoute({ params }: PageProps<"/[lang]/contact">) {
   const { lang } = await params;

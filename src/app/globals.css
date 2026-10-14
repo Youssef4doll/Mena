@@ -126,9 +126,13 @@ body {
 .price-nums {
   font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
 }
-/* In Arabic, Plex draws both the digits (no slashed zero) and the "د.ت". */
+/* In Arabic, Plex draws both the digits (no slashed zero) and the "د.ت", and an
+   amount is laid out right to left like the text around it: the number first,
+   then "د.ت", the way a range ("من 7,000 د.ت إلى 8,000 د.ت") already reads. */
 [dir="rtl"] .price-nums {
   font-family: var(--font-plex-ar), ui-sans-serif, system-ui, sans-serif;
+  direction: rtl;
+  unicode-bidi: isolate;
 }
 
 /* Arabic letters need more room between lines than Latin ones in tight headings. */
@@ -189,5 +193,16 @@ html {
     animation-duration: 0.01ms !important;
     transition-duration: 0.01ms !important;
     scroll-behavior: auto !important;
+  }
+}
+
+/* Room under the footer for what floats over the bottom of the screen: the
+   WhatsApp button, and on a phone the product page's order bar. */
+body:has(.wa-float) footer {
+  padding-bottom: 5.5rem;
+}
+@media (max-width: 767px) {
+  body:has([data-testid="sticky-bar"]) footer {
+    padding-bottom: 6.5rem;
   }
 }

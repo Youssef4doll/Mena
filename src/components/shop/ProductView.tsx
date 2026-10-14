@@ -30,13 +30,14 @@ export function ProductView({ p, lang, settings, url }: { p: P; lang: Lang; sett
   const summary = pick(lang, p.summary, p.summaryAr);
   const out = p.stock.kind === "out";
   const buyRef = useRef<HTMLDivElement>(null);
+  const galleryRef = useRef<HTMLDivElement>(null);
   const [sticky, setSticky] = useState(false);
   const choice = useBuyChoice(p);
   const shown = shownPrice(p, choice, lang);
   const pct = out ? 0 : discountPct(shown.price, shown.compareAt);
   const slides = useMemo(() => slidesOf(p.images, p.video), [p.images, p.video]);
   // The struck price's line is kept whenever some choice has one, so picking an offer never moves the form.
-  const mayStrike = p.compareAt != null || p.offers.some((o) => o.compareAt != null) || shown.note != null;
+  const mayStrike = p.compareAt != null || p.offers.some((o) => o.compareAt != null || o.quantity > 1) || p.variants.some((v) => v.price !== p.price);
 
   const viewPrice = leadOffer(p.offers)?.price ?? p.price;
   useEffect(() => {
@@ -44,7 +45,7 @@ export function ProductView({ p, lang, settings, url }: { p: P; lang: Lang; sett
     pixelViewContent({ id: p.id, name: p.name, price: viewPrice, qty: 1 });
   }, [p.id, p.name, viewPrice]);
 
-  // The bottom bar shows whenever the order form is out of sight, from the first screen on:
+  // The bottom bar shows whenever the order form is out of sight (and the pictures are not under it):
   // the price and the button are always one look away.
   useEffect(() => {
     let raf = 0;
@@ -53,7 +54,9 @@ export function ProductView({ p, lang, settings, url }: { p: P; lang: Lang; sett
       const el = buyRef.current;
       if (!el) return;
       const r = el.getBoundingClientRect();
-      setSticky(r.top > innerHeight - 40 || r.bottom < 140);
+      // Before the form: once the pictures and their thumbnails are above the bar, so it never covers them.
+      const g = galleryRef.current?.getBoundingClientRect();
+      setSticky((r.top > innerHeight - 40 && g != null && g.bottom < innerHeight - 84) || r.bottom < 140);
     };
     const onScroll = () => {
       if (!raf) raf = requestAnimationFrame(check);
@@ -99,7 +102,7 @@ export function ProductView({ p, lang, settings, url }: { p: P; lang: Lang; sett
           {(p.rating || p.sold) && (
             <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-[15px]">
               {p.rating && (
-                <a href="#avis" className="flex min-h-8 items-center gap-1.5 text-sea">
+                <a href="#avis" className="-my-1.5 flex min-h-11 items-center gap-1.5 text-sea">
                   <span className="font-bold text-ink ltr-nums">{p.rating.avg.toFixed(1)}</span>
                   <Stars value={p.rating.avg} size={17} />
                   <span className="underline-offset-2 hover:underline ltr-nums">({p.rating.count})</span>
@@ -115,7 +118,7 @@ export function ProductView({ p, lang, settings, url }: { p: P; lang: Lang; sett
           )}
         </div>
 
-        <div className="min-w-0 md:sticky md:top-36 md:col-start-1 md:row-span-2 md:row-start-1 md:self-start">
+        <div ref={galleryRef} className="min-w-0 md:sticky md:top-36 md:col-start-1 md:row-span-2 md:row-start-1 md:self-start">
           <Gallery slides={slides} name={name} productId={p.id} lang={lang} badge={pct} />
         </div>
 
