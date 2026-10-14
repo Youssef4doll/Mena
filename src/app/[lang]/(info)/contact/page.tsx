@@ -16,7 +16,7 @@ export default async function ContactRoute({ params }: PageProps<"/[lang]/contac
     <Prose title={t.footer.contact}>
       <div className="flex flex-col gap-3">
         {s.contact.whatsapp && (
-          <a href={`https://wa.me/216${s.contact.whatsapp}`} target="_blank" rel="noopener" className="flex h-12 items-center justify-center gap-2 rounded-full bg-[#1f9d55] font-medium text-white">
+          <a href={`https://wa.me/216${s.contact.whatsapp}`} target="_blank" rel="noopener" className="flex h-12 items-center justify-center gap-2 rounded-full bg-wa font-medium text-white">
             <IconWhatsApp /> WhatsApp
           </a>
         )}

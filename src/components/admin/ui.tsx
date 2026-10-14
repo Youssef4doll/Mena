@@ -56,7 +56,7 @@ export const btn = {
   sea: "inline-flex h-10 items-center justify-center gap-1.5 rounded-full bg-sea px-4 text-sm font-medium text-white disabled:opacity-50",
   ghost: "inline-flex h-10 items-center justify-center gap-1.5 rounded-full border border-line bg-white px-4 text-sm font-medium text-ink disabled:opacity-50",
   danger: "inline-flex h-10 items-center justify-center gap-1.5 rounded-full border border-clay/40 bg-white px-4 text-sm font-medium text-clay disabled:opacity-50",
-  wa: "inline-flex h-10 items-center justify-center gap-1.5 rounded-full bg-[#1f9d55] px-4 text-sm font-medium text-white",
+  wa: "inline-flex h-10 items-center justify-center gap-1.5 rounded-full bg-wa px-4 text-sm font-medium text-white",
 };
 
 export const input = "h-10 w-full rounded-xl border border-line bg-white px-3 text-sm outline-none focus:border-sea";

@@ -21,7 +21,7 @@ export function WhatsAppFloat({ lang, phone }: { lang: Lang; phone: string }) {
         track("whatsapp_clicked", { props: { where: "float" } });
         pixelContact();
       }}
-      className="fixed bottom-4 end-4 z-30 flex h-14 w-14 items-center justify-center rounded-full bg-[#1f9d55] text-white shadow-lift transition active:scale-95"
+      className="fixed bottom-4 end-4 z-30 flex h-14 w-14 items-center justify-center rounded-full bg-wa text-white shadow-lift transition active:scale-95"
       aria-label={t.trust.support}
     >
       <IconWhatsApp className="h-7 w-7" />

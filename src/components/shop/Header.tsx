@@ -1,17 +1,19 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname, useRouter } from "next/navigation";
-import { useEffect, useRef, useState } from "react";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { Suspense, useEffect, useRef, useState } from "react";
+import { flushSync } from "react-dom";
 import { dict, href, pick, switchHref, type Lang } from "@/i18n";
 import { track } from "@/lib/client/track";
 import { pixelContact } from "@/lib/client/pixels";
 import { formatTND } from "@/lib/money";
 import { formatPhone } from "@/lib/phone";
 import { Logo } from "./Logo";
-import { IconChevron, IconClose, IconMenu, IconSearch } from "./Icons";
+import { IconCheck, IconChevron, IconClose, IconMenu, IconSearch } from "./Icons";
 
 type Cat = { slug: string; name: string; nameAr: string | null };
+
 
 /**
  * Amazon's arrangement, in a calmer palette: the logo, one wide search box,
@@ -25,6 +27,10 @@ export function Header({ lang, categories, announcement, phone }: { lang: Lang; 
   const [menuOn, setMenuOn] = useState<string | null>(null);
   const menu = menuOn === pathname;
   const onProduct = pathname.includes("/produit/");
+  const shopOn = pathname.endsWith("/boutique");
+  // On a product page on a phone, search is an icon until tapped (closes again on the next page).
+  const [searchAt, setSearchAt] = useState<string | null>(null);
+  const compact = onProduct && searchAt !== pathname;
   const setMenu = (o: boolean) => setMenuOn(o ? pathname : null);
   const openBtn = useRef<HTMLButtonElement>(null);
   const closeBtn = useRef<HTMLButtonElement>(null);
@@ -49,16 +55,19 @@ export function Header({ lang, categories, announcement, phone }: { lang: Lang; 
 
   return (
     <>
-      <div className="bg-sea text-[14px] text-white">
+      <div className="border-b border-white/10 bg-night text-[15px] font-bold text-white">
         <div className="mx-auto flex min-h-8 max-w-6xl items-center justify-center gap-6 px-4 py-1 text-center">
           {announcement.map((a, i) => (
-            <span key={a} className={i > 0 ? "max-md:hidden" : ""}>
+            <span key={a} className={`inline-flex items-center gap-1.5 ${i > 0 ? "max-md:hidden" : ""}`}>
+              <IconCheck className="h-4 w-4 shrink-0 text-amber" />
               {a}
             </span>
           ))}
         </div>
       </div>
-      {/* Stays at the top from tablet width; on a phone it scrolls away and leaves the screen to the page. */}
+      {/* Stays at the top from tablet width; on a phone it scrolls away and leaves the screen to the page.
+          On a product page on a phone, search becomes an icon and the category strip goes, so the
+          picture, the name, the price and the stock fit on the first screen. */}
       <header className="z-30 bg-night text-white md:sticky md:top-0 [--focus-ring:var(--color-amber)]">
         <div className="mx-auto flex max-w-6xl flex-wrap items-center gap-x-3 gap-y-2 px-4 py-2">
           <button ref={openBtn} type="button" onClick={() => setMenu(true)} className="-ms-2 flex h-11 w-11 items-center justify-center rounded-xl text-white hover:bg-white/10" aria-label={t.nav.menu}>
@@ -67,10 +76,27 @@ export function Header({ lang, categories, announcement, phone }: { lang: Lang; 
           <Link href={href(lang, "/")} className="flex items-center rounded-lg px-1 py-1 hover:ring-1 hover:ring-white/40" aria-label="Mena">
             <Logo light />
           </Link>
-          <div className="order-last w-full md:order-none md:ms-4 md:w-auto md:flex-1">
-            <SearchBox lang={lang} />
+          <div className={`order-last w-full md:order-none md:ms-4 md:w-auto md:flex-1 ${compact ? "max-md:hidden" : ""}`}>
+            {/* The box follows the URL's search (Back, Forward); while the page loads it is the same box, empty. */}
+            <Suspense fallback={<SearchBox lang={lang} urlQ="" />}>
+              <SearchFromUrl lang={lang} />
+            </Suspense>
           </div>
           <div className="ms-auto flex items-center gap-1 md:ms-0">
+            {compact && (
+              <button
+                type="button"
+                onClick={() => {
+                  // Shown and focused in the same tap, which is what opens the phone's keyboard.
+                  flushSync(() => setSearchAt(pathname));
+                  document.querySelector<HTMLInputElement>("header input[name=q]")?.focus();
+                }}
+                className="flex h-11 w-11 items-center justify-center rounded-xl text-white hover:bg-white/10 md:hidden"
+                aria-label={t.nav.search}
+              >
+                <IconSearch className="h-6 w-6" />
+              </button>
+            )}
             {phone && (
               <a
                 href={`tel:+216${phone}`}
@@ -90,10 +116,14 @@ export function Header({ lang, categories, announcement, phone }: { lang: Lang; 
           </div>
         </div>
         {categories.length > 0 && (
-          // On a product page on a phone the strip gives way to the product: the name and price fit on the first screen (the menu keeps the categories).
-          <nav className={`bg-night-2 ${onProduct ? "max-md:hidden" : ""}`} aria-label={t.nav.categories}>
+          // The menu keeps the categories when the strip gives way on a product page.
+          <nav className={`relative bg-night-2 ${onProduct ? "max-md:hidden" : ""}`} aria-label={t.nav.categories}>
             <div className="mx-auto flex max-w-6xl gap-1 overflow-x-auto px-2 py-1 no-scrollbar [--focus-offset:-3px]">
-              <Link href={href(lang, "/boutique")} className="shrink-0 whitespace-nowrap rounded-md px-3 py-2.5 text-[16px] font-bold text-white hover:bg-white/10">
+              <Link
+                href={href(lang, "/boutique")}
+                className={`shrink-0 whitespace-nowrap rounded-md px-3 py-2.5 text-[16px] text-white ${shopOn ? "bg-white/15 font-bold" : "hover:bg-white/10"}`}
+                aria-current={shopOn ? "page" : undefined}
+              >
                 {t.nav.shop}
               </Link>
               {categories.map((c) => {
@@ -110,6 +140,8 @@ export function Header({ lang, categories, announcement, phone }: { lang: Lang; 
                 );
               })}
             </div>
+            {/* A fade at the end says the strip scrolls. */}
+            <span aria-hidden className="pointer-events-none absolute inset-y-0 end-0 w-10 bg-gradient-to-l from-night-2 to-transparent rtl:bg-gradient-to-r md:hidden" />
           </nav>
         )}
       </header>
@@ -161,11 +193,20 @@ function MenuLink({ href, children }: { href: string; children: React.ReactNode 
 
 type Suggestion = { products: { slug: string; name: string; nameAr: string | null; price: number; imageId: string | null }[]; categories: Cat[] };
 
+function SearchFromUrl({ lang }: { lang: Lang }) {
+  const pathname = usePathname();
+  const params = useSearchParams();
+  return <SearchBox lang={lang} urlQ={pathname.endsWith("/recherche") ? (params.get("q") ?? "") : ""} />;
+}
+
 /** One wide search box, with suggestions under it as soon as two letters are typed. */
-function SearchBox({ lang }: { lang: Lang }) {
+function SearchBox({ lang, urlQ }: { lang: Lang; urlQ: string }) {
   const t = dict(lang);
   const router = useRouter();
-  const [q, setQ] = useState("");
+  // On the results page the box shows what was searched; typing takes over until the search changes.
+  const [typed, setTyped] = useState<{ at: string; q: string } | null>(null);
+  const q = typed?.at === urlQ ? typed.q : urlQ;
+  const setQ = (v: string) => setTyped({ at: urlQ, q: v });
   const [s, setS] = useState<Suggestion | null>(null);
   const [open, setOpen] = useState(false);
   const box = useRef<HTMLDivElement>(null);

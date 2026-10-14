@@ -48,6 +48,7 @@ export const fr = {
   product: {
     addToCart: "Ajouter au panier",
     buyNow: "Acheter maintenant",
+    buyShort: "Acheter",
     quickTitle: "Commande rapide",
     quickSee: "Voir toute la fiche du produit",
     quickLoading: "Un instant…",
@@ -84,8 +85,8 @@ export const fr = {
   },
   buy: {
     title: "Commander",
-    step1: "1. Choisissez",
-    step2: "2. Vos coordonnées",
+    step1: "Choisissez votre offre",
+    step2: "Vos coordonnées",
     offer: "Offre",
     units: (n: number) => `${n} unité${n > 1 ? "s" : ""}`,
     save: (amount: string) => `Vous économisez ${amount}`,
@@ -116,6 +117,8 @@ export const fr = {
     price: "Prix",
     delivery: "Livraison",
     deliveryChoose: "Selon votre gouvernorat",
+    deliveryRange: (a: string, b: string) => `${a} à ${b}`,
+    plusDelivery: "+ livraison",
     total: "Total à payer à la réception",
     submit: "Confirmer ma commande",
     submitSub: "Paiement à la livraison, en espèces",
@@ -179,6 +182,9 @@ export const fr = {
     confirmText: (ref: string) => `Bonjour, je confirme ma commande ${ref}.`,
     track: "Suivre ma commande",
     keepShopping: "Continuer mes achats",
+    titleName: (name: string) => `Merci ${name}, votre commande est enregistrée`,
+    callingYou: "Nous vous appelons pour confirmer au",
+    notYours: "Ce n'est pas votre numéro ? Écrivez-nous sur WhatsApp.",
   },
   track: {
     title: "Suivre ma commande",

@@ -8,6 +8,7 @@ import { getSettings } from "@/lib/settings";
 import { formatTND } from "@/lib/money";
 import { PurchasePixel } from "@/components/shop/PurchasePixel";
 import { IconCheck, IconWhatsApp } from "@/components/shop/Icons";
+import { ThanksPhone } from "@/components/shop/ThanksPhone";
 
 export const metadata: Metadata = { robots: { index: false } };
 
@@ -24,12 +25,13 @@ export default async function ThanksRoute({ params }: PageProps<"/[lang]/command
         <span className="flex h-16 w-16 items-center justify-center rounded-full bg-olive-soft text-olive">
           <IconCheck className="h-8 w-8" />
         </span>
-        <h1 className="text-[30px] leading-tight">{t.thanks.title}</h1>
-        <div className="rounded-2xl border border-line bg-white px-6 py-3">
-          <p className="text-sm uppercase tracking-[0.14em] text-muted">{t.thanks.ref}</p>
-          <p className="mt-1 text-2xl tracking-wider ltr-nums" data-testid="order-ref">{ref}</p>
+        <h1 className="text-[28px] font-bold leading-tight">{o?.firstName ? t.thanks.titleName(o.firstName) : t.thanks.title}</h1>
+        <div className="rounded-2xl border-2 border-dashed border-sea/40 bg-sea-soft px-6 py-4">
+          <p className="text-[15px] font-bold text-sea-2">{t.thanks.ref}</p>
+          <p className="mt-1 text-[28px] font-bold tracking-wider ltr-nums" data-testid="order-ref">{ref}</p>
         </div>
       </div>
+      {o && o.status === "PENDING" && <ThanksPhone lang={lang} firstName={o.firstName} whatsapp={settings.contact.whatsapp || null} orderRef={o.ref} />}
 
       {o && (
         <>
@@ -44,17 +46,17 @@ export default async function ThanksRoute({ params }: PageProps<"/[lang]/command
               href={`https://wa.me/216${settings.contact.whatsapp}?text=${encodeURIComponent(t.thanks.confirmText(o.ref))}`}
               target="_blank"
               rel="noopener"
-              className="flex items-center gap-3 rounded-2xl bg-[#1f9d55] p-4 text-white"
+              className="flex min-h-16 items-center gap-3 rounded-2xl bg-wa p-4 text-white"
             >
               <IconWhatsApp className="h-7 w-7 shrink-0" />
               <span className="flex flex-col">
-                <span className="font-semibold">{t.thanks.confirmNow}</span>
-                <span className="text-sm text-white/85">{t.thanks.confirmNowSub}</span>
+                <span className="text-[18px] font-bold">{t.thanks.confirmNow}</span>
+                <span className="text-[15px] text-white">{t.thanks.confirmNowSub}</span>
               </span>
             </a>
           )}
           <div className="rounded-2xl border border-line bg-white p-5">
-            <ul className="flex flex-col gap-2 text-sm">
+            <ul className="flex flex-col gap-2 text-[16px]">
               {o.items.map((i) => (
                 <li key={i.id} className="flex justify-between gap-3">
                   <span>
@@ -63,36 +65,36 @@ export default async function ThanksRoute({ params }: PageProps<"/[lang]/command
                     {i.variantName && <span className="text-muted"> · {i.variantName}</span>}
                     {i.offerLabel && <span className="text-muted"> · {pick(lang, i.offerLabel, i.offerLabelAr)}</span>}
                   </span>
-                  <span className="ltr-nums">{formatTND(i.lineTotal, lang)}</span>
+                  <span className="shrink-0 whitespace-nowrap price-nums ltr-nums">{formatTND(i.lineTotal, lang)}</span>
                 </li>
               ))}
             </ul>
-            <div className="mt-3 flex justify-between border-t border-line pt-3 font-semibold">
+            <div className="mt-3 flex justify-between gap-3 border-t border-line pt-3 text-[20px] font-bold">
               <span>{o.paymentMethod === "COD" ? t.track.toPay : t.cart.total}</span>
-              <span className="ltr-nums">{formatTND(o.total, lang)}</span>
+              <span className="whitespace-nowrap price-nums ltr-nums">{formatTND(o.total, lang)}</span>
             </div>
           </div>
         </>
       )}
 
       <div>
-        <h2 className="mb-3 text-sm font-semibold uppercase tracking-[0.12em] text-muted">{t.thanks.next}</h2>
+        <h2 className="mb-3 text-[19px] font-bold">{t.thanks.next}</h2>
         <ol className="flex flex-col gap-3">
           {t.thanks.steps.map((s, i) => (
-            <li key={s} className="flex gap-3 text-[15px]">
-              <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-sea-soft text-sm font-semibold text-sea ltr-nums">{i + 1}</span>
-              <span className="pt-0.5 text-ink-2">{s}</span>
+            <li key={s} className="flex gap-3 text-[17px]">
+              <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-sea text-[17px] font-bold text-white">{i + 1}</span>
+              <span className="pt-1.5 text-ink-2">{s}</span>
             </li>
           ))}
         </ol>
-        {settings.notify.smsOnPlaced && settings.notify.smsUrl && <p className="mt-4 text-sm text-muted">{t.thanks.sms}</p>}
+        {settings.notify.smsOnPlaced && settings.notify.smsUrl && <p className="mt-4 text-[16px] text-muted">{t.thanks.sms}</p>}
       </div>
 
       <div className="flex flex-col gap-2">
-        <Link href={href(lang, o ? `/suivi/${o.ref}` : "/suivi")} className="flex h-12 items-center justify-center rounded-full bg-sea font-medium text-white">
+        <Link href={href(lang, o ? `/suivi/${o.ref}` : "/suivi")} className="flex min-h-14 items-center justify-center rounded-2xl bg-navy text-[17px] font-bold text-white hover:bg-night">
           {t.thanks.track}
         </Link>
-        <Link href={href(lang, "/boutique")} className="flex h-12 items-center justify-center rounded-full border border-line font-medium">
+        <Link href={href(lang, "/boutique")} className="flex min-h-14 items-center justify-center rounded-2xl border-2 border-field bg-white text-[17px] font-bold text-ink hover:bg-sand">
           {t.thanks.keepShopping}
         </Link>
       </div>

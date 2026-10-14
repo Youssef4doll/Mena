@@ -50,6 +50,7 @@ export const ar: Dict = {
   product: {
     addToCart: "زيد للسلة",
     buyNow: "اشري توّا",
+    buyShort: "اشري توّا",
     quickTitle: "طلبية سريعة",
     quickSee: "شوف صفحة المنتوج كاملة",
     quickLoading: "لحظة…",
@@ -85,8 +86,8 @@ export const ar: Dict = {
   },
   buy: {
     title: "أطلب",
-    step1: "1. اختار",
-    step2: "2. معلوماتك",
+    step1: "اختار العرض",
+    step2: "معلوماتك",
     offer: "العرض",
     units: (n) => (n === 1 ? "حبة وحدة" : `${n} حبات`),
     save: (amount) => `توفّر ${amount}`,
@@ -117,6 +118,8 @@ export const ar: Dict = {
     price: "السوم",
     delivery: "التوصيل",
     deliveryChoose: "حسب ولايتك",
+    deliveryRange: (a, b) => `من ${a} إلى ${b}`,
+    plusDelivery: "+ التوصيل",
     total: "المجموع اللي تخلّصو كي تستلم",
     submit: "أكّد الطلبية",
     submitSub: "الدفع عند الاستلام، كاش",
@@ -180,6 +183,9 @@ export const ar: Dict = {
     confirmText: (ref) => `السلام، نأكّد الطلبية ${ref}.`,
     track: "تتبّع طلبيتي",
     keepShopping: "كمّل التسوّق",
+    titleName: (name) => `يعيشك ${name}، الطلبية متاعك تسجّلت`,
+    callingYou: "باش نكلموك نأكدو على الرقم",
+    notYours: "موش رقمك؟ ابعثلنا على واتساب.",
   },
   track: {
     title: "تتبّع طلبيتي",

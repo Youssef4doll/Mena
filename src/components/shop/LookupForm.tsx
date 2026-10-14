@@ -25,16 +25,16 @@ export function LookupForm({ lang }: { lang: Lang }) {
         else setErr(res?.status === 429 ? t.checkout.errors.rate_limited : t.track.notFound);
       }}
     >
-      <label className="flex flex-col gap-1.5 text-sm font-medium">
+      <label className="flex flex-col gap-1.5 text-[16px] font-bold text-ink">
         {t.track.ref}
-        <input value={ref} onChange={(e) => setRef(e.target.value.toUpperCase())} placeholder="MN-XXXXXX" className="h-12 rounded-xl border border-line bg-white px-3 uppercase tracking-wider outline-none focus:border-sea" dir="ltr" autoCapitalize="characters" required data-testid="lookup-ref" />
+        <input value={ref} onChange={(e) => setRef(e.target.value.toUpperCase())} placeholder="MN-XXXXXX" className="h-14 rounded-xl border-2 border-field bg-white px-4 text-[18px] font-normal placeholder:text-placeholder uppercase tracking-wider outline-none focus:border-sea" dir="ltr" autoCapitalize="characters" required data-testid="lookup-ref" />
       </label>
-      <label className="flex flex-col gap-1.5 text-sm font-medium">
+      <label className="flex flex-col gap-1.5 text-[16px] font-bold text-ink">
         {t.track.phone}
-        <input value={phone} onChange={(e) => setPhone(e.target.value)} inputMode="tel" placeholder="22 123 456" className="h-12 rounded-xl border border-line bg-white px-3 outline-none focus:border-sea" dir="ltr" required data-testid="lookup-phone" />
+        <input value={phone} onChange={(e) => setPhone(e.target.value)} inputMode="tel" placeholder="22 123 456" className="h-14 rounded-xl border-2 border-field bg-white px-4 text-[18px] font-normal placeholder:text-placeholder outline-none focus:border-sea" dir="ltr" required data-testid="lookup-phone" />
       </label>
-      {err && <p className="text-sm text-danger" role="alert">{err}</p>}
-      <button type="submit" disabled={busy} className="h-12 rounded-full bg-sea font-medium text-white disabled:opacity-60">
+      {err && <p className="text-[16px] text-danger" role="alert">{err}</p>}
+      <button type="submit" disabled={busy} className="min-h-14 rounded-2xl bg-navy text-[18px] font-bold text-white hover:bg-night disabled:opacity-60">
         {t.track.submit}
       </button>
     </form>

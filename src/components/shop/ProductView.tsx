@@ -14,7 +14,7 @@ import { Price } from "./Price";
 import { Stars } from "./Stars";
 import { Placeholder } from "./Img";
 import { BuyBox, useBuyChoice, type BuyChoice } from "./BuyBox";
-import { IconCash, IconCheck, IconReturn, IconShield, IconTruck } from "./Icons";
+import { IconCash, IconCheck, IconReturn, IconTruck } from "./Icons";
 
 type P = Omit<ProductPage, "related">;
 
@@ -85,14 +85,13 @@ export function ProductView({ p, lang, settings, url }: { p: P; lang: Lang; sett
           </div>
         </section>
       )}
-      <section id="avis" className="rounded-3xl border border-line bg-white p-5">
-        <h2 className="mb-3 flex items-center gap-2 text-[19px] font-bold text-ink">
-          {t.product.reviews}
-          {p.rating && <span className="text-[16px] font-normal text-muted ltr-nums">({p.rating.count})</span>}
-        </h2>
-        {p.reviews.length === 0 ? (
-          <p className="text-[16px] text-muted">{t.product.noReviews}</p>
-        ) : (
+      {/* Only real reviews: a new product shows no empty box. */}
+      {p.reviews.length > 0 && (
+        <section id="avis" className="rounded-3xl border border-line bg-white p-5">
+          <h2 className="mb-3 flex items-center gap-2 text-[19px] font-bold text-ink">
+            {t.product.reviews}
+            {p.rating && <span className="text-[16px] font-normal text-muted ltr-nums">({p.rating.count})</span>}
+          </h2>
           <ul className="flex flex-col divide-y divide-line">
             {p.reviews.map((r) => (
               <li key={r.id} className="py-4">
@@ -111,8 +110,8 @@ export function ProductView({ p, lang, settings, url }: { p: P; lang: Lang; sett
               </li>
             ))}
           </ul>
-        )}
-      </section>
+        </section>
+      )}
     </>
   );
 
@@ -126,7 +125,7 @@ export function ProductView({ p, lang, settings, url }: { p: P; lang: Lang; sett
 
       <div className="flex min-w-0 flex-col gap-4 md:col-start-2 md:row-span-2 md:row-start-1">
         <div ref={headRef} className="flex flex-col gap-1.5">
-          <h1 className="text-[26px] font-bold leading-tight text-ink md:text-[40px]">{name}</h1>
+          <h1 className="text-[24px] font-bold leading-tight text-ink md:text-[40px]">{name}</h1>
           {p.rating && (
             <a href="#avis" className="flex items-center gap-2 text-[15px] text-muted">
               <Stars value={p.rating.avg} size={18} />
@@ -139,18 +138,14 @@ export function ProductView({ p, lang, settings, url }: { p: P; lang: Lang; sett
           <StockLine lang={lang} p={p} variant={choice.variant} />
         </div>
 
-        <div ref={buyRef}>
+        {/* The order form as one white panel: edge to edge on a phone, a card on a computer. */}
+        <div ref={buyRef} className="-mx-4 border-y border-line bg-white px-4 py-5 md:mx-0 md:rounded-2xl md:border md:p-6 md:shadow-soft">
           <BuyBox p={p} lang={lang} settings={settings} url={url} choice={choice} />
         </div>
 
-        {/* The three promises, small, after the button: the form comes first on a phone. */}
-        <ul className="grid grid-cols-1 gap-2 text-[16px] leading-snug text-ink-2 sm:grid-cols-3 sm:text-center md:grid-cols-1 md:text-start lg:grid-cols-3 lg:text-center">
-          <Reassure icon={<IconCash className="h-6 w-6" />} text={t.trust.cod} />
-          {settings.delivery.openBeforePaying ? (
-            <Reassure icon={<IconShield className="h-6 w-6" />} text={t.trust.openBeforePaying} />
-          ) : (
-            <Reassure icon={<IconTruck className="h-6 w-6" />} text={deliversEverywhere(settings.delivery.zones) ? t.trust.delivery : t.trust.deliveryHome} />
-          )}
+        {/* Delivery and returns; cash on delivery and checking the parcel are said next to the button. */}
+        <ul className="grid grid-cols-2 divide-x divide-line overflow-hidden rounded-2xl border border-line bg-white text-[16px] leading-snug text-ink-2">
+          <Reassure icon={<IconTruck className="h-6 w-6" />} text={deliversEverywhere(settings.delivery.zones) ? t.trust.delivery : t.trust.deliveryHome} />
           <Reassure icon={<IconReturn className="h-6 w-6" />} text={t.trust.returns(settings.returns.days)} />
         </ul>
 
@@ -167,10 +162,13 @@ export function ProductView({ p, lang, settings, url }: { p: P; lang: Lang; sett
       >
         <div className="flex items-center gap-3">
           <div className="flex min-w-0 flex-1 flex-col">
-            <span className="truncate text-[15px] text-muted">{name}</span>
+            <span className="flex items-center gap-1.5 text-[15px] font-bold text-olive">
+              <IconCash className="h-5 w-5 shrink-0" />
+              <span className="leading-tight">{t.trust.cod}</span>
+            </span>
             <span className="flex flex-wrap items-baseline gap-x-1.5 text-[18px] font-bold">
               {shown.note && <span className="text-[15px] font-normal text-muted">{shown.note}</span>}
-              <span className="whitespace-nowrap ltr-nums">{formatTND(shown.price, lang)}</span>
+              <span className="whitespace-nowrap price-nums ltr-nums">{formatTND(shown.price, lang)}</span>
             </span>
           </div>
           <button type="button" tabIndex={sticky && !out ? 0 : -1} onClick={goToForm} className="h-14 shrink-0 rounded-2xl bg-navy px-5 text-[17px] font-bold text-white">
@@ -184,7 +182,7 @@ export function ProductView({ p, lang, settings, url }: { p: P; lang: Lang; sett
 
 function Reassure({ icon, text }: { icon: React.ReactNode; text: string }) {
   return (
-    <li className="flex items-center gap-3 rounded-2xl bg-white px-3 py-2.5 ring-1 ring-line sm:flex-col sm:gap-1.5 md:flex-row md:gap-3 lg:flex-col lg:gap-1.5">
+    <li className="flex min-h-14 items-center gap-2.5 px-3 py-2.5">
       <span className="shrink-0 text-sea">{icon}</span>
       {text}
     </li>
@@ -223,7 +221,12 @@ function Gallery({ images, name, productId, badge, lang }: { images: P["images"]
   const [i, setI] = useState(0);
   const ref = useRef<HTMLDivElement>(null);
   const swiped = useRef(false);
-  const tag = badge > 0 ? <span className="absolute start-3 top-3 z-10 rounded-full bg-olive px-3 py-1 text-[15px] font-bold text-white ltr-nums">−{badge}%</span> : null;
+  const tag =
+    badge > 0 ? (
+      <span className="absolute start-3 top-3 z-10 rounded-full bg-olive px-3 py-1 text-[15px] font-bold text-white">
+        <span className="ltr-nums">−{badge}%</span>
+      </span>
+    ) : null;
   if (images.length === 0)
     return (
       <div className="relative -mx-4 aspect-square overflow-hidden md:mx-0 md:rounded-3xl">

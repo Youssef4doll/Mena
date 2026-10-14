@@ -37,16 +37,16 @@ export default async function OrderRoute({ params, searchParams }: PageProps<"/[
     <div className="mx-auto flex max-w-xl flex-col gap-6 px-4 pt-8">
       <TrackView name="tracking_viewed" props={{ status: o.status }} />
       <div>
-        <p className="text-sm uppercase tracking-[0.14em] text-muted">{t.thanks.ref}</p>
-        <h1 className="text-[30px] tracking-wide ltr-nums">{o.ref}</h1>
-        <p className="mt-1 text-sm text-muted">{dateFmt(o.createdAt)}</p>
+        <p className="text-[15px] font-bold text-sea-2">{t.thanks.ref}</p>
+        <h1 className="text-[28px] font-bold tracking-wide ltr-nums">{o.ref}</h1>
+        <p className="mt-1 text-[16px] text-muted">{dateFmt(o.createdAt)}</p>
       </div>
 
-      {sp.paiement === "ok" && <p className="rounded-xl bg-olive-soft px-4 py-3 text-sm text-olive">{t.track.paymentOk}</p>}
-      {sp.paiement === "echec" && <p className="rounded-xl bg-clay-soft px-4 py-3 text-sm text-clay">{t.track.paymentFail}</p>}
+      {sp.paiement === "ok" && <p className="rounded-xl bg-olive-soft px-4 py-3 text-[16px] text-olive">{t.track.paymentOk}</p>}
+      {sp.paiement === "echec" && <p className="rounded-xl bg-clay-soft px-4 py-3 text-[16px] text-clay">{t.track.paymentFail}</p>}
 
       <div className="rounded-2xl border border-line bg-white p-5">
-        <p className={`text-lg font-semibold ${ended ? "text-clay" : "text-ink"}`}>{t.track.status[o.status]}</p>
+        <p className={`text-[22px] font-bold ${ended ? "text-clay" : "text-ink"}`}>{t.track.status[o.status]}</p>
         {!ended && (
           <ol className="mt-4 flex flex-col gap-0">
             {STEPS.map((s, i) => {
@@ -54,10 +54,10 @@ export default async function OrderRoute({ params, searchParams }: PageProps<"/[
               return (
                 <li key={s} className="flex gap-3">
                   <span className="flex flex-col items-center">
-                    <span className={`mt-1 h-3 w-3 rounded-full ${done ? "bg-sea" : "border-2 border-line bg-white"}`} />
+                    <span className={`mt-1 h-3.5 w-3.5 rounded-full ${done ? "bg-sea" : "border-2 border-line bg-white"}`} />
                     {i < STEPS.length - 1 && <span className={`w-px flex-1 ${i < stepIndex ? "bg-sea" : "bg-line"}`} />}
                   </span>
-                  <span className={`pb-4 text-sm ${done ? "text-ink" : "text-muted"}`}>
+                  <span className={`pb-4 text-[16px] ${done ? "text-ink" : "text-muted"}`}>
                     {t.track.timeline[i]}
                     {s === "CONFIRMED" && o.confirmedAt && <span className="text-muted"> · {dateFmt(o.confirmedAt)}</span>}
                     {s === "SHIPPED" && o.shippedAt && <span className="text-muted"> · {dateFmt(o.shippedAt)}</span>}
@@ -69,16 +69,16 @@ export default async function OrderRoute({ params, searchParams }: PageProps<"/[
           </ol>
         )}
         {(o.carrier || o.trackingNumber) && (
-          <dl className="mt-2 grid grid-cols-2 gap-3 border-t border-line pt-3 text-sm">
+          <dl className="mt-2 grid grid-cols-2 gap-3 border-t border-line pt-3 text-[16px]">
             {o.carrier && (
               <div>
-                <dt className="text-sm text-muted">{t.track.carrier}</dt>
+                <dt className="text-[16px] text-muted">{t.track.carrier}</dt>
                 <dd>{o.carrier}</dd>
               </div>
             )}
             {o.trackingNumber && (
               <div>
-                <dt className="text-sm text-muted">{t.track.tracking}</dt>
+                <dt className="text-[16px] text-muted">{t.track.tracking}</dt>
                 <dd className="ltr-nums">{o.trackingNumber}</dd>
               </div>
             )}
@@ -87,10 +87,10 @@ export default async function OrderRoute({ params, searchParams }: PageProps<"/[
       </div>
 
       <div className="rounded-2xl border border-line bg-white p-5">
-        <h2 className="mb-3 text-sm font-semibold">{t.track.items}</h2>
+        <h2 className="mb-3 text-[19px] font-bold">{t.track.items}</h2>
         <ul className="flex flex-col gap-3">
           {o.items.map((i) => (
-            <li key={i.id} className="flex items-center gap-3 text-sm">
+            <li key={i.id} className="flex items-center gap-3 text-[16px]">
               <span className="relative h-14 w-12 shrink-0 overflow-hidden rounded-lg bg-sand">
                 {i.product?.images[0] && (
                   // eslint-disable-next-line @next/next/no-img-element
@@ -99,17 +99,17 @@ export default async function OrderRoute({ params, searchParams }: PageProps<"/[
               </span>
               <span className="flex-1">
                 {i.product ? <Link href={href(lang, `/produit/${i.product.slug}`)}>{pick(lang, i.name, i.product.nameAr)}</Link> : i.name}
-                {i.variantName && <span className="block text-sm text-muted">{i.variantName}</span>}
-                {i.offerLabel && <span className="block text-sm text-muted">{pick(lang, i.offerLabel, i.offerLabelAr)}</span>}
+                {i.variantName && <span className="block text-[16px] text-muted">{i.variantName}</span>}
+                {i.offerLabel && <span className="block text-[16px] text-muted">{pick(lang, i.offerLabel, i.offerLabelAr)}</span>}
               </span>
-              <span className="text-end ltr-nums">
-                <span className="block text-sm text-muted">× {i.qty}</span>
-                {formatTND(i.lineTotal, lang)}
+              <span className="shrink-0 text-end">
+                <span className="block text-[16px] text-muted ltr-nums">× {i.qty}</span>
+                <span className="whitespace-nowrap price-nums ltr-nums">{formatTND(i.lineTotal, lang)}</span>
               </span>
             </li>
           ))}
         </ul>
-        <dl className="mt-4 flex flex-col gap-1 border-t border-line pt-3 text-sm">
+        <dl className="mt-4 flex flex-col gap-1 border-t border-line pt-3 text-[16px]">
           <div className="flex justify-between text-muted">
             <dt>{t.cart.delivery}</dt>
             <dd className="ltr-nums">{o.deliveryFee === 0 ? t.product.free : formatTND(o.deliveryFee, lang)}</dd>
@@ -120,20 +120,20 @@ export default async function OrderRoute({ params, searchParams }: PageProps<"/[
               <dd className="ltr-nums">−{formatTND(o.discount, lang)}</dd>
             </div>
           )}
-          <div className="flex justify-between font-semibold">
+          <div className="flex justify-between text-[19px] font-bold">
             <dt>{o.paymentStatus === "PAID" ? t.track.paid : t.track.toPay}</dt>
             <dd className="ltr-nums">{formatTND(o.total, lang)}</dd>
           </div>
         </dl>
-        <p className="mt-3 text-sm text-muted">
+        <p className="mt-3 text-[16px] text-muted">
           {t.track.deliveryTo} {[o.city, governorateLabel(o.governorate, lang)].filter(Boolean).join(lang === "ar" ? "، " : ", ")}
         </p>
       </div>
 
       {reviewable.length > 0 && (
         <div id="avis" className="rounded-2xl border border-line bg-white p-5">
-          <h2 className="text-lg font-semibold">{t.track.reviewTitle}</h2>
-          <p className="mb-4 mt-1 text-sm text-muted">{t.track.reviewSub}</p>
+          <h2 className="text-[20px] font-bold">{t.track.reviewTitle}</h2>
+          <p className="mb-4 mt-1 text-[16px] text-muted">{t.track.reviewSub}</p>
           <div className="flex flex-col gap-6">
             {reviewable.map((i) => (
               <ReviewForm key={i.id} lang={lang} orderRef={o.ref} itemId={i.id} productName={pick(lang, i.name, i.product?.nameAr)} defaultName={o.firstName} autoFocus={sp.avis === "1"} />
@@ -142,12 +142,12 @@ export default async function OrderRoute({ params, searchParams }: PageProps<"/[
         </div>
       )}
 
-      {returnOpen && <p className="rounded-xl bg-sea-soft px-4 py-3 text-sm text-sea-2">{t.track.returnOpen}</p>}
+      {returnOpen && <p className="rounded-xl bg-sea-soft px-4 py-3 text-[16px] text-sea-2">{t.track.returnOpen}</p>}
       {canReturn && <ReturnForm lang={lang} orderRef={o.ref} days={settings.returns.days} />}
 
       {settings.contact.whatsapp && (
-        <a href={`https://wa.me/216${settings.contact.whatsapp}?text=${encodeURIComponent(`${t.track.help} ${o.ref}`)}`} target="_blank" rel="noopener" className="flex h-12 items-center justify-center gap-2 rounded-full border border-line font-medium">
-          <IconWhatsApp className="h-5 w-5 text-[#1f9d55]" />
+        <a href={`https://wa.me/216${settings.contact.whatsapp}?text=${encodeURIComponent(`${t.track.help} ${o.ref}`)}`} target="_blank" rel="noopener" className="flex min-h-12 items-center justify-center gap-2 rounded-xl border-2 border-field bg-white text-[17px] font-bold text-ink hover:bg-sand">
+          <IconWhatsApp className="h-5 w-5 text-wa" />
           {t.track.help}
         </a>
       )}

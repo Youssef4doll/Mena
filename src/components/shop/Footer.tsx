@@ -1,19 +1,39 @@
 import Link from "next/link";
 import { dict, href, pick, type Lang } from "@/i18n";
 import type { Settings } from "@/lib/settings-schema";
+import { formatPhone, normalizePhone } from "@/lib/phone";
 import { Logo } from "./Logo";
+import { IconWhatsApp } from "./Icons";
 
+/** Links tall enough for a thumb, and the shop's number one tap away. */
 export function Footer({ lang, settings, categories }: { lang: Lang; settings: Settings; categories: { slug: string; name: string; nameAr: string | null }[] }) {
   const t = dict(lang);
   const s = settings.shop;
+  const tel = normalizePhone(s.phone);
+  const wa = settings.contact.whatsapp;
   const year = new Date().getFullYear();
   return (
-    <footer className="mt-20 border-t border-line bg-sand/60">
-      <div className="mx-auto grid max-w-6xl gap-10 px-4 py-12 sm:grid-cols-2 lg:grid-cols-4">
-        <div className="flex flex-col gap-3">
+    <footer className="mt-12 border-t border-line bg-sand/60">
+      <div className="mx-auto grid max-w-6xl grid-cols-2 gap-x-6 gap-y-8 px-4 py-10 lg:grid-cols-4">
+        <div className="col-span-2 flex flex-col items-start gap-3 lg:col-span-1">
           <Logo />
-          <p className="max-w-xs text-sm leading-relaxed text-muted">{pick(lang, s.tagline, s.taglineAr)}</p>
-          <div className="flex gap-3 text-sm">
+          <p className="max-w-xs text-[16px] leading-relaxed text-muted">{pick(lang, s.tagline, s.taglineAr)}</p>
+          {(tel || wa) && (
+            <div className="flex flex-wrap gap-2">
+              {tel && (
+                <a href={`tel:+216${tel}`} className="inline-flex min-h-12 items-center rounded-xl border-2 border-field bg-white px-4 text-[17px] font-bold text-ink ltr-nums">
+                  {formatPhone(tel)}
+                </a>
+              )}
+              {wa && (
+                <a href={`https://wa.me/216${wa}`} target="_blank" rel="noopener" className="inline-flex min-h-12 items-center gap-2 rounded-xl bg-wa-soft px-4 text-[17px] font-bold text-wa-ink">
+                  <IconWhatsApp className="h-5 w-5" />
+                  WhatsApp
+                </a>
+              )}
+            </div>
+          )}
+          <div className="flex flex-wrap gap-x-5 text-[16px] [&>a]:inline-flex [&>a]:min-h-11 [&>a]:items-center">
             {s.instagram && <a href={s.instagram} target="_blank" rel="noopener" className="underline-offset-2 hover:underline">Instagram</a>}
             {s.facebook && <a href={s.facebook} target="_blank" rel="noopener" className="underline-offset-2 hover:underline">Facebook</a>}
             {s.tiktok && <a href={s.tiktok} target="_blank" rel="noopener" className="underline-offset-2 hover:underline">TikTok</a>}
@@ -32,12 +52,11 @@ export function Footer({ lang, settings, categories }: { lang: Lang; settings: S
         <FooterCol title={t.footer.about}>
           <Link href={href(lang, "/conditions")}>{t.footer.terms}</Link>
           <Link href={href(lang, "/confidentialite")}>{t.footer.privacy}</Link>
-          {s.phone && <span className="ltr-nums">{s.phone}</span>}
-          {s.email && <span>{s.email}</span>}
+          {s.email && <a href={`mailto:${s.email}`}>{s.email}</a>}
         </FooterCol>
       </div>
       <div className="border-t border-line">
-        <div className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-2 px-4 py-5 text-sm text-muted">
+        <div className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-2 px-4 py-5 text-[15px] text-muted">
           <span>
             © {year} {s.name}. {t.footer.rights}
             {s.legalId && <span className="ltr-nums"> · MF {s.legalId}</span>}
@@ -52,8 +71,8 @@ export function Footer({ lang, settings, categories }: { lang: Lang; settings: S
 function FooterCol({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <div>
-      <p className="mb-3 text-[15px] font-semibold uppercase tracking-[0.14em] text-muted">{title}</p>
-      <div className="flex flex-col gap-2 text-sm text-ink-2 [&_a:hover]:text-sea">{children}</div>
+      <p className="mb-1 text-[17px] font-bold text-ink">{title}</p>
+      <div className="flex flex-col text-[16px] text-ink-2 [&>*]:flex [&>*]:min-h-11 [&>*]:items-center [&_a:hover]:text-sea">{children}</div>
     </div>
   );
 }

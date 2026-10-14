@@ -15,7 +15,7 @@ import { deliversEverywhere } from "@/lib/governorates";
 
 // Atkinson Hyperlegible: letters that cannot be mistaken for one another (I/l/1, O/0), for readers with low vision.
 const body = Atkinson_Hyperlegible_Next({ subsets: ["latin"], variable: "--font-body", display: "swap" });
-const plexAr = IBM_Plex_Sans_Arabic({ subsets: ["arabic"], weight: ["400", "600"], variable: "--font-plex-ar", display: "swap", preload: false });
+const plexAr = IBM_Plex_Sans_Arabic({ subsets: ["arabic"], weight: ["400", "700"], variable: "--font-plex-ar", display: "swap", preload: false });
 
 export function generateStaticParams() {
   return LOCALES.map((lang) => ({ lang }));

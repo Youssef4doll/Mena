@@ -33,6 +33,8 @@ export default async function Home({ params }: PageProps<"/[lang]">) {
   // Amazon's boxes always hold four pictures; a thinner category stays in the card row and the menu.
   const full = cats.filter((c) => c.products.length >= 4);
   const boxes = full.length > 0 ? full : cats.filter((c) => c.products.length >= 2);
+  // Never a half-empty row: one box takes the whole width, with its four products side by side.
+  const boxCols = ["", "", "sm:grid-cols-2", "sm:grid-cols-2 lg:grid-cols-3", "sm:grid-cols-2 lg:grid-cols-4"][Math.min(boxes.length, 4)];
 
   return (
     <>
@@ -40,9 +42,10 @@ export default async function Home({ params }: PageProps<"/[lang]">) {
 
       {/* ------------------------------------------- welcome, one line */}
       <section className="bg-gradient-to-b from-sea-soft to-cream">
-        <div className="mx-auto max-w-6xl px-4 pb-4 pt-4 md:pb-6 md:pt-6">
-          <h1 className="text-[24px] font-bold leading-tight text-ink sm:text-[30px]">{pick(lang, hero.title, hero.titleAr)}</h1>
-          <p className="mt-1 text-[16px] leading-snug text-ink-2 sm:text-[18px]">{pick(lang, hero.subtitle, hero.subtitleAr)}</p>
+        <div className="mx-auto max-w-6xl px-4 pb-3 pt-3 md:pb-5 md:pt-5">
+          {/* Smaller than the category titles below: the pictures are the first thing to look at. */}
+          <h1 className="text-[20px] font-bold leading-snug text-ink sm:text-[26px]">{pick(lang, hero.title, hero.titleAr)}</h1>
+          <p className="mt-0.5 text-[16px] leading-snug text-ink-2">{pick(lang, hero.subtitle, hero.subtitleAr)}</p>
           {hero.imageId && (
             <div className="relative mt-4 aspect-[16/7] w-full overflow-hidden rounded-2xl md:aspect-[21/6]">
               <Img image={{ id: hero.imageId, blur: null, width: 1600, height: 700 }} alt="" sizes="(min-width: 1152px) 1120px, 100vw" priority />
@@ -79,15 +82,15 @@ export default async function Home({ params }: PageProps<"/[lang]">) {
 
       {/* ------------------- four products per card, for the categories that have four */}
       {boxes.length > 0 && (
-        <section className="mx-auto mt-4 grid max-w-6xl gap-3 px-4 sm:grid-cols-2 lg:grid-cols-4">
+        <section className={`mx-auto mt-4 grid max-w-6xl gap-3 px-4 ${boxCols}`}>
           {boxes.map((c) => (
-            <CategoryBox key={c.slug} c={c} lang={lang} />
+            <CategoryBox key={c.slug} c={c} lang={lang} wide={boxes.length === 1} />
           ))}
         </section>
       )}
 
       <section className="mx-auto mt-8 max-w-6xl px-4">
-        <TrustBar lang={lang} returnDays={settings.returns.days} whatsapp={Boolean(settings.contact.whatsapp)} everywhere={deliversEverywhere(settings.delivery.zones)} />
+        <TrustBar lang={lang} returnDays={settings.returns.days} whatsapp={Boolean(settings.contact.whatsapp)} everywhere={deliversEverywhere(settings.delivery.zones)} openBeforePaying={settings.delivery.openBeforePaying} />
       </section>
 
       {/* --------------------------------------------------- shelves */}
@@ -129,7 +132,7 @@ export default async function Home({ params }: PageProps<"/[lang]">) {
       {/* ------------------------------------- reviews (real buyers only) */}
       {home.reviews.length > 0 && (
         <Shelf title={t.home.reviews} sub={t.home.reviewsSub}>
-          <div className="-mx-4 flex snap-x gap-3 overflow-x-auto px-4 pb-2 no-scrollbar md:mx-0 md:grid md:grid-cols-3 md:overflow-visible md:px-0">
+          <div className="-mx-4 flex snap-x scroll-px-4 gap-3 overflow-x-auto px-4 pb-2 no-scrollbar md:mx-0 md:grid md:scroll-px-0 md:grid-cols-3 md:overflow-visible md:px-0">
             {home.reviews.map((r) => (
               <figure key={r.id} className="w-[82%] shrink-0 snap-start rounded-2xl border border-line bg-white p-5 sm:w-80 md:w-auto">
                 <Stars value={r.rating} size={18} />
@@ -154,7 +157,7 @@ export default async function Home({ params }: PageProps<"/[lang]">) {
 type HomeCategory = Awaited<ReturnType<typeof getHomeCategories>>[number];
 
 /** Amazon's box: a title, four products with their names and prices, and "see more". */
-function CategoryBox({ c, lang }: { c: HomeCategory; lang: Lang }) {
+function CategoryBox({ c, lang, wide = false }: { c: HomeCategory; lang: Lang; wide?: boolean }) {
   const t = dict(lang);
   const title = pick(lang, c.headline || c.name, c.headlineAr || c.nameAr);
   return (
@@ -163,7 +166,7 @@ function CategoryBox({ c, lang }: { c: HomeCategory; lang: Lang }) {
         <h2 className="text-[21px] font-extrabold leading-tight text-ink">{title}</h2>
         <IconChevron className="mt-1 h-5 w-5 shrink-0 text-muted" />
       </Link>
-      <div className="grid grid-cols-2 gap-3">
+      <div className={`grid grid-cols-2 gap-3 ${wide ? "md:grid-cols-4" : ""}`}>
         {c.products.map((p) => {
           const out = p.stock.kind === "out";
           const note = p.packOf ? t.product.pack(p.packOf) : p.priceFrom ? t.product.from : null;
@@ -172,13 +175,13 @@ function CategoryBox({ c, lang }: { c: HomeCategory; lang: Lang }) {
               <span className="relative aspect-square overflow-hidden rounded-xl bg-sand">
                 {p.images[0] ? <Img image={{ ...p.images[0], blur: null }} alt="" sizes="(min-width: 1024px) 12vw, 45vw" className={out ? "opacity-60 grayscale" : ""} /> : <Placeholder />}
               </span>
-              <span className="line-clamp-2 text-[15px] leading-snug text-ink-2">{pick(lang, p.name, p.nameAr)}</span>
+              <span className="line-clamp-2 min-h-[2.75em] text-[15px] leading-snug text-ink-2">{pick(lang, p.name, p.nameAr)}</span>
               {out ? (
                 <span className="text-[15px] font-bold text-muted">{t.product.out}</span>
               ) : (
                 <span className="flex flex-col items-start text-[16px] font-bold text-ink">
                   {note && <span className="text-[14px] font-normal text-muted">{note}</span>}
-                  <span className="whitespace-nowrap ltr-nums">{formatTND(p.price, lang)}</span>
+                  <span className="whitespace-nowrap price-nums ltr-nums">{formatTND(p.price, lang)}</span>
                 </span>
               )}
             </Link>

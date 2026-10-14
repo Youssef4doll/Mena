@@ -7,7 +7,7 @@ import { getSettings } from "@/lib/settings";
 import { ProductGrid } from "@/components/shop/ProductCard";
 import { TrackView } from "@/components/shop/TrackView";
 import { SearchPixel } from "@/components/shop/SearchPixel";
-import { IconSearch, IconWhatsApp } from "@/components/shop/Icons";
+import { IconWhatsApp } from "@/components/shop/Icons";
 
 export const metadata: Metadata = { robots: { index: false, follow: true } };
 
@@ -21,10 +21,6 @@ export default async function SearchRoute({ params, searchParams }: PageProps<"/
 
   return (
     <div className="mx-auto max-w-6xl px-4 pt-6">
-      <form action={href(lang, "/recherche")} className="mb-6 flex items-center gap-2 rounded-full border border-line bg-white px-4" role="search">
-        <IconSearch className="h-5 w-5 text-muted" />
-        <input name="q" defaultValue={q} placeholder={t.nav.searchPlaceholder} className="h-12 flex-1 bg-transparent outline-none" enterKeyHint="search" />
-      </form>
       {q && (
         <>
           <TrackView name="search" props={{ q: q.toLowerCase(), results: results.length }} />
@@ -33,25 +29,25 @@ export default async function SearchRoute({ params, searchParams }: PageProps<"/
       )}
       {q && results.length > 0 && (
         <>
-          <h1 className="mb-5 text-sm text-muted">{t.search.results(results.length, q)}</h1>
+          <h1 className="mb-4 text-[20px] font-bold">{t.search.results(results.length, q)}</h1>
           <ProductGrid products={results} lang={lang} priorityFirst={4} />
         </>
       )}
       {q && results.length === 0 && (
         <div className="flex flex-col items-center gap-4 py-16 text-center">
-          <h1 className="text-2xl">{t.search.none(q)}</h1>
-          <p className="max-w-sm text-sm text-muted">{t.search.noneHelp}</p>
+          <h1 className="text-[24px] font-bold">{t.search.none(q)}</h1>
+          <p className="max-w-sm text-[17px] text-ink-2">{t.search.noneHelp}</p>
           {settings.contact.whatsapp && (
             <a
               href={`https://wa.me/216${settings.contact.whatsapp}?text=${encodeURIComponent(lang === "ar" ? `السلام، نلوّج على: ${q}` : `Bonjour, je cherche : ${q}`)}`}
               target="_blank"
               rel="noopener"
-              className="inline-flex h-12 items-center gap-2 rounded-full bg-[#1f9d55] px-5 font-medium text-white"
+              className="inline-flex min-h-12 items-center gap-2 rounded-xl bg-wa px-5 text-[17px] font-bold text-white"
             >
               <IconWhatsApp /> WhatsApp
             </a>
           )}
-          <Link href={href(lang, "/boutique")} className="text-sm text-sea underline underline-offset-2">
+          <Link href={href(lang, "/boutique")} className="inline-flex min-h-12 items-center rounded-xl border-2 border-field bg-white px-5 text-[17px] font-bold text-ink hover:bg-sand">
             {t.home.shopNow}
           </Link>
         </div>

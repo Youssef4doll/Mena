@@ -9,7 +9,7 @@ export function ReviewForm({ lang, orderRef, itemId, productName, defaultName, a
   const [text, setText] = useState("");
   const [name, setName] = useState(defaultName);
   const [state, setState] = useState<"idle" | "busy" | "done" | "error">("idle");
-  if (state === "done") return <p className="text-sm text-olive">{productName} — {t.track.reviewThanks}</p>;
+  if (state === "done") return <p className="text-[16px] text-olive">{productName} — {t.track.reviewThanks}</p>;
   return (
     <form
       className="flex flex-col gap-3"
@@ -21,20 +21,20 @@ export function ReviewForm({ lang, orderRef, itemId, productName, defaultName, a
         setState(res?.ok ? "done" : "error");
       }}
     >
-      <p className="text-sm font-medium">{productName}</p>
+      <p className="text-[16px] font-medium">{productName}</p>
       <div className="flex gap-1" role="radiogroup" aria-label="Note">
         {[1, 2, 3, 4, 5].map((n) => (
-          <button key={n} type="button" role="radio" aria-checked={rating === n} onClick={() => setRating(n)} className="p-1" autoFocus={autoFocus && n === 5}>
+          <button key={n} type="button" role="radio" aria-checked={rating === n} onClick={() => setRating(n)} className="p-2" autoFocus={autoFocus && n === 5}>
             <svg width="30" height="30" viewBox="0 0 20 20" aria-hidden>
               <path fill={n <= rating ? "#c8902e" : "#e2d8c6"} d="M10 1.5l2.6 5.6 6 .7-4.5 4.1 1.2 6-5.3-3-5.3 3 1.2-6L1.4 7.8l6-.7L10 1.5z" />
             </svg>
           </button>
         ))}
       </div>
-      <textarea value={text} onChange={(e) => setText(e.target.value)} rows={3} maxLength={800} placeholder={t.track.reviewText} className="rounded-xl border border-line bg-white px-3 py-2.5 outline-none focus:border-sea" />
-      <input value={name} onChange={(e) => setName(e.target.value)} maxLength={40} placeholder={t.track.reviewName} aria-label={t.track.reviewName} className="h-11 rounded-xl border border-line bg-white px-3 outline-none focus:border-sea" />
-      {state === "error" && <p className="text-sm text-danger">{t.checkout.errors.server}</p>}
-      <button type="submit" disabled={!rating || state === "busy"} className="h-11 self-start rounded-full bg-sea px-5 text-sm font-medium text-white disabled:opacity-40">
+      <textarea value={text} onChange={(e) => setText(e.target.value)} rows={3} maxLength={800} placeholder={t.track.reviewText} className="rounded-xl border-2 border-field bg-white px-4 py-3 text-[18px] placeholder:text-placeholder outline-none focus:border-sea" />
+      <input value={name} onChange={(e) => setName(e.target.value)} maxLength={40} placeholder={t.track.reviewName} aria-label={t.track.reviewName} className="h-14 rounded-xl border-2 border-field bg-white px-4 text-[18px] placeholder:text-placeholder outline-none focus:border-sea" />
+      {state === "error" && <p className="text-[16px] text-danger">{t.checkout.errors.server}</p>}
+      <button type="submit" disabled={!rating || state === "busy"} className="min-h-12 self-start rounded-xl bg-navy px-5 text-[17px] font-bold text-white hover:bg-night disabled:opacity-40">
         {t.track.reviewSend}
       </button>
     </form>
@@ -47,10 +47,10 @@ export function ReturnForm({ lang, orderRef, days }: { lang: Lang; orderRef: str
   const [reason, setReason] = useState(t.track.returnReasons[0]);
   const [details, setDetails] = useState("");
   const [state, setState] = useState<"idle" | "busy" | "done" | "error">("idle");
-  if (state === "done") return <p className="rounded-xl bg-sea-soft px-4 py-3 text-sm text-sea-2">{t.track.returnSent}</p>;
+  if (state === "done") return <p className="rounded-xl bg-sea-soft px-4 py-3 text-[16px] text-sea-2">{t.track.returnSent}</p>;
   if (!open)
     return (
-      <button type="button" onClick={() => setOpen(true)} className="text-start text-sm text-muted underline underline-offset-2">
+      <button type="button" onClick={() => setOpen(true)} className="text-start text-[16px] text-muted underline underline-offset-2">
         {t.track.returnTitle} — {t.track.returnSub(days)}
       </button>
     );
@@ -64,19 +64,19 @@ export function ReturnForm({ lang, orderRef, days }: { lang: Lang; orderRef: str
         setState(res?.ok ? "done" : "error");
       }}
     >
-      <h2 className="text-lg font-semibold">{t.track.returnTitle}</h2>
-      <p className="text-sm text-muted">{t.track.returnSub(days)}</p>
-      <label className="flex flex-col gap-1.5 text-sm font-medium">
+      <h2 className="text-[20px] font-bold">{t.track.returnTitle}</h2>
+      <p className="text-[16px] text-muted">{t.track.returnSub(days)}</p>
+      <label className="flex flex-col gap-1.5 text-[16px] font-bold text-ink">
         {t.track.returnReason}
-        <select value={reason} onChange={(e) => setReason(e.target.value)} className="h-11 rounded-xl border border-line bg-white px-3">
+        <select value={reason} onChange={(e) => setReason(e.target.value)} className="h-14 rounded-xl border-2 border-field bg-white px-4 text-[18px] placeholder:text-placeholder">
           {t.track.returnReasons.map((r) => (
             <option key={r}>{r}</option>
           ))}
         </select>
       </label>
-      <textarea value={details} onChange={(e) => setDetails(e.target.value)} rows={3} maxLength={600} placeholder={t.track.returnDetails} className="rounded-xl border border-line bg-white px-3 py-2.5" />
-      {state === "error" && <p className="text-sm text-danger">{t.checkout.errors.server}</p>}
-      <button type="submit" disabled={state === "busy"} className="h-11 self-start rounded-full bg-sea px-5 text-sm font-medium text-white">
+      <textarea value={details} onChange={(e) => setDetails(e.target.value)} rows={3} maxLength={600} placeholder={t.track.returnDetails} className="rounded-xl border-2 border-field bg-white px-4 py-3 text-[18px] placeholder:text-placeholder" />
+      {state === "error" && <p className="text-[16px] text-danger">{t.checkout.errors.server}</p>}
+      <button type="submit" disabled={state === "busy"} className="min-h-12 self-start rounded-xl bg-navy px-5 text-[17px] font-bold text-white hover:bg-night">
         {t.track.returnSend}
       </button>
     </form>

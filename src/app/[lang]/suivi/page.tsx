@@ -17,20 +17,20 @@ export default async function TrackRoute({ params }: PageProps<"/[lang]/suivi">)
   return (
     <div className="mx-auto flex max-w-md flex-col gap-8 px-4 pt-10">
       <div>
-        <h1 className="text-[30px] leading-tight">{t.track.title}</h1>
-        <p className="mt-1 text-sm text-muted">{t.track.sub}</p>
+        <h1 className="text-[28px] font-bold leading-tight">{t.track.title}</h1>
+        <p className="mt-1 text-[16px] text-muted">{t.track.sub}</p>
       </div>
       <LookupForm lang={lang} />
       {mine.length > 0 && (
         <section>
-          <h2 className="mb-2 text-sm font-semibold uppercase tracking-[0.12em] text-muted">{t.track.yours}</h2>
+          <h2 className="mb-2 text-[19px] font-bold">{t.track.yours}</h2>
           <ul className="divide-y divide-line rounded-2xl border border-line bg-white">
             {mine.map((o) => (
               <li key={o.ref}>
                 <Link href={href(lang, `/suivi/${o.ref}`)} className="flex items-center justify-between gap-3 px-4 py-3.5">
                   <span className="flex flex-col">
                     <span className="font-medium ltr-nums">{o.ref}</span>
-                    <span className="text-sm text-muted">{t.track.status[o.status]} · <span className="ltr-nums">{formatTND(o.total, lang)}</span></span>
+                    <span className="text-[16px] text-muted">{t.track.status[o.status]} · <span className="ltr-nums">{formatTND(o.total, lang)}</span></span>
                   </span>
                   <IconChevron className="h-4 w-4 text-muted" />
                 </Link>

@@ -17,7 +17,7 @@ import { formatPhone, normalizePhone } from "@/lib/phone";
 import { GOVERNORATES, governorateLabel } from "@/lib/governorates";
 import { deliveryRangeLabel } from "@/lib/delivery";
 import { discountPct, formatDay } from "@/lib/offer-display";
-import { IconCheck, IconMinus, IconPlus, IconTruck, IconWhatsApp } from "./Icons";
+import { IconCheck, IconMinus, IconPlus, IconShield, IconTruck, IconWhatsApp } from "./Icons";
 
 type P = Omit<ProductPage, "related">;
 type Offer = P["offers"][number];
@@ -232,8 +232,8 @@ export function BuyBox({ p, lang, settings, url, choice, idp = "bb" }: { p: P; l
     name: f.name.trim().length < 2,
     phone: !phone,
     // In the order the fields are on screen: the first empty one gets the focus.
-    address: f.address.trim().length < 4,
     governorate: !f.governorate,
+    address: f.address.trim().length < 4,
   };
   const show = (k: keyof typeof problems) => Boolean((touched[k] && problems[k]) || serverBad.includes(k));
 
@@ -291,7 +291,7 @@ export function BuyBox({ p, lang, settings, url, choice, idp = "bb" }: { p: P; l
       });
       const data = await res.json().catch(() => ({ ok: false, error: "server" }));
       if (data.ok) {
-        store.set(SAVED, JSON.stringify({ name: f.name, phone: f.phone, governorate: f.governorate, address: f.address }));
+        store.set(SAVED, JSON.stringify({ name: f.name, phone: f.phone, governorate: f.governorate, address: f.address, ref: data.ref }));
         store.remove(FORM_TOKEN);
         router.push(href(lang, `/commande/merci/${data.ref}`));
         return;
@@ -312,10 +312,21 @@ export function BuyBox({ p, lang, settings, url, choice, idp = "bb" }: { p: P; l
   const priced = quote != null && quote.lines.length > 0;
   const price = priced ? quote.subtotal : pageTotal;
   const delivery = priced ? quote.delivery : null;
+  const discount = priced ? quote.discount : 0;
+  // Free delivery is often known before the governorate: a free-delivery offer, a promo code, or the shop's threshold.
+  const promoFree = Boolean(priced && quote.promo?.result.ok && quote.promo.result.freeDelivery);
+  const threshold = settings.delivery.freeThreshold;
+  const freeKnown = delivery ? delivery.free : Boolean(offer?.freeDelivery) || promoFree || (threshold != null && price - discount >= threshold);
+  // With options at different prices and none chosen, the amount is only a "from".
+  const priceVaries = needsVariant && p.variants.some((v) => v.price !== p.variants[0].price);
   const promoError = quote?.promo && !quote.promo.result.ok ? t.checkout.promoErrors[quote.promo.result.reason] : null;
   const shopPhone = normalizePhone(settings.shop.phone);
   const waText = t.product.whatsappText(pick(lang, p.name, p.nameAr), [variant?.name, offer ? pick(lang, offer.label, offer.labelAr) : null].filter(Boolean).join(" — ") || null, formatTND(price, lang), url);
   const locale = lang === "ar" ? "ar-TN" : "fr-FR";
+  const zoneFees = Object.values(settings.delivery.zones)
+    .filter((z) => z.enabled !== false)
+    .map((z) => z.fee);
+  const fees = zoneFees.length ? { min: Math.min(...zoneFees), max: Math.max(...zoneFees) } : null;
 
   return (
     // A container: the fields go two by two when the form itself is wide enough, wherever it sits.
@@ -323,7 +334,10 @@ export function BuyBox({ p, lang, settings, url, choice, idp = "bb" }: { p: P; l
       {/* ------------------------------------------------------ 1. choose */}
       {p.offers.length > 0 && (
         <fieldset className="flex min-w-0 flex-col gap-2.5">
-          <legend className="mb-2 text-[17px] font-bold text-ink">{t.buy.step1}</legend>
+          <legend className="mb-3 flex items-center gap-2.5 text-[19px] font-bold text-ink">
+            <StepBadge n={1} />
+            {t.buy.step1}
+          </legend>
           {p.offers.map((o) => (
             <OfferCard
               key={o.id}
@@ -344,7 +358,7 @@ export function BuyBox({ p, lang, settings, url, choice, idp = "bb" }: { p: P; l
 
       {p.variants.length > 0 && (
         <div id={id("variants")} className="flex flex-col gap-2" role="group" aria-labelledby={id("variants-label")}>
-          <p id={id("variants-label")} className={`text-[17px] font-bold ${show("variant") ? "text-danger" : "text-ink"}`} aria-live="polite">
+          <p id={id("variants-label")} className={`text-[19px] font-bold ${show("variant") ? "text-danger" : "text-ink"}`} aria-live="polite">
             {show("variant") ? t.buy.variantError : t.product.choose}
             {variant && <span className="font-normal text-muted"> · {variant.name}</span>}
           </p>
@@ -364,7 +378,11 @@ export function BuyBox({ p, lang, settings, url, choice, idp = "bb" }: { p: P; l
                 } disabled:cursor-not-allowed disabled:border-dashed disabled:border-line disabled:text-muted disabled:line-through`}
               >
                 {v.name}
-                {!hasOffers && v.price !== p.price && <span className="ms-1.5 text-[14px] opacity-80 ltr-nums">{formatTND(v.price, lang)}</span>}
+                {!hasOffers && v.price !== p.price && (
+                  <span className="ms-1.5 text-[14px] opacity-80">
+                    <span className="price-nums ltr-nums">{formatTND(v.price, lang)}</span>
+                  </span>
+                )}
               </button>
             ))}
           </div>
@@ -398,19 +416,18 @@ export function BuyBox({ p, lang, settings, url, choice, idp = "bb" }: { p: P; l
         <>
           {/* -------------------------------------------- 2. details: two by two when there is room, like the shops customers know */}
           <fieldset className="grid min-w-0 items-start gap-x-3 gap-y-3.5 @lg:grid-cols-2" onFocus={start}>
-            <legend className="mb-2 text-[17px] font-bold text-ink">{t.buy.step2}</legend>
+            <legend className="mb-3 flex items-center gap-2.5 text-[19px] font-bold text-ink">
+              {p.offers.length > 0 && <StepBadge n={2} />}
+              {t.buy.step2}
+            </legend>
             <Field id={id("name")} label={t.buy.name} error={show("name") ? t.buy.nameError : null}>
               <input id={id("name")} value={f.name} onChange={(e) => update("name", e.target.value)} onBlur={blur("name")} onKeyDown={next(id("phone"))} enterKeyHint="next" autoComplete="name" placeholder={t.buy.namePh} className={inputCls(show("name"))} aria-invalid={show("name")} aria-describedby={show("name") ? id("name-msg") : undefined} data-testid="name" />
             </Field>
             <Field id={id("phone")} label={t.buy.phone} error={show("phone") ? (f.phone.trim() ? t.checkout.phoneInvalid : t.buy.phoneRequired) : null} hint={t.buy.phoneHint}>
               <div className={`flex h-14 items-stretch overflow-hidden rounded-xl border-2 bg-white focus-within:border-sea ${show("phone") ? "border-danger" : "border-field"}`} dir="ltr">
                 <span className="flex items-center border-e-2 border-line bg-sand px-2.5 text-[18px] text-ink-2">+216</span>
-                <input id={id("phone")} value={f.phone} onChange={(e) => update("phone", e.target.value)} onBlur={blur("phone")} onKeyDown={next(id("address"))} enterKeyHint="next" inputMode="tel" autoComplete="tel-national" placeholder="22 123 456" maxLength={16} className="min-w-0 flex-1 bg-transparent px-3 text-[19px] tracking-wide outline-none placeholder:text-placeholder" aria-invalid={show("phone")} aria-describedby={id("phone-msg")} data-testid="phone" />
+                <input id={id("phone")} value={f.phone} onChange={(e) => update("phone", e.target.value)} onBlur={blur("phone")} onKeyDown={next(id("governorate"))} enterKeyHint="next" inputMode="tel" autoComplete="tel-national" placeholder="22 123 456" maxLength={16} className="min-w-0 flex-1 bg-transparent px-3 text-[19px] tracking-wide outline-none placeholder:text-placeholder" aria-invalid={show("phone")} aria-describedby={id("phone-msg")} data-testid="phone" />
               </div>
-            </Field>
-            <Field id={id("address")} label={t.buy.address} error={show("address") ? t.buy.addressError : null} hint={t.buy.addressHint}>
-              {/* Grows with what is typed, so the whole address can be read again before confirming. */}
-              <textarea id={id("address")} value={f.address} onChange={(e) => update("address", e.target.value)} onBlur={blur("address")} onKeyDown={next(id("governorate"))} enterKeyHint="next" autoComplete="street-address" rows={2} maxLength={ADDRESS_MAX} placeholder={t.buy.addressPh} className={`${inputCls(show("address"))} h-auto max-h-40 min-h-14 resize-none py-3 leading-snug [field-sizing:content]`} aria-invalid={show("address")} aria-describedby={id("address-msg")} data-testid="address" />
             </Field>
             <Field id={id("governorate")} label={t.buy.governorate} error={show("governorate") ? t.buy.govError : null}>
               <select id={id("governorate")} value={f.governorate} onChange={(e) => update("governorate", e.target.value)} onBlur={blur("governorate")} autoComplete="address-level1" className={inputCls(show("governorate"))} aria-invalid={show("governorate")} aria-describedby={show("governorate") ? id("governorate-msg") : undefined} data-testid="governorate">
@@ -422,6 +439,10 @@ export function BuyBox({ p, lang, settings, url, choice, idp = "bb" }: { p: P; l
                 ))}
               </select>
             </Field>
+            <Field id={id("address")} label={t.buy.address} error={show("address") ? t.buy.addressError : null} hint={t.buy.addressHint}>
+              {/* Grows with what is typed, so the whole address can be read again before confirming. */}
+              <textarea id={id("address")} value={f.address} onChange={(e) => update("address", e.target.value)} onBlur={blur("address")} enterKeyHint="done" autoComplete="street-address" rows={2} maxLength={ADDRESS_MAX} placeholder={t.buy.addressPh} className={`${inputCls(show("address"))} h-auto max-h-40 min-h-14 resize-none py-3 leading-snug [field-sizing:content]`} aria-invalid={show("address")} aria-describedby={id("address-msg")} data-testid="address" />
+            </Field>
           </fieldset>
 
           {/* ------------------------------------------------ summary */}
@@ -431,12 +452,12 @@ export function BuyBox({ p, lang, settings, url, choice, idp = "bb" }: { p: P; l
                 {t.buy.price}
                 {offer && <span className="text-muted"> · {pick(lang, offer.label, offer.labelAr)}</span>}
               </dt>
-              <dd className="shrink-0 whitespace-nowrap ltr-nums">{formatTND(price, lang)}</dd>
+              <dd className="shrink-0 whitespace-nowrap price-nums ltr-nums">{formatTND(price, lang)}</dd>
             </div>
             {priced && quote.discount > 0 && (
               <div className="flex justify-between gap-3 text-olive">
                 <dt>{t.checkout.discount}</dt>
-                <dd className="shrink-0 whitespace-nowrap ltr-nums">−{formatTND(quote.discount, lang)}</dd>
+                <dd className="shrink-0 whitespace-nowrap price-nums ltr-nums">−{formatTND(quote.discount, lang)}</dd>
               </div>
             )}
             <div className="flex justify-between gap-3 text-ink-2">
@@ -444,12 +465,34 @@ export function BuyBox({ p, lang, settings, url, choice, idp = "bb" }: { p: P; l
                 {t.buy.delivery}
                 {f.governorate && <span className="text-muted"> · {governorateLabel(f.governorate, lang)}</span>}
               </dt>
-              <dd className="shrink-0 whitespace-nowrap ltr-nums">{delivery ? delivery.free ? <span className="font-bold text-olive">{t.product.free}</span> : formatTND(delivery.fee, lang) : <span className="text-muted">{t.buy.deliveryChoose}</span>}</dd>
+              <dd className="shrink-0 whitespace-nowrap price-nums ltr-nums">
+                {freeKnown ? (
+                  <span className="font-bold text-olive">{t.product.free}</span>
+                ) : delivery ? (
+                  formatTND(delivery.fee, lang)
+                ) : fees ? (
+                  // Before a governorate is chosen: the shop's real fees, lowest to highest.
+                  fees.min === fees.max ? formatTND(fees.min, lang) : t.buy.deliveryRange(formatTND(fees.min, lang), formatTND(fees.max, lang))
+                ) : (
+                  <span className="text-muted">{t.buy.deliveryChoose}</span>
+                )}
+              </dd>
             </div>
             <div className="flex items-baseline justify-between gap-3 border-t border-line pt-2.5">
               <dt className="font-bold text-ink">{t.buy.total}</dt>
-              <dd className="shrink-0 whitespace-nowrap text-[23px] font-bold text-ink ltr-nums" data-testid="total">
-                {priced && delivery ? formatTND(quote.total, lang) : "—"}
+              <dd className="shrink-0 text-end" data-testid="total">
+                {priced && (delivery || freeKnown) ? (
+                  <span className="whitespace-nowrap text-[23px] font-bold text-ink price-nums ltr-nums">{formatTND(delivery ? quote.total : price - discount, lang)}</span>
+                ) : (
+                  // Never a dash: the price is known, only the delivery (or the option) is still to come.
+                  <>
+                    <span className="block whitespace-nowrap text-[23px] font-bold text-ink">
+                      {priceVaries && <span className="text-[15px] font-normal text-muted">{t.product.from} </span>}
+                      <span className="price-nums ltr-nums">{formatTND(price - discount, lang)}</span>
+                    </span>
+                    {!freeKnown && <span className="block text-[15px] font-normal text-muted">{t.buy.plusDelivery}</span>}
+                  </>
+                )}
               </dd>
             </div>
             {delivery && (
@@ -459,7 +502,7 @@ export function BuyBox({ p, lang, settings, url, choice, idp = "bb" }: { p: P; l
               </p>
             )}
             {quote?.deliveryUnavailable && <p className="text-[15px] text-danger">{t.checkout.errors.delivery_unavailable}</p>}
-            {!delivery && settings.delivery.freeThreshold != null && <p className="text-[15px] text-muted">{t.product.freeFrom(formatTND(settings.delivery.freeThreshold, lang))}</p>}
+            {!delivery && !freeKnown && settings.delivery.freeThreshold != null && <p className="text-[15px] text-muted">{t.product.freeFrom(formatTND(settings.delivery.freeThreshold, lang))}</p>}
           </dl>
 
           {error && (
@@ -468,16 +511,69 @@ export function BuyBox({ p, lang, settings, url, choice, idp = "bb" }: { p: P; l
             </p>
           )}
 
-          <button type="submit" disabled={busy} className="flex min-h-[60px] w-full items-center justify-center gap-3 rounded-2xl bg-navy px-4 py-2.5 text-white shadow-soft transition hover:bg-night active:scale-[.99] disabled:bg-night" data-testid="place-order">
+          {/* The one warm button on the page: dark blue opens the form, amber confirms it. */}
+          <button type="submit" disabled={busy} className="flex min-h-[60px] w-full items-center justify-center gap-3 rounded-2xl bg-amber px-4 py-2.5 text-night shadow-[inset_0_-3px_0_var(--color-amber-2)] transition [--focus-ring:var(--color-night)] hover:bg-amber-2 active:scale-[.99] disabled:bg-amber-2 disabled:opacity-80" data-testid="place-order">
             <IconTruck className="h-7 w-7 shrink-0" />
             <span className="flex flex-col items-start leading-tight">
               <span className="text-[19px] font-bold">{busy ? t.buy.sending : t.buy.submit}</span>
-              {!busy && <span className="text-[14px] text-white/90">{t.buy.submitSub}</span>}
+              {!busy && <span className="text-[15px] text-night/85">{t.buy.submitSub}</span>}
             </span>
           </button>
 
+          {/* The cash-on-delivery promises, right where the decision is made. */}
+          <div className="flex flex-col items-center gap-1.5 text-center">
+            <p className="inline-flex max-w-full items-start gap-2 text-start text-[16px] font-bold text-olive">
+              <IconCheck className="mt-0.5 h-5 w-5 shrink-0" />
+              {t.buy.reassure}
+            </p>
+            {settings.delivery.openBeforePaying && (
+              <p className="inline-flex max-w-full items-start gap-2 text-start text-[16px] text-ink-2">
+                <IconShield className="mt-0.5 h-5 w-5 shrink-0 text-sea" />
+                {t.trust.openBeforePaying}
+              </p>
+            )}
+            <p className="mt-1 text-[15px] leading-relaxed text-muted">
+              {t.buy.consentPhone} {t.buy.consentTerms}{" "}
+              <Link href={href(lang, "/conditions")} className="py-2 underline underline-offset-2" prefetch={false}>
+                {t.buy.termsLink}
+              </Link>
+              .
+            </p>
+          </div>
+
+          {(shopPhone || settings.contact.whatsapp) && (
+            <div className="grid gap-2 border-t border-line pt-4 @lg:grid-cols-2">
+              {shopPhone && (
+                <a
+                  href={`tel:+216${shopPhone}`}
+                  className="flex min-h-12 items-center justify-center gap-2 rounded-xl border-2 border-field px-3 text-center text-[16px] text-ink"
+                  onClick={() => {
+                    track("phone_clicked", { productId: p.id, props: { where: "product" } });
+                    pixelContact();
+                  }}
+                >
+                  {t.buy.callUs} : <strong className="ltr-nums">{formatPhone(shopPhone)}</strong>
+                </a>
+              )}
+              {settings.contact.whatsapp && (
+                <a
+                  href={`https://wa.me/216${settings.contact.whatsapp}?text=${encodeURIComponent(waText)}`}
+                  target="_blank"
+                  rel="noopener"
+                  onClick={() => {
+                    track("whatsapp_clicked", { productId: p.id, props: { where: "product" } });
+                    pixelContact();
+                  }}
+                  className="flex min-h-12 items-center justify-center gap-2 rounded-xl bg-wa-soft px-3 text-[16px] font-bold text-wa-ink"
+                >
+                  <IconWhatsApp className="h-5 w-5" />
+                  {t.buy.whatsapp}
+                </a>
+              )}
+            </div>
+          )}
           {!showPromo && !promo ? (
-            <button type="button" onClick={() => setShowPromo(true)} className="inline-flex min-h-11 items-center self-center px-3 text-[16px] text-sea underline underline-offset-4">
+            <button type="button" onClick={() => setShowPromo(true)} className="inline-flex min-h-11 items-center self-center px-3 text-[15px] text-muted underline underline-offset-4">
               {t.buy.promo}
             </button>
           ) : promo ? (
@@ -511,49 +607,6 @@ export function BuyBox({ p, lang, settings, url, choice, idp = "bb" }: { p: P; l
             </div>
           )}
           {promo && promoError && <p className="-mt-2 text-[15px] text-danger">{promoError}</p>}
-
-          <div className="flex flex-col gap-1.5 text-center text-[15px] leading-relaxed text-muted">
-            <p>{t.buy.reassure}</p>
-            <p>
-              {t.buy.consentPhone} {t.buy.consentTerms}{" "}
-              <Link href={href(lang, "/conditions")} className="py-2 underline underline-offset-2" prefetch={false}>
-                {t.buy.termsLink}
-              </Link>
-              .
-            </p>
-          </div>
-
-          {(shopPhone || settings.contact.whatsapp) && (
-            <div className="grid gap-2 border-t border-line pt-4 @lg:grid-cols-2">
-              {shopPhone && (
-                <a
-                  href={`tel:+216${shopPhone}`}
-                  className="flex min-h-12 items-center justify-center gap-2 rounded-xl border-2 border-field px-3 text-center text-[16px] text-ink"
-                  onClick={() => {
-                    track("phone_clicked", { productId: p.id, props: { where: "product" } });
-                    pixelContact();
-                  }}
-                >
-                  {t.buy.callUs} : <strong className="ltr-nums">{formatPhone(shopPhone)}</strong>
-                </a>
-              )}
-              {settings.contact.whatsapp && (
-                <a
-                  href={`https://wa.me/216${settings.contact.whatsapp}?text=${encodeURIComponent(waText)}`}
-                  target="_blank"
-                  rel="noopener"
-                  onClick={() => {
-                    track("whatsapp_clicked", { productId: p.id, props: { where: "product" } });
-                    pixelContact();
-                  }}
-                  className="flex min-h-12 items-center justify-center gap-2 rounded-xl bg-[#e8f6ee] px-3 text-[16px] font-bold text-[#17663a]"
-                >
-                  <IconWhatsApp className="h-5 w-5" />
-                  {t.buy.whatsapp}
-                </a>
-              )}
-            </div>
-          )}
           {/* Honeypot: invisible to people, irresistible to bots. */}
           <input type="text" name="website" tabIndex={-1} autoComplete="off" className="absolute -start-[9999px] h-0 w-0 opacity-0" aria-hidden />
         </>
@@ -577,7 +630,7 @@ function OfferCard({ o, lang, locale, imageId, checked, disabled, onSelect }: { 
   return (
     <label
       className={`relative flex items-center gap-3 rounded-2xl border-2 p-2.5 transition sm:p-3 ${
-        disabled ? "cursor-not-allowed border-dashed border-line bg-sand/50 opacity-70" : checked ? "cursor-pointer border-sea bg-sea-soft/50 shadow-soft" : "cursor-pointer border-field bg-white hover:border-sea/60"
+        disabled ? "cursor-not-allowed border-dashed border-line bg-sand/50 opacity-70" : checked ? "cursor-pointer border-sea bg-sea-soft shadow-soft ring-2 ring-sea/30" : "cursor-pointer border-field bg-white hover:border-sea/60"
       }`}
     >
       <span className="relative h-[72px] w-[72px] shrink-0 overflow-hidden rounded-xl bg-sand">
@@ -585,7 +638,9 @@ function OfferCard({ o, lang, locale, imageId, checked, disabled, onSelect }: { 
           // eslint-disable-next-line @next/next/no-img-element
           <img src={`/api/img/${imageId}/200`} alt="" className="h-full w-full object-cover" loading="lazy" decoding="async" />
         )}
-        <span aria-hidden className="absolute bottom-1 end-1 rounded-md bg-sea px-2 text-[15px] font-bold leading-6 text-white ltr-nums">×{o.quantity}</span>
+        <span aria-hidden className="absolute bottom-1 end-1 rounded-md bg-sea px-2 text-[15px] font-bold leading-6 text-white">
+          <span className="ltr-nums">×{o.quantity}</span>
+        </span>
       </span>
       <span className="flex min-w-0 flex-1 flex-col gap-1">
         <span className="flex flex-wrap items-center gap-x-2 gap-y-1">
@@ -597,11 +652,11 @@ function OfferCard({ o, lang, locale, imageId, checked, disabled, onSelect }: { 
           )}
         </span>
         <span className="relative flex flex-wrap items-center gap-x-2 gap-y-1">
-          <span className="whitespace-nowrap text-[19px] font-bold text-ink ltr-nums">{formatTND(o.price, lang)}</span>
+          <span className="whitespace-nowrap text-[19px] font-bold text-ink price-nums ltr-nums">{formatTND(o.price, lang)}</span>
           {struck != null && !disabled && (
             <>
               <span className="sr-only">{t.buy.instead(formatTND(struck, lang))}</span>
-              <span aria-hidden className="whitespace-nowrap text-[15px] text-muted line-through ltr-nums">{formatTND(struck, lang)}</span>
+              <span aria-hidden className="whitespace-nowrap text-[15px] text-muted line-through price-nums ltr-nums">{formatTND(struck, lang)}</span>
             </>
           )}
           {pct > 0 && !disabled && <span className="rounded-full bg-olive px-2 py-0.5 text-[14px] font-bold text-white ltr-nums">−{pct}%</span>}
@@ -619,6 +674,14 @@ function OfferCard({ o, lang, locale, imageId, checked, disabled, onSelect }: { 
       </span>
       <input type="radio" name="offer" checked={checked} disabled={disabled} onChange={onSelect} className="h-6 w-6 shrink-0 accent-[var(--color-sea)]" data-testid={`offer-${o.quantity}`} />
     </label>
+  );
+}
+
+function StepBadge({ n }: { n: number }) {
+  return (
+    <span aria-hidden className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-navy text-[16px] text-white">
+      {n}
+    </span>
   );
 }
 

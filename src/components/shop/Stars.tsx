@@ -1,6 +1,7 @@
 export function Stars({ value, size = 14 }: { value: number; size?: number }) {
   return (
-    <span className="inline-flex items-center gap-0.5 text-[#c8902e]" aria-label={`${value.toFixed(1)} / 5`}>
+    // Stars fill from the left in both languages, as in Tunisian shops.
+    <span className="inline-flex items-center gap-0.5 text-[#c8902e]" aria-label={`${value.toFixed(1)} / 5`} dir="ltr">
       {[1, 2, 3, 4, 5].map((i) => {
         const fill = Math.max(0, Math.min(1, value - (i - 1)));
         return (

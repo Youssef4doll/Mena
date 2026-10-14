@@ -14,24 +14,32 @@ export function Listing({ lang, title, path, sort, products, emptyText }: { lang
   return (
     <div className="mx-auto max-w-6xl px-4 pt-6">
       <div className="mb-4 flex flex-col gap-1">
-        <h1 className="text-[34px] leading-tight">{title}</h1>
-        <p className="text-sm text-muted">{t.category.count(products.length)}</p>
+        <h1 className="text-[28px] font-bold leading-tight md:text-[34px]">{title}</h1>
+        <p className="text-[16px] text-muted">{t.category.count(products.length)}</p>
       </div>
-      <div className="-mx-4 mb-5 flex gap-2 overflow-x-auto px-4 no-scrollbar" role="tablist" aria-label={t.category.sort}>
+      <nav className="-mx-4 mb-5 flex scroll-px-4 gap-2 overflow-x-auto px-4 no-scrollbar" aria-label={t.category.sort}>
         {SORTS.map((s) => (
           <Link
             key={s}
             href={href(lang, s === "new" ? path : `${path}?tri=${s}`)}
             scroll={false}
-            className={`shrink-0 rounded-full border px-3.5 py-1.5 text-[15px] ${s === sort ? "border-sea bg-sea text-white" : "border-line bg-white text-ink-2"}`}
-            aria-selected={s === sort}
-            role="tab"
+            className={`inline-flex min-h-11 shrink-0 items-center rounded-full border-2 px-4 text-[16px] ${s === sort ? "border-sea bg-sea font-bold text-white" : "border-field bg-white text-ink hover:border-sea/60"}`}
+            aria-current={s === sort ? "page" : undefined}
           >
             {t.category.sorts[s]}
           </Link>
         ))}
-      </div>
-      {products.length === 0 ? <p className="py-16 text-center text-muted">{emptyText}</p> : <ProductGrid products={products} lang={lang} priorityFirst={4} />}
+      </nav>
+      {products.length === 0 ? (
+        <div className="mx-auto flex max-w-sm flex-col items-center gap-4 rounded-2xl border border-line bg-white px-6 py-10 text-center">
+          <p className="text-[17px] text-ink-2">{emptyText}</p>
+          <Link href={href(lang, "/boutique")} className="inline-flex min-h-12 items-center rounded-xl border-2 border-field bg-white px-5 text-[17px] font-bold text-ink hover:bg-sand">
+            {t.home.shopNow}
+          </Link>
+        </div>
+      ) : (
+        <ProductGrid products={products} lang={lang} priorityFirst={4} />
+      )}
     </div>
   );
 }

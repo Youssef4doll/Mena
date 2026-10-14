@@ -64,7 +64,7 @@ export default async function ProductPageRoute({ params }: PageProps<"/[lang]/pr
       <ProductView p={product} lang={lang} settings={publicSettings(settings)} url={url} />
       {related.length > 0 && (
         <section className="mx-auto max-w-6xl px-4">
-          <h2 className="mb-5 text-[24px]">{t.product.related}</h2>
+          <h2 className="mb-4 text-[24px] font-bold leading-tight">{t.product.related}</h2>
           <ProductGrid products={related.slice(0, 8)} lang={lang} />
         </section>
       )}

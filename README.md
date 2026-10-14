@@ -16,7 +16,9 @@ Boutique en ligne pour la Tunisie : dropshipping, paiement à la livraison, fran
 - Fiche produit organisée comme les boutiques tunisiennes que les clients connaissent : photos (vignettes sur le côté sur ordinateur), prix, offres en cartes (image ×N, prix barré réel, % sur les lots), formulaire nom | téléphone et adresse | gouvernorat, gros bouton sombre. Sur téléphone, le nom et le prix tiennent sur le premier écran.
 - Rapide sur téléphone : contenu principal affiché en 0,8 à 1,3 s en 4G lente avec un processeur ralenti ×4, sans décalage de mise en page.
 - **Pas de panier** : on commande sur la fiche produit, dans un seul formulaire. On choisit l'offre (« 1 unité », « 2 + 1 offerte »…), puis nom, téléphone (+216, 8 chiffres), gouvernorat, adresse, et on confirme. Paiement à la livraison, sans compte ni e-mail.
-- Frais et délai de livraison par gouvernorat, total affiché avant de confirmer, tirés des réglages.
+- **« Acheter maintenant » sur chaque carte produit** (accueil, catégories, recherche) : le formulaire de commande s'ouvre par-dessus la liste, sans changer de page. Mêmes prix et mêmes contrôles serveur que la fiche.
+- Frais de livraison réels affichés dès le début (fourchette des tarifs des gouvernorats ouverts), puis le montant exact une fois le gouvernorat choisi ; total affiché avant de confirmer.
+- Le bouton « Confirmer ma commande » est le seul bouton ambre de la page ; juste dessous : rien à payer maintenant, colis vérifiable avant de payer (si activé).
 - Bouton WhatsApp sur chaque fiche, et confirmation WhatsApp proposée après la commande.
 - Suivi de commande par lien secret (SMS) ou par numéro de commande + téléphone. Demande de retour et avis depuis la page de suivi.
 - Un formulaire laissé avec un numéro apparaît dans « Non terminées » pour une relance, avec un lien qui rouvre la fiche sur le même choix.
