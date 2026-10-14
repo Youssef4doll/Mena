@@ -55,7 +55,7 @@ test("the basket: two products, one order, every price from the server", async (
 
   // The order empties the basket.
   await page.goto(`${FR}/panier`);
-  await expect(page.getByText("Votre panier est vide.")).toBeVisible();
+  await expect(page.getByText("Votre panier est vide")).toBeVisible();
   // The old checkout address leads to the basket.
   await page.goto(`${FR}/commande`);
   await expect(page).toHaveURL(/\/fr\/panier$/);
@@ -172,7 +172,7 @@ test("Acheter maintenant on a card orders without leaving the list", async ({ pa
   const card = page.locator("div.group", { hasText: "Diffuseur d'huiles essentielles" }).first();
   await card.getByRole("button", { name: "Acheter maintenant" }).click();
   const sheet = page.getByRole("dialog");
-  await expect(sheet.getByText("Commande rapide")).toBeVisible();
+  await expect(sheet.locator("#qb-title")).toHaveText("Diffuseur d'huiles essentielles");
   await expect(page).toHaveURL(/\/fr\/categorie\/maison$/);
   await sheet.getByTestId("offer-3").check();
   await sheet.getByTestId("name").fill("Amira Ben Salah");

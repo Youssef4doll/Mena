@@ -37,7 +37,7 @@ export default async function OrderRoute({ params, searchParams }: PageProps<"/[
     <div className="mx-auto flex max-w-xl flex-col gap-6 px-4 pt-8">
       <TrackView name="tracking_viewed" props={{ status: o.status }} />
       <div>
-        <p className="text-[15px] font-bold text-sea-2">{t.thanks.ref}</p>
+        <p className="text-[15px] text-muted">{t.thanks.ref}</p>
         <h1 className="text-[28px] font-bold tracking-wide ltr-nums">{o.ref}</h1>
         <p className="mt-1 text-[16px] text-muted">{dateFmt(o.createdAt)}</p>
       </div>
@@ -146,7 +146,7 @@ export default async function OrderRoute({ params, searchParams }: PageProps<"/[
       {canReturn && <ReturnForm lang={lang} orderRef={o.ref} days={settings.returns.days} />}
 
       {settings.contact.whatsapp && (
-        <a href={`https://wa.me/216${settings.contact.whatsapp}?text=${encodeURIComponent(`${t.track.help} ${o.ref}`)}`} target="_blank" rel="noopener" className="flex min-h-12 items-center justify-center gap-2 rounded-xl border-2 border-field bg-white text-[17px] font-bold text-ink hover:bg-sand">
+        <a href={`https://wa.me/216${settings.contact.whatsapp}?text=${encodeURIComponent(`${t.track.help} ${o.ref}`)}`} target="_blank" rel="noopener" className="flex min-h-14 items-center justify-center gap-2 rounded-full border border-field bg-white text-[17px] font-bold text-ink hover:bg-sand">
           <IconWhatsApp className="h-5 w-5 text-wa" />
           {t.track.help}
         </a>

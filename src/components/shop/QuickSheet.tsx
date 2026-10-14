@@ -55,21 +55,20 @@ export function QuickSheet({ slug, lang, onClose }: { slug: string; lang: Lang; 
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-center md:items-center md:p-6" role="dialog" aria-modal="true" aria-labelledby="qb-title">
       <button type="button" className="absolute inset-0 animate-fade bg-ink/50" onClick={onClose} aria-label={t.nav.close} tabIndex={-1} />
-      <div ref={panel} className="relative flex max-h-[94dvh] w-full animate-sheet-up flex-col overflow-hidden rounded-t-3xl bg-cream shadow-lift md:max-w-xl md:rounded-3xl">
+      <div ref={panel} className="relative flex max-h-[94dvh] w-full animate-sheet-up flex-col overflow-hidden rounded-t-3xl bg-white shadow-lift md:max-w-xl md:rounded-3xl">
         <div className="flex items-center gap-3 border-b border-line bg-white px-4 py-3">
-          <span className="relative h-14 w-14 shrink-0 overflow-hidden rounded-xl bg-sand">
+          <span className="relative h-14 w-14 shrink-0 overflow-hidden rounded-xl border border-line bg-sand">
             {image && (
               // eslint-disable-next-line @next/next/no-img-element
               <img src={`/api/img/${image}/200`} alt="" className="h-full w-full object-cover" />
             )}
           </span>
           <span className="flex min-w-0 flex-1 flex-col">
-            <span className="text-[14px] font-bold text-sea">{t.product.quickTitle}</span>
             <span id="qb-title" className="line-clamp-2 text-[17px] font-bold leading-snug text-ink">
               {p ? pick(lang, p.name, p.nameAr) : t.product.quickLoading}
             </span>
           </span>
-          <button ref={closeBtn} type="button" onClick={onClose} className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl text-ink hover:bg-sand" aria-label={t.nav.close}>
+          <button ref={closeBtn} type="button" onClick={onClose} className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-ink hover:bg-sand" aria-label={t.nav.close}>
             <IconClose className="h-6 w-6" />
           </button>
         </div>
@@ -84,7 +83,7 @@ export function QuickSheet({ slug, lang, onClose }: { slug: string; lang: Lang; 
           ) : data === null ? (
             <div className="flex flex-col items-center gap-4 py-6 text-center">
               <p className="text-[17px] text-ink-2">{t.product.quickError}</p>
-              <Link href={href(lang, `/produit/${slug}`)} className="flex min-h-12 items-center rounded-xl bg-navy px-5 text-[16px] font-bold text-white">
+              <Link href={href(lang, `/produit/${slug}`)} className="flex min-h-12 items-center rounded-full border border-ink/60 bg-white px-6 text-[16px] font-bold text-ink hover:bg-sand">
                 {t.product.quickSee}
               </Link>
             </div>

@@ -21,14 +21,14 @@ export function ThanksPhone({ lang, firstName, whatsapp, orderRef }: { lang: Lan
     const d = JSON.parse(raw || "{}") as { name?: string; phone?: string; ref?: string };
     if (d.ref === orderRef && d.name?.trim().split(/\s+/)[0] === firstName) phone = normalizePhone(d.phone ?? "");
   } catch {}
-  if (!phone) return null;
+  if (!phone) return <p className="text-[17px] text-ink">{t.thanks.callSoon}</p>;
   return (
-    <div className="rounded-2xl border-2 border-sea/30 bg-sea-soft p-4">
-      <p className="text-[18px] font-bold text-ink">
-        {t.thanks.callingYou} <span className="ltr-nums">{formatPhone(phone)}</span>.
+    <div className="flex flex-col items-center">
+      <p className="text-[17px] text-ink">
+        {t.thanks.callingYou} <strong className="ltr-nums">{formatPhone(phone)}</strong>
       </p>
       {whatsapp && (
-        <a href={`https://wa.me/216${whatsapp}?text=${encodeURIComponent(orderRef)}`} target="_blank" rel="noopener" className="mt-1 inline-flex min-h-11 items-center text-[16px] font-bold text-sea underline underline-offset-4">
+        <a href={`https://wa.me/216${whatsapp}?text=${encodeURIComponent(orderRef)}`} target="_blank" rel="noopener" className="inline-flex min-h-11 items-center text-[15px] text-sea underline underline-offset-4">
           {t.thanks.notYours}
         </a>
       )}

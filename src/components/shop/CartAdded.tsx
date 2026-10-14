@@ -55,12 +55,12 @@ export function CartAdded({ lang }: { lang: Lang }) {
             )}
             {title}
           </p>
-          <button type="button" onClick={close} className="-me-2 -mt-1 flex h-11 w-11 shrink-0 items-center justify-center rounded-xl text-ink-2 hover:bg-sand" aria-label={t.nav.close}>
+          <button type="button" onClick={close} className="-me-2 -mt-1 flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-ink-2 hover:bg-sand" aria-label={t.nav.close}>
             <IconClose className="h-6 w-6" />
           </button>
         </div>
         <div className="mt-3 flex items-center gap-3">
-          <span className="relative h-16 w-16 shrink-0 overflow-hidden rounded-xl bg-sand">
+          <span className="relative h-16 w-16 shrink-0 overflow-hidden rounded-xl border border-line bg-sand">
             {item.imageId && (
               // eslint-disable-next-line @next/next/no-img-element
               <img src={`/api/img/${item.imageId}/128`} alt="" className="h-full w-full object-cover" />
@@ -73,10 +73,10 @@ export function CartAdded({ lang }: { lang: Lang }) {
           </span>
         </div>
         <div className="mt-4 flex flex-col gap-2">
-          <Link ref={primary} href={href(lang, "/panier")} onClick={close} className="flex min-h-14 items-center justify-center rounded-2xl bg-buy px-4 text-[18px] font-bold text-night shadow-[inset_0_-3px_0_var(--color-buy-2)] [--focus-ring:var(--color-night)]" data-testid="go-to-cart">
+          <Link ref={primary} href={href(lang, "/panier")} onClick={close} className="flex min-h-[54px] items-center justify-center rounded-full bg-buy px-5 text-[18px] font-bold text-night shadow-[inset_0_-3px_0_var(--color-buy-2)] transition [--focus-ring:var(--color-night)] hover:bg-buy-2" data-testid="go-to-cart">
             {t.cart.checkout(n)}
           </Link>
-          <button type="button" onClick={close} className="flex min-h-14 items-center justify-center rounded-2xl border-2 border-field px-4 text-[17px] font-bold text-ink">
+          <button type="button" onClick={close} className="flex min-h-[52px] items-center justify-center rounded-full border border-ink/60 bg-white px-5 text-[17px] font-bold text-ink transition hover:bg-sand">
             {t.cart.keepShopping}
           </button>
         </div>

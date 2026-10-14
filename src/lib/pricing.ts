@@ -145,6 +145,8 @@ export function priceCart(args: {
   catalog: Map<string, CatalogProduct>;
   governorate: string | null;
   zones: Record<string, DeliveryZone>;
+  /** Millimes: the same delivery fee for every governorate. */
+  deliveryFee: number;
   freeThreshold: number | null;
   promo: PromoInput | null;
   phoneAlreadyUsedPromo: boolean;
@@ -266,8 +268,9 @@ export function priceCart(args: {
 
   let delivery: Quote["delivery"] = null;
   let deliveryFee = 0;
+  // One fee everywhere: it is known before the governorate, so the total is the real one from the start.
+  if (priced.length > 0 && !deliveryUnavailable) deliveryFee = free ? 0 : args.deliveryFee;
   if (zone && zone.enabled && priced.length > 0) {
-    deliveryFee = free ? 0 : zone.fee;
     delivery = { minDays: zone.minDays, maxDays: Math.max(zone.minDays, zone.maxDays), fee: deliveryFee, free };
   }
 

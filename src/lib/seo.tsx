@@ -121,11 +121,11 @@ export function organizationLd(s: Settings) {
 /**
  * Product structured data, in the page's language. Ratings are included only
  * when real, approved reviews exist; delivery cost and time are the shop's
- * own grid (lowest fee, shortest and longest delay).
+ * own (its one fee, the shortest and longest delay).
  */
 export function productLd(p: ProductPage, s: Settings, url: string, lang: Lang = "fr") {
   const zones = Object.values(s.delivery.zones).filter((z) => z.enabled);
-  const minFee = zones.length ? Math.min(...zones.map((z) => z.fee)) : null;
+  const minFee = zones.length ? s.delivery.fee : null;
   const minDays = zones.length ? Math.min(...zones.map((z) => z.minDays)) : null;
   const maxDays = zones.length ? Math.max(...zones.map((z) => Math.max(z.minDays, z.maxDays))) : null;
   const inStock = p.stock.kind !== "out";

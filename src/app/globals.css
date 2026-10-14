@@ -89,7 +89,7 @@ html {
 }
 
 body {
-  background: var(--color-cream);
+  background: #fff;
   color: var(--color-ink);
   font-family: var(--font-sans);
   text-rendering: optimizeLegibility;
@@ -199,7 +199,7 @@ html {
 /* Room under the footer for what floats over the bottom of the screen: the
    WhatsApp button, and on a phone the product page's order bar. */
 body:has(.wa-float) footer {
-  padding-bottom: 5.5rem;
+  padding-bottom: 5rem;
 }
 @media (max-width: 767px) {
   body:has([data-testid="sticky-bar"]) footer {

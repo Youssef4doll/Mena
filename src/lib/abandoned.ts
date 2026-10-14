@@ -29,7 +29,7 @@ export async function abandonedCarts(days = 30, take = 200) {
   const catalog = new Map(parts.flatMap((m) => [...m]));
   const now = new Date();
   const quote = (l: CartLineInput[]) =>
-    priceCart({ lines: l, catalog, governorate: null, zones: DEFAULT_SETTINGS.delivery.zones, freeThreshold: null, promo: null, phoneAlreadyUsedPromo: false, now });
+    priceCart({ lines: l, catalog, governorate: null, zones: DEFAULT_SETTINGS.delivery.zones, deliveryFee: DEFAULT_SETTINGS.delivery.fee, freeThreshold: null, promo: null, phoneAlreadyUsedPromo: false, now });
   return carts
     .map((c, i) => {
       const q = quote(lines[i]);

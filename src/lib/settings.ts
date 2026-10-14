@@ -5,13 +5,13 @@ import { mergeSecrets, mergeSettings, type Secrets, type Settings } from "./sett
 
 export const SETTINGS_TAG = "settings";
 
-/** Cached: every page reads the settings, and they change a few times a month. */
+/** Cached: every page reads the settings, and they change a few times a month. The key changes with their shape (v2: one delivery fee). */
 export const getSettings = unstable_cache(
   async (): Promise<Settings> => {
     const row = await prisma.setting.findUnique({ where: { key: "settings" } });
     return mergeSettings(row?.value);
   },
-  ["settings-v1"],
+  ["settings-v2"],
   { tags: [SETTINGS_TAG], revalidate: 300 },
 );
 

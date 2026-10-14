@@ -30,13 +30,11 @@ export function QuickBuy({ slug, productId, lang }: { slug: string; productId: s
           setOpen(true);
           track("quick_buy_opened", { productId });
         }}
-        className="flex min-h-12 w-full items-center justify-center rounded-xl bg-buy px-1 text-[15px] font-bold whitespace-nowrap text-night shadow-[inset_0_-3px_0_var(--color-buy-2)] transition [--focus-ring:var(--color-night)] hover:bg-buy-2 active:scale-[.98]"
+        className="flex min-h-11 w-full items-center justify-center rounded-full bg-buy px-3 text-[15px] font-bold whitespace-nowrap text-night transition [--focus-ring:var(--color-night)] hover:bg-buy-2 active:scale-[.98]"
         aria-haspopup="dialog"
         aria-label={t.product.buyNow}
       >
-        {/* The whole label when the card is wide enough, "Acheter" on the narrowest phones. */}
-        <span className="hidden @[146px]:inline">{t.product.buyNow}</span>
-        <span className="@[146px]:hidden">{t.product.buyShort}</span>
+        {t.product.buyShort}
       </button>
       {open && <QuickSheet slug={slug} lang={lang} onClose={() => setOpen(false)} />}
     </>

@@ -15,7 +15,7 @@ import { formatTND } from "@/lib/money";
 import { formatPhone, normalizePhone } from "@/lib/phone";
 import { GOVERNORATES, governorateLabel } from "@/lib/governorates";
 import { deliveryRangeLabel } from "@/lib/delivery";
-import { IconCartPlus, IconCheck, IconChevronDown, IconPhone, IconShield, IconTruck, IconWhatsApp } from "./Icons";
+import { IconCartPlus, IconCash, IconChevronDown, IconPhone, IconShield, IconTruck, IconWhatsApp } from "./Icons";
 
 export type OrderLine = { productId: string; variantId: string | null; offerId: string | null; qty: number };
 type Form = { name: string; phone: string; governorate: string; address: string };
@@ -68,7 +68,6 @@ type Props = {
   /** Shows "Ajouter au panier" under the main button. Returns false when the choice is not complete. */
   onAddToCart?: () => boolean;
   submitTitle: string;
-  submitSub: string;
 };
 
 /**
@@ -283,13 +282,13 @@ export function OrderForm(props: Props) {
   const promoFree = Boolean(priced && quote.promo?.result.ok && quote.promo.result.freeDelivery);
   const offerFree = props.freeOffer || (priced && quote.lines.some((l) => l.freeDelivery));
   const threshold = settings.delivery.freeThreshold;
-  const freeKnown = delivery ? delivery.free : Boolean(offerFree) || promoFree || (threshold != null && price - discount >= threshold);
+  const fee = settings.delivery.fee;
+  // The server's answer when there is one; before it, the same rules from the page's own figures.
+  const freeKnown = priced ? quote.deliveryFee === 0 && !quote.deliveryUnavailable : Boolean(offerFree) || promoFree || (threshold != null && price - discount >= threshold) || fee === 0;
+  const deliveryShown = freeKnown ? 0 : priced ? quote.deliveryFee : fee;
+  const total = priced ? quote.total : price - discount + deliveryShown;
   const promoError = quote?.promo && !quote.promo.result.ok ? t.checkout.promoErrors[quote.promo.result.reason] : null;
   const shopPhone = normalizePhone(settings.shop.phone);
-  const zoneFees = Object.values(settings.delivery.zones)
-    .filter((z) => z.enabled !== false)
-    .map((z) => z.fee);
-  const fees = zoneFees.length ? { min: Math.min(...zoneFees), max: Math.max(...zoneFees) } : null;
 
   return (
     // A container: the fields go two by two when the form itself is wide enough, wherever it sits.
@@ -298,7 +297,7 @@ export function OrderForm(props: Props) {
       <fieldset className="grid min-w-0 items-start gap-x-3 gap-y-3 @lg:grid-cols-2" onFocus={start}>
         <legend className="sr-only">{t.buy.step2}</legend>
         <Field id={id("name")} label={t.buy.name} error={show("name") ? t.buy.nameError : null}>
-          <input id={id("name")} value={f.name} onChange={(e) => update("name", e.target.value)} onBlur={blur("name")} onKeyDown={next(id("phone"))} enterKeyHint="next" autoComplete="name" placeholder={t.buy.namePh} className={inputCls(show("name"))} aria-invalid={show("name")} aria-describedby={show("name") ? id("name-msg") : undefined} data-testid="name" />
+          <input id={id("name")} value={f.name} onChange={(e) => update("name", e.target.value)} onBlur={blur("name")} onKeyDown={next(id("phone"))} enterKeyHint="next" autoComplete="name" className={inputCls(show("name"))} aria-invalid={show("name")} aria-describedby={show("name") ? id("name-msg") : undefined} data-testid="name" />
         </Field>
         <Field id={id("phone")} label={t.buy.phone} error={show("phone") ? (f.phone.trim() ? t.checkout.phoneInvalid : t.buy.phoneRequired) : null}>
           <div className={`flex h-[54px] items-stretch overflow-hidden rounded-full border bg-white focus-within:border-sea focus-within:ring-2 focus-within:ring-sea/20 ${show("phone") ? "border-danger" : "border-field"}`} dir="ltr">
@@ -327,7 +326,7 @@ export function OrderForm(props: Props) {
 
       {/* ------------------------------------------------ promo code: a quiet link until it is wanted */}
       {!showPromo && !promo ? (
-        <button type="button" onClick={() => setShowPromo(true)} className="-my-1 inline-flex min-h-11 items-center self-start text-[15px] text-sea underline underline-offset-4">
+        <button type="button" onClick={() => setShowPromo(true)} className="-my-1 inline-flex min-h-11 items-center self-start text-[15px] text-ink-2 underline decoration-field underline-offset-4">
           {t.buy.promo}
         </button>
       ) : promo ? (
@@ -377,48 +376,25 @@ export function OrderForm(props: Props) {
         <div className="flex justify-between gap-3 text-ink-2">
           <dt>
             {t.buy.delivery}
-            {f.governorate && <span className="text-muted"> · {governorateLabel(f.governorate, lang)}</span>}
+            {delivery && <span className="text-muted"> · {deliveryRangeLabel(delivery.minDays, delivery.maxDays, lang)}</span>}
           </dt>
-          <dd className="shrink-0 whitespace-nowrap price-nums ltr-nums">
-            {freeKnown ? (
-              <span className="font-bold text-olive">{t.product.free}</span>
-            ) : delivery ? (
-              formatTND(delivery.fee, lang)
-            ) : fees ? (
-              // Before a governorate is chosen: the shop's lowest real fee.
-              fees.min === fees.max ? formatTND(fees.min, lang) : t.buy.deliveryFrom(formatTND(fees.min, lang))
-            ) : (
-              <span className="text-muted">{t.buy.deliveryChoose}</span>
-            )}
-          </dd>
+          <dd className="shrink-0 whitespace-nowrap price-nums ltr-nums">{freeKnown ? <span className="font-bold text-olive">{t.product.free}</span> : formatTND(deliveryShown, lang)}</dd>
         </div>
         <div className="flex items-baseline justify-between gap-3 border-t border-line pt-3">
           <dt className="text-[18px] font-bold text-ink">{t.buy.total}</dt>
-          <dd className="shrink-0 text-end" data-testid="total">
+          <dd className="shrink-0 whitespace-nowrap text-end text-[22px] font-bold text-ink" data-testid="total">
             {waiting ? (
-              <span className="text-[17px] text-muted">{t.cart.loading}</span>
-            ) : priced && (delivery || freeKnown) ? (
-              <span className="whitespace-nowrap text-[22px] font-bold text-ink price-nums ltr-nums">{formatTND(delivery ? quote.total : price - discount, lang)}</span>
+              <span className="text-[17px] font-normal text-muted">{t.cart.loading}</span>
             ) : (
-              // Never a dash: the price is known, only the delivery (or the option) is still to come.
               <>
-                <span className="block whitespace-nowrap text-[22px] font-bold text-ink">
-                  {props.priceVaries && <span className="text-[15px] font-normal text-muted">{t.product.from} </span>}
-                  <span className="price-nums ltr-nums">{formatTND(price - discount, lang)}</span>
-                </span>
-                {!freeKnown && <span className="block text-[14px] font-normal text-muted">{t.buy.plusDelivery}</span>}
+                {props.priceVaries && !priced && <span className="text-[15px] font-normal text-muted">{t.product.from} </span>}
+                <span className="price-nums ltr-nums">{formatTND(total, lang)}</span>
               </>
             )}
           </dd>
         </div>
-        {delivery && (
-          <p className="flex items-center gap-2 text-[15px] text-muted">
-            <IconTruck className="h-4 w-4 shrink-0" />
-            {t.checkout.deliveryDelay(deliveryRangeLabel(delivery.minDays, delivery.maxDays, lang))}
-          </p>
-        )}
         {quote?.deliveryUnavailable && <p className="text-[15px] text-danger">{t.checkout.errors.delivery_unavailable}</p>}
-        {!delivery && !freeKnown && threshold != null && <p className="text-[15px] text-muted">{t.product.freeFrom(formatTND(threshold, lang))}</p>}
+        {!freeKnown && threshold != null && <p className="text-[15px] text-muted">{t.product.freeFrom(formatTND(threshold, lang))}</p>}
       </dl>
 
       {error && (
@@ -428,12 +404,9 @@ export function OrderForm(props: Props) {
       )}
 
       {/* The strongest button on the page; the basket is the quieter choice under it. */}
-      <button type="submit" disabled={busy} className="flex min-h-[62px] w-full items-center justify-center gap-3 rounded-full bg-buy px-6 py-2 text-night shadow-[inset_0_-3px_0_var(--color-buy-2)] transition [--focus-ring:var(--color-night)] hover:bg-buy-2 active:scale-[.99] disabled:opacity-80" data-testid="place-order">
+      <button type="submit" disabled={busy} className="flex min-h-[58px] w-full items-center justify-center gap-2.5 rounded-full bg-buy px-6 text-[19px] font-bold text-night shadow-[inset_0_-3px_0_var(--color-buy-2)] transition [--focus-ring:var(--color-night)] hover:bg-buy-2 active:scale-[.99] disabled:opacity-80" data-testid="place-order">
         <IconTruck className="h-6 w-6 shrink-0" />
-        <span className="flex flex-col items-start leading-tight">
-          <span className="text-[19px] font-bold">{busy ? t.buy.sending : props.submitTitle}</span>
-          {!busy && <span className="text-[14px] text-night/80">{props.submitSub}</span>}
-        </span>
+        {busy ? t.buy.sending : props.submitTitle}
       </button>
       {props.onAddToCart && (
         <button type="button" onClick={addToCart} className="-mt-1 flex min-h-[52px] w-full items-center justify-center gap-2.5 rounded-full border border-ink/60 bg-white px-5 text-[17px] font-bold text-ink transition hover:bg-sand active:scale-[.99]" data-testid="add-to-cart">
@@ -442,15 +415,15 @@ export function OrderForm(props: Props) {
         </button>
       )}
 
-      {/* The cash-on-delivery promise, in one or two short lines. */}
-      <ul className="flex flex-col items-center gap-1 text-center text-[15px] text-ink-2">
-        <li className="inline-flex max-w-full items-start gap-1.5 text-start">
-          <IconCheck className="mt-0.5 h-5 w-5 shrink-0 text-olive" />
-          {t.buy.reassure}
+      {/* The cash-on-delivery promises, in a few words on one row. */}
+      <ul className="flex flex-wrap items-center justify-center gap-x-5 gap-y-1 text-[15px] text-ink-2">
+        <li className="inline-flex items-center gap-1.5">
+          <IconCash className="h-5 w-5 shrink-0 text-olive" />
+          {t.trust.cod}
         </li>
         {settings.delivery.openBeforePaying && (
-          <li className="inline-flex max-w-full items-start gap-1.5 text-start">
-            <IconShield className="mt-0.5 h-5 w-5 shrink-0 text-sea" />
+          <li className="inline-flex items-center gap-1.5">
+            <IconShield className="h-5 w-5 shrink-0 text-sea" />
             {t.trust.openBeforePaying}
           </li>
         )}
@@ -467,16 +440,16 @@ export function OrderForm(props: Props) {
                 track("whatsapp_clicked", { productId, props: { where: origin } });
                 pixelContact();
               }}
-              className="inline-flex min-h-11 items-center gap-2 rounded-full bg-wa-soft px-4 text-[15px] font-bold text-wa-ink"
+              className="inline-flex min-h-11 items-center gap-2 rounded-full border border-line bg-white px-4 text-[15px] font-bold text-ink hover:bg-sand"
             >
-              <IconWhatsApp className="h-5 w-5" />
+              <IconWhatsApp className="h-5 w-5 text-wa" />
               {t.buy.whatsapp}
             </a>
           )}
           {shopPhone && (
             <a
               href={`tel:+216${shopPhone}`}
-              className="inline-flex min-h-11 items-center gap-2 rounded-full border border-line px-4 text-[15px] text-ink"
+              className="inline-flex min-h-11 items-center gap-2 rounded-full border border-line bg-white px-4 text-[15px] text-ink hover:bg-sand"
               aria-label={`${t.buy.callUs} : ${formatPhone(shopPhone)}`}
               onClick={() => {
                 track("phone_clicked", { productId, props: { where: origin } });
@@ -490,7 +463,7 @@ export function OrderForm(props: Props) {
         </div>
       )}
 
-      <p className="text-center text-[13px] leading-relaxed text-muted">
+      <p className="mx-auto max-w-md text-center text-[15px] leading-relaxed text-muted">
         {t.buy.consentPhone} {t.buy.consentTerms}{" "}
         <Link href={href(lang, "/conditions")} className="py-2 underline underline-offset-2" prefetch={false}>
           {t.buy.termsLink}

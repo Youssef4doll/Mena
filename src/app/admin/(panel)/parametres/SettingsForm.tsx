@@ -12,9 +12,9 @@ export function SettingsForm({ initial, secretsSet }: { initial: Settings; secre
   const router = useRouter();
   const [s, setS] = useState<Settings>(initial);
   const [sec, setSec] = useState<Partial<Secrets>>({});
-  const [fees, setFees] = useState<Record<string, string>>(Object.fromEntries(Object.entries(initial.delivery.zones).map(([g, z]) => [g, toInputTND(z.fee)])));
+  const [fee, setFee] = useState(toInputTND(initial.delivery.fee));
   const [threshold, setThreshold] = useState(toInputTND(initial.delivery.freeThreshold));
-  const [bulk, setBulk] = useState({ fee: "", min: "", max: "" });
+  const [bulk, setBulk] = useState({ min: "", max: "" });
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
   const [pending, start] = useTransition();
   const heroFile = useRef<HTMLInputElement>(null);
@@ -40,16 +40,12 @@ export function SettingsForm({ initial, secretsSet }: { initial: Settings; secre
   );
 
   function save() {
-    const zones = { ...s.delivery.zones };
-    for (const g of Object.keys(zones)) {
-      const fee = parseTND(fees[g] ?? "");
-      if (fee == null) return setMsg({ ok: false, text: `Frais de livraison invalides pour ${g}.` });
-      zones[g] = { ...zones[g], fee };
-    }
+    const deliveryFee = parseTND(fee);
+    if (deliveryFee == null) return setMsg({ ok: false, text: "Frais de livraison invalides." });
     const ft = threshold.trim() ? parseTND(threshold) : null;
     if (threshold.trim() && ft == null) return setMsg({ ok: false, text: "Seuil de livraison offerte invalide." });
     start(async () => {
-      const r = await saveAll({ ...s, delivery: { ...s.delivery, zones, freeThreshold: ft } }, sec);
+      const r = await saveAll({ ...s, delivery: { ...s.delivery, fee: deliveryFee, freeThreshold: ft } }, sec);
       setMsg(r.ok ? { ok: true, text: "Paramètres enregistrés." } : { ok: false, text: r.error });
       if (r.ok) {
         setSec({});
@@ -79,8 +75,6 @@ export function SettingsForm({ initial, secretsSet }: { initial: Settings; secre
         <div className="grid gap-2">
           <label className={label}>Titre<input {...text("hero", "title")} /></label>
           <label className={label}>Titre (arabe)<input dir="rtl" {...text("hero", "titleAr")} /></label>
-          <label className={label}>Sous-titre<input {...text("hero", "subtitle")} /></label>
-          <label className={label}>Sous-titre (arabe)<input dir="rtl" {...text("hero", "subtitleAr")} /></label>
           <div className="flex items-center gap-3">
             {s.hero.imageId && (
               // eslint-disable-next-line @next/next/no-img-element
@@ -126,22 +120,21 @@ export function SettingsForm({ initial, secretsSet }: { initial: Settings; secre
         </div>
       </Card>
 
-      <Card title="Livraison" hint="Frais et délais par gouvernorat : c'est ce que la fiche produit affiche et ce que le serveur facture. Les délais sont des fourchettes en jours ouvrés après confirmation." className="xl:col-span-2">
-        <div className="grid gap-2 sm:grid-cols-3">
+      <Card title="Livraison" hint="Un seul tarif pour tous les gouvernorats : c'est ce que la boutique affiche et ce que le serveur facture. Les délais, par gouvernorat, sont des fourchettes en jours ouvrés après confirmation." className="xl:col-span-2">
+        <div className="grid gap-2 sm:grid-cols-4">
+          <label className={label}>Frais de livraison, tous les gouvernorats (DT)<input value={fee} onChange={(e) => setFee(e.target.value)} inputMode="decimal" className={input} data-testid="delivery-fee" /></label>
           <label className={label}>Nom affiché<input {...text("delivery", "carrierName")} /></label>
           <label className={label}>Livraison offerte dès (DT, vide = jamais)<input value={threshold} onChange={(e) => setThreshold(e.target.value)} inputMode="decimal" className={input} /></label>
           <label className="flex items-center gap-2 pt-5 text-sm"><input {...check("delivery", "openBeforePaying")} />Le client peut ouvrir le colis avant de payer</label>
         </div>
         <div className="mt-3 flex flex-wrap items-end gap-2 rounded-xl bg-cream p-3">
-          <span className="text-xs text-muted">Appliquer à tous :</span>
-          <input placeholder="Frais DT" value={bulk.fee} onChange={(e) => setBulk({ ...bulk, fee: e.target.value })} className={`${input} w-24`} />
+          <span className="text-xs text-muted">Délais pour tous :</span>
           <input placeholder="Min j" type="number" value={bulk.min} onChange={(e) => setBulk({ ...bulk, min: e.target.value })} className={`${input} w-20`} />
           <input placeholder="Max j" type="number" value={bulk.max} onChange={(e) => setBulk({ ...bulk, max: e.target.value })} className={`${input} w-20`} />
           <button
             type="button"
             className={btn.ghost}
             onClick={() => {
-              if (bulk.fee) setFees(Object.fromEntries(Object.keys(fees).map((g) => [g, bulk.fee])));
               const zones = { ...s.delivery.zones };
               for (const g of Object.keys(zones)) zones[g] = { ...zones[g], ...(bulk.min ? { minDays: Number(bulk.min) } : {}), ...(bulk.max ? { maxDays: Number(bulk.max) } : {}) };
               up("delivery", { zones });
@@ -151,9 +144,9 @@ export function SettingsForm({ initial, secretsSet }: { initial: Settings; secre
           </button>
         </div>
         <div className="mt-3 overflow-x-auto">
-          <table className="w-full min-w-[520px] text-sm">
+          <table className="w-full min-w-[420px] text-sm">
             <thead className="text-xs text-muted">
-              <tr><th className="py-2 text-start">Gouvernorat</th><th className="text-start">Livré</th><th className="text-start">Frais (DT)</th><th className="text-start">Min (j)</th><th className="text-start">Max (j)</th></tr>
+              <tr><th className="py-2 text-start">Gouvernorat</th><th className="text-start">Livré</th><th className="text-start">Min (j)</th><th className="text-start">Max (j)</th></tr>
             </thead>
             <tbody className="divide-y divide-line">
               {GOVERNORATES.map((g) => {
@@ -163,7 +156,6 @@ export function SettingsForm({ initial, secretsSet }: { initial: Settings; secre
                   <tr key={g.id}>
                     <td className="py-1.5">{g.id}</td>
                     <td><input type="checkbox" checked={z.enabled} onChange={(e) => setZ({ enabled: e.target.checked })} className="h-5 w-5" /></td>
-                    <td><input value={fees[g.id] ?? ""} onChange={(e) => setFees({ ...fees, [g.id]: e.target.value })} inputMode="decimal" className={`${input} w-24`} /></td>
                     <td><input type="number" min={0} max={30} value={z.minDays} onChange={(e) => setZ({ minDays: Number(e.target.value) || 0 })} className={`${input} w-20`} /></td>
                     <td><input type="number" min={0} max={30} value={z.maxDays} onChange={(e) => setZ({ maxDays: Number(e.target.value) || 0 })} className={`${input} w-20`} /></td>
                   </tr>

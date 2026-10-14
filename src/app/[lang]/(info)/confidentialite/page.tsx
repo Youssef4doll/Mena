@@ -14,7 +14,7 @@ export default async function PrivacyRoute({ params }: PageProps<"/[lang]/confid
   const s = await getSettings();
   const pixels = [s.tracking.metaPixelId && "Meta (Facebook, Instagram)", s.tracking.tiktokPixelId && "TikTok", s.tracking.ga4Id && "Google Analytics"].filter(Boolean);
   return (
-    <Prose title="Confidentialité et cookies">
+    <Prose title="Confidentialité et cookies" french={lang === "ar"}>
       <p>{s.shop.name} traite vos données conformément à la loi organique n° 2004-63 sur la protection des données à caractère personnel.</p>
       <h2>Ce que nous gardons</h2>
       <ul>

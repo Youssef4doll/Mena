@@ -8,8 +8,6 @@ import { GOVERNORATE_IDS, GRAND_TUNIS } from "./governorates";
  */
 
 export const deliveryZoneSchema = z.object({
-  /** Millimes. */
-  fee: z.number().int().min(0).max(100_000),
   /** Working days, as the carrier quotes them. Shown as a range, never a date. */
   minDays: z.number().int().min(0).max(30),
   maxDays: z.number().int().min(0).max(30),
@@ -49,6 +47,8 @@ export const settingsSchema = z.object({
   delivery: z.object({
     /** Name printed for the customer ("Livraison à domicile"); the carrier itself is per order. */
     carrierName: z.string().max(60),
+    /** Millimes: one fee for every governorate the shop delivers to. */
+    fee: z.number().int().min(0).max(100_000),
     zones: z.record(z.string(), deliveryZoneSchema),
     /** Millimes; null = no free delivery. */
     freeThreshold: z.number().int().min(0).nullable(),
@@ -111,8 +111,8 @@ function defaultZones(): Record<string, DeliveryZone> {
   const zones: Record<string, DeliveryZone> = {};
   for (const g of GOVERNORATE_IDS) {
     zones[g] = GRAND_TUNIS.has(g)
-      ? { fee: 7_000, minDays: 1, maxDays: 2, enabled: true }
-      : { fee: 8_000, minDays: 2, maxDays: 3, enabled: true };
+      ? { minDays: 1, maxDays: 2, enabled: true }
+      : { minDays: 2, maxDays: 3, enabled: true };
   }
   return zones;
 }
@@ -140,6 +140,7 @@ export const DEFAULT_SETTINGS: Settings = {
   contact: { whatsapp: "", messenger: "" },
   delivery: {
     carrierName: "Livraison à domicile",
+    fee: 8_000,
     zones: defaultZones(),
     freeThreshold: null,
     openBeforePaying: true,

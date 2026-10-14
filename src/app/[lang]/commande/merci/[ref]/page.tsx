@@ -20,18 +20,20 @@ export default async function ThanksRoute({ params }: PageProps<"/[lang]/command
   const o = id ? await customerOrderView(id) : null;
 
   return (
-    <div className="mx-auto flex max-w-xl flex-col gap-6 px-4 pb-10 pt-10">
-      <div className="flex flex-col items-center gap-4 text-center">
-        <span className="flex h-16 w-16 items-center justify-center rounded-full bg-olive-soft text-olive">
-          <IconCheck className="h-8 w-8" />
+    <div className="mx-auto flex max-w-md flex-col gap-6 px-4 pb-12 pt-10">
+      <div className="flex flex-col items-center gap-3 text-center">
+        <span className="flex h-14 w-14 items-center justify-center rounded-full bg-olive-soft text-olive">
+          <IconCheck className="h-7 w-7" />
         </span>
-        <h1 className="text-[28px] font-bold leading-tight">{o?.firstName ? t.thanks.titleName(o.firstName) : t.thanks.title}</h1>
-        <div className="rounded-2xl border-2 border-dashed border-sea/40 bg-sea-soft px-6 py-4">
-          <p className="text-[15px] font-bold text-sea-2">{t.thanks.ref}</p>
-          <p className="mt-1 text-[28px] font-bold tracking-wider ltr-nums" data-testid="order-ref">{ref}</p>
-        </div>
+        <h1 className="text-[26px] font-bold leading-tight">{o?.firstName ? t.thanks.titleName(o.firstName) : t.thanks.title}</h1>
+        <p className="text-[16px] text-muted">
+          {t.thanks.ref}{" "}
+          <strong className="text-[19px] tracking-wider text-ink ltr-nums" data-testid="order-ref">
+            {ref}
+          </strong>
+        </p>
+        {o && o.status === "PENDING" && <ThanksPhone lang={lang} firstName={o.firstName} whatsapp={settings.contact.whatsapp || null} orderRef={o.ref} />}
       </div>
-      {o && o.status === "PENDING" && <ThanksPhone lang={lang} firstName={o.firstName} whatsapp={settings.contact.whatsapp || null} orderRef={o.ref} />}
 
       {o && (
         <>
@@ -46,13 +48,10 @@ export default async function ThanksRoute({ params }: PageProps<"/[lang]/command
               href={`https://wa.me/216${settings.contact.whatsapp}?text=${encodeURIComponent(t.thanks.confirmText(o.ref))}`}
               target="_blank"
               rel="noopener"
-              className="flex min-h-16 items-center gap-3 rounded-2xl bg-wa p-4 text-white"
+              className="flex min-h-14 items-center justify-center gap-2 rounded-full bg-wa px-6 text-[17px] font-bold text-white"
             >
-              <IconWhatsApp className="h-7 w-7 shrink-0" />
-              <span className="flex flex-col">
-                <span className="text-[18px] font-bold">{t.thanks.confirmNow}</span>
-                <span className="text-[15px] text-white">{t.thanks.confirmNowSub}</span>
-              </span>
+              <IconWhatsApp className="h-6 w-6 shrink-0" />
+              {t.thanks.confirmNow}
             </a>
           )}
           <div className="rounded-2xl border border-line bg-white p-5">
@@ -69,6 +68,16 @@ export default async function ThanksRoute({ params }: PageProps<"/[lang]/command
                 </li>
               ))}
             </ul>
+            {o.discount > 0 && (
+              <div className="mt-2 flex justify-between gap-3 text-[16px] text-olive">
+                <span>{t.checkout.discount}</span>
+                <span className="whitespace-nowrap price-nums ltr-nums">−{formatTND(o.discount, lang)}</span>
+              </div>
+            )}
+            <div className="mt-2 flex justify-between gap-3 text-[16px] text-muted">
+              <span>{t.cart.delivery}</span>
+              <span className="whitespace-nowrap price-nums ltr-nums">{o.deliveryFee === 0 ? t.product.free : formatTND(o.deliveryFee, lang)}</span>
+            </div>
             <div className="mt-3 flex justify-between gap-3 border-t border-line pt-3 text-[20px] font-bold">
               <span>{o.paymentMethod === "COD" ? t.track.toPay : t.cart.total}</span>
               <span className="whitespace-nowrap price-nums ltr-nums">{formatTND(o.total, lang)}</span>
@@ -77,27 +86,12 @@ export default async function ThanksRoute({ params }: PageProps<"/[lang]/command
         </>
       )}
 
-      <div>
-        <h2 className="mb-3 text-[19px] font-bold">{t.thanks.next}</h2>
-        <ol className="flex flex-col gap-3">
-          {t.thanks.steps.map((s, i) => (
-            <li key={s} className="flex gap-3 text-[17px]">
-              <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-sea text-[17px] font-bold text-white">{i + 1}</span>
-              <span className="pt-1.5 text-ink-2">{s}</span>
-            </li>
-          ))}
-        </ol>
-        {settings.notify.smsOnPlaced && settings.notify.smsUrl && <p className="mt-4 text-[16px] text-muted">{t.thanks.sms}</p>}
-      </div>
-
-      <div className="flex flex-col gap-2">
-        <Link href={href(lang, o ? `/suivi/${o.ref}` : "/suivi")} className="flex min-h-14 items-center justify-center rounded-2xl bg-navy text-[17px] font-bold text-white hover:bg-night">
-          {t.thanks.track}
-        </Link>
-        <Link href={href(lang, "/boutique")} className="flex min-h-14 items-center justify-center rounded-2xl border-2 border-field bg-white text-[17px] font-bold text-ink hover:bg-sand">
-          {t.thanks.keepShopping}
-        </Link>
-      </div>
+      <Link href={href(lang, o ? `/suivi/${o.ref}` : "/suivi")} className="flex min-h-14 items-center justify-center rounded-full border border-field bg-white text-[17px] font-bold text-ink hover:bg-sand">
+        {t.thanks.track}
+      </Link>
+      <Link href={href(lang, "/boutique")} className="-mt-2 inline-flex min-h-11 items-center self-center text-[16px] text-sea underline underline-offset-4">
+        {t.thanks.keepShopping}
+      </Link>
     </div>
   );
 }

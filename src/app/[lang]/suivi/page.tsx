@@ -18,7 +18,6 @@ export default async function TrackRoute({ params }: PageProps<"/[lang]/suivi">)
     <div className="mx-auto flex max-w-md flex-col gap-8 px-4 pt-10">
       <div>
         <h1 className="text-[28px] font-bold leading-tight">{t.track.title}</h1>
-        <p className="mt-1 text-[16px] text-muted">{t.track.sub}</p>
       </div>
       <LookupForm lang={lang} />
       {mine.length > 0 && (

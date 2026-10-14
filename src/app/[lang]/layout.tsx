@@ -13,6 +13,7 @@ import { CartAdded } from "@/components/shop/CartAdded";
 import { SITE_URL } from "@/lib/site";
 import { normalizePhone } from "@/lib/phone";
 import { deliversEverywhere } from "@/lib/governorates";
+import { formatTND } from "@/lib/money";
 
 // Atkinson Hyperlegible: letters that cannot be mistaken for one another (I/l/1, O/0), for readers with low vision.
 const body = Atkinson_Hyperlegible_Next({ subsets: ["latin"], variable: "--font-body", display: "swap" });
@@ -36,7 +37,7 @@ export async function generateMetadata({ params }: LayoutProps<"/[lang]">): Prom
 }
 
 export const viewport: Viewport = {
-  themeColor: "#f5f7fa",
+  themeColor: "#ffffff",
   width: "device-width",
   initialScale: 1,
   viewportFit: "cover",
@@ -49,14 +50,18 @@ export default async function ShopLayout({ children, params }: LayoutProps<"/[la
   const t = dict(lang);
   const [settings, categories] = await Promise.all([getSettings(), getCategories()]);
   const cats = categories.map((c) => ({ slug: c.slug, name: c.name, nameAr: c.nameAr }));
-  const announcement = [t.trust.cod, deliversEverywhere(settings.delivery.zones) ? t.trust.delivery : t.trust.deliveryHome, t.trust.returns(settings.returns.days)];
+  const fee = settings.delivery.fee;
+  const announcement = [
+    t.trust.cod,
+    fee === 0 ? t.buy.freeDelivery : deliversEverywhere(settings.delivery.zones) ? t.trust.deliveryFee(formatTND(fee, lang)) : `${t.buy.delivery} ${formatTND(fee, lang)}`,
+  ];
 
   return (
     <html lang={lang === "ar" ? "ar-TN" : "fr-TN"} dir={t.dir} className={`shop-root ${body.variable} ${plexAr.variable}`}>
       <body className="min-h-dvh">
         <Header lang={lang} categories={cats} announcement={announcement} phone={normalizePhone(settings.shop.phone)} />
         <main>{children}</main>
-        <Footer lang={lang} settings={settings} categories={cats} />
+        <Footer lang={lang} settings={settings} />
         <WhatsAppFloat lang={lang} phone={settings.contact.whatsapp} />
         <CartAdded lang={lang} />
         <ConsentAndPixels lang={lang} ids={{ metaPixelId: settings.tracking.metaPixelId, ga4Id: settings.tracking.ga4Id, tiktokPixelId: settings.tracking.tiktokPixelId }} />

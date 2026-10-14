@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { Suspense, useEffect, useRef, useState } from "react";
+import { Fragment, Suspense, useEffect, useRef, useState } from "react";
 import { flushSync } from "react-dom";
 import { dict, href, pick, switchHref, type Lang } from "@/i18n";
 import { track } from "@/lib/client/track";
@@ -10,15 +10,16 @@ import { pixelContact } from "@/lib/client/pixels";
 import { formatTND } from "@/lib/money";
 import { formatPhone } from "@/lib/phone";
 import { Logo } from "./Logo";
-import { IconCart, IconCheck, IconChevron, IconClose, IconMenu, IconSearch } from "./Icons";
+import { IconCart, IconChevron, IconClose, IconMenu, IconPhone, IconSearch } from "./Icons";
 import { cartCount, useCart } from "@/lib/client/cart";
 
 type Cat = { slug: string; name: string; nameAr: string | null };
 
 /**
- * Amazon's arrangement, in a calmer palette: the logo, one wide search box,
- * the basket with its count, and a row of categories underneath. Every
- * product can still be ordered on its own page without the basket.
+ * A white header like the product page: the logo, one wide rounded search
+ * box, the language and the basket with its count, and the categories as
+ * light chips underneath. Every product can still be ordered on its own page
+ * without the basket.
  */
 export function Header({ lang, categories, announcement, phone }: { lang: Lang; categories: Cat[]; announcement: string[]; phone: string | null }) {
   const t = dict(lang);
@@ -27,6 +28,8 @@ export function Header({ lang, categories, announcement, phone }: { lang: Lang; 
   const [menuOn, setMenuOn] = useState<string | null>(null);
   const menu = menuOn === pathname;
   const onProduct = pathname.includes("/produit/");
+  // The home page shows the categories with their pictures right under the header.
+  const onHome = pathname === href(lang, "/");
   const shopOn = pathname.endsWith("/boutique");
   // On a product page on a phone, search is an icon until tapped (closes again on the next page).
   const [searchAt, setSearchAt] = useState<string | null>(null);
@@ -55,27 +58,28 @@ export function Header({ lang, categories, announcement, phone }: { lang: Lang; 
 
   return (
     <>
-      <div className="border-b border-white/10 bg-night text-[15px] font-bold text-white">
-        <div className="mx-auto flex min-h-8 max-w-6xl items-center justify-center gap-6 px-4 py-1 text-center">
+      {/* Two facts from the settings, quietly: how one pays, and what delivery costs. */}
+      <div className="border-b border-line bg-sand text-[15px] text-ink-2">
+        <p className="mx-auto flex min-h-9 max-w-6xl flex-wrap items-center justify-center gap-x-2 px-4 py-1.5 text-center">
           {announcement.map((a, i) => (
-            <span key={a} className={`inline-flex items-center gap-1.5 ${i > 0 ? "max-md:hidden" : ""}`}>
-              <IconCheck className="h-4 w-4 shrink-0 text-amber" />
-              {a}
-            </span>
+            <Fragment key={a}>
+              {i > 0 && <span aria-hidden className="text-muted">·</span>}
+              <span>{a}</span>
+            </Fragment>
           ))}
-        </div>
+        </p>
       </div>
       {/* Stays at the top from tablet width; on a phone it scrolls away and leaves the screen to the page.
           On a product page on a phone, search becomes an icon and the category strip goes, so the
           picture, the name, the price and the stock fit on the first screen. */}
-      <header className="z-30 bg-night text-white md:sticky md:top-0 [--focus-ring:var(--color-amber)]">
+      <header className="z-30 border-b border-line bg-white text-ink md:sticky md:top-0">
         {/* Tight on a phone: menu, logo, search, language and basket fit on one line from 360 px. */}
-        <div className="mx-auto flex max-w-6xl flex-wrap items-center gap-x-2 gap-y-2 px-3 py-2 sm:gap-x-3 sm:px-4">
-          <button ref={openBtn} type="button" onClick={() => setMenu(true)} className="-ms-1.5 flex h-11 w-11 items-center justify-center rounded-xl text-white hover:bg-white/10" aria-label={t.nav.menu}>
+        <div className="mx-auto flex max-w-6xl flex-wrap items-center gap-x-2 gap-y-2 px-3 pb-3 pt-2 sm:gap-x-3 sm:px-4">
+          <button ref={openBtn} type="button" onClick={() => setMenu(true)} className="-ms-1.5 flex h-11 w-11 items-center justify-center rounded-full text-ink hover:bg-sand" aria-label={t.nav.menu}>
             <IconMenu className="h-6 w-6" />
           </button>
-          <Link href={href(lang, "/")} className="flex items-center rounded-lg px-0.5 py-1 hover:ring-1 hover:ring-white/40" aria-label="Mena">
-            <Logo light />
+          <Link href={href(lang, "/")} className="flex items-center rounded-lg px-0.5 py-1" aria-label="Mena">
+            <Logo />
           </Link>
           <div className={`order-last w-full md:order-none md:ms-4 md:w-auto md:flex-1 ${compact ? "max-md:hidden" : ""}`}>
             {/* The box follows the URL's search (Back, Forward); while the page loads it is the same box, empty. */}
@@ -92,7 +96,7 @@ export function Header({ lang, categories, announcement, phone }: { lang: Lang; 
                   flushSync(() => setSearchAt(pathname));
                   document.querySelector<HTMLInputElement>("header input[name=q]")?.focus();
                 }}
-                className="flex h-11 w-11 items-center justify-center rounded-xl text-white hover:bg-white/10 md:hidden"
+                className="flex h-11 w-11 items-center justify-center rounded-full text-ink hover:bg-sand md:hidden"
                 aria-label={t.nav.search}
               >
                 <IconSearch className="h-6 w-6" />
@@ -105,13 +109,13 @@ export function Header({ lang, categories, announcement, phone }: { lang: Lang; 
                   track("phone_clicked", { props: { where: "header" } });
                   pixelContact();
                 }}
-                className="hidden flex-col items-end rounded-lg px-3 py-1 leading-tight hover:ring-1 hover:ring-white/40 lg:flex"
+                className="hidden flex-col items-end rounded-2xl px-3 py-1 leading-tight hover:bg-sand lg:flex"
               >
-                <span className="text-[14px] text-white/80">{t.trust.support}</span>
-                <span className="text-[16px] font-bold text-white ltr-nums">{formatPhone(phone)}</span>
+                <span className="text-[14px] text-muted">{t.trust.support}</span>
+                <span className="text-[16px] font-bold text-ink ltr-nums">{formatPhone(phone)}</span>
               </a>
             )}
-            <Link href={switchHref(lang, pathname)} className="flex h-11 items-center rounded-lg px-2 text-[16px] font-bold text-white sm:px-3 hover:ring-1 hover:ring-white/40" hrefLang={lang === "fr" ? "ar" : "fr"} prefetch={false}>
+            <Link href={switchHref(lang, pathname)} className="flex h-11 items-center rounded-full border border-line px-4 text-[16px] font-bold text-ink hover:border-field" hrefLang={lang === "fr" ? "ar" : "fr"} prefetch={false}>
               {t.nav.language}
             </Link>
             <CartLink lang={lang} />
@@ -119,11 +123,11 @@ export function Header({ lang, categories, announcement, phone }: { lang: Lang; 
         </div>
         {categories.length > 0 && (
           // The menu keeps the categories when the strip gives way on a product page.
-          <nav className={`relative bg-night-2 ${onProduct ? "max-md:hidden" : ""}`} aria-label={t.nav.categories}>
-            <div className="mx-auto flex max-w-6xl gap-1 overflow-x-auto px-2 py-1 no-scrollbar [--focus-offset:-3px]">
+          <nav className={`relative ${onProduct || onHome ? "max-md:hidden" : ""}`} aria-label={t.nav.categories}>
+            <div className="mx-auto flex max-w-6xl gap-2 overflow-x-auto px-3 pb-3 pt-0.5 no-scrollbar sm:px-4">
               <Link
                 href={href(lang, "/boutique")}
-                className={`shrink-0 whitespace-nowrap rounded-md px-3 py-2.5 text-[16px] text-white ${shopOn ? "bg-white/15 font-bold" : "hover:bg-white/10"}`}
+                className={`flex h-11 shrink-0 items-center whitespace-nowrap rounded-full border px-4 text-[16px] ${shopOn ? "border-ink bg-ink font-bold text-white" : "border-line text-ink hover:border-field"}`}
                 aria-current={shopOn ? "page" : undefined}
               >
                 {t.nav.shop}
@@ -134,7 +138,7 @@ export function Header({ lang, categories, announcement, phone }: { lang: Lang; 
                   <Link
                     key={c.slug}
                     href={href(lang, `/categorie/${c.slug}`)}
-                    className={`shrink-0 whitespace-nowrap rounded-md px-3 py-2.5 text-[16px] text-white ${active ? "bg-white/15 font-bold" : "hover:bg-white/10"}`}
+                    className={`flex h-11 shrink-0 items-center whitespace-nowrap rounded-full border px-4 text-[16px] ${active ? "border-ink bg-ink font-bold text-white" : "border-line text-ink hover:border-field"}`}
                     aria-current={active ? "page" : undefined}
                   >
                     {pick(lang, c.name, c.nameAr)}
@@ -143,7 +147,7 @@ export function Header({ lang, categories, announcement, phone }: { lang: Lang; 
               })}
             </div>
             {/* A fade at the end says the strip scrolls. */}
-            <span aria-hidden className="pointer-events-none absolute inset-y-0 end-0 w-10 bg-gradient-to-l from-night-2 to-transparent rtl:bg-gradient-to-r md:hidden" />
+            <span aria-hidden className="pointer-events-none absolute inset-y-0 end-0 w-10 bg-gradient-to-l from-white to-transparent rtl:bg-gradient-to-r md:hidden" />
           </nav>
         )}
       </header>
@@ -154,7 +158,7 @@ export function Header({ lang, categories, announcement, phone }: { lang: Lang; 
           <div className="absolute inset-y-0 start-0 flex w-[86%] max-w-sm animate-sheet-side flex-col overflow-y-auto bg-white shadow-lift [--sheet-from:-100%] rtl:[--sheet-from:100%]">
             <div className="flex items-center justify-between border-b border-line px-5 py-4">
               <Logo />
-              <button ref={closeBtn} type="button" onClick={() => setMenu(false)} className="flex h-11 w-11 items-center justify-center rounded-xl" aria-label={t.nav.close}>
+              <button ref={closeBtn} type="button" onClick={() => setMenu(false)} className="flex h-11 w-11 items-center justify-center rounded-full hover:bg-sand" aria-label={t.nav.close}>
                 <IconClose className="h-6 w-6" />
               </button>
             </div>
@@ -162,7 +166,7 @@ export function Header({ lang, categories, announcement, phone }: { lang: Lang; 
               <MenuLink href={href(lang, "/")}>{t.nav.home}</MenuLink>
               <MenuLink href={href(lang, "/panier")}>{t.cart.title}</MenuLink>
               <MenuLink href={href(lang, "/boutique")}>{t.nav.shop}</MenuLink>
-              <p className="px-3 pb-1 pt-4 text-[14px] font-bold text-muted">{t.nav.categories}</p>
+              <p className="px-3 pb-1 pt-4 text-[15px] font-bold text-muted">{t.nav.categories}</p>
               {categories.map((c) => (
                 <MenuLink key={c.slug} href={href(lang, `/categorie/${c.slug}`)}>
                   {pick(lang, c.name, c.nameAr)}
@@ -174,8 +178,9 @@ export function Header({ lang, categories, announcement, phone }: { lang: Lang; 
               <MenuLink href={href(lang, "/contact")}>{t.footer.contact}</MenuLink>
               <MenuLink href={switchHref(lang, pathname)}>{t.nav.language}</MenuLink>
               {phone && (
-                <a href={`tel:+216${phone}`} className="mx-3 mt-4 flex min-h-12 items-center justify-center rounded-xl bg-sea-soft text-[17px] font-bold text-sea-2 ltr-nums">
-                  {formatPhone(phone)}
+                <a href={`tel:+216${phone}`} className="mx-3 mt-4 flex min-h-12 items-center justify-center gap-2 rounded-full border border-field text-[17px] font-bold text-ink">
+                  <IconPhone className="h-5 w-5" />
+                  <span className="ltr-nums">{formatPhone(phone)}</span>
                 </a>
               )}
             </nav>
@@ -188,9 +193,8 @@ export function Header({ lang, categories, announcement, phone }: { lang: Lang; 
 
 function MenuLink({ href, children }: { href: string; children: React.ReactNode }) {
   return (
-    <Link href={href} className="flex min-h-12 items-center justify-between rounded-xl px-3 text-[17px] text-ink hover:bg-sand">
+    <Link href={href} className="flex min-h-12 items-center rounded-xl px-3 text-[17px] text-ink hover:bg-sand">
       {children}
-      <IconChevron className="h-5 w-5 text-muted" />
     </Link>
   );
 }
@@ -200,10 +204,10 @@ function CartLink({ lang }: { lang: Lang }) {
   const t = dict(lang);
   const n = cartCount(useCart());
   return (
-    <Link href={href(lang, "/panier")} className="relative flex h-11 items-center gap-1 rounded-lg px-1 text-white hover:ring-1 hover:ring-white/40 md:pe-2" aria-label={t.cart.open(n)} prefetch={false} data-testid="cart-link">
+    <Link href={href(lang, "/panier")} className="relative flex h-11 items-center gap-1 rounded-full px-1.5 text-ink hover:bg-sand md:pe-3" aria-label={t.cart.open(n)} prefetch={false} data-testid="cart-link">
       {/* The cart is drawn the same way in both languages, so the count sits over its basket on the left. */}
       <span className="relative" dir="ltr">
-        <IconCart className="h-8 w-8" />
+        <IconCart className="h-7 w-7" />
         {n > 0 && (
           <span className="absolute -top-2 left-[8px] flex h-[22px] min-w-[22px] items-center justify-center rounded-full bg-buy px-1 text-[14px] font-bold leading-none text-night" aria-hidden data-testid="cart-count">
             {n}
@@ -307,7 +311,7 @@ function SearchBox({ lang, urlQ }: { lang: Lang; urlQ: string }) {
           setOpen(false);
           if (term) router.push(href(lang, `/recherche?q=${encodeURIComponent(term)}`));
         }}
-        className="flex h-12 items-stretch overflow-hidden rounded-xl bg-white ring-amber focus-within:ring-[3px]"
+        className="flex h-[52px] items-center rounded-full border border-field bg-white pe-1 focus-within:border-sea focus-within:ring-2 focus-within:ring-sea/20"
       >
         <input
           value={q}
@@ -328,7 +332,7 @@ function SearchBox({ lang, urlQ }: { lang: Lang; urlQ: string }) {
             } else if (e.key === "Escape") setOpen(false);
           }}
           placeholder={t.nav.searchPlaceholder}
-          className="min-w-0 flex-1 bg-transparent px-4 text-[17px] text-ink outline-none placeholder:text-placeholder"
+          className="h-full min-w-0 flex-1 bg-transparent pe-2 ps-5 text-[17px] text-ink outline-none placeholder:text-placeholder"
           enterKeyHint="search"
           name="q"
           autoComplete="off"
@@ -339,12 +343,12 @@ function SearchBox({ lang, urlQ }: { lang: Lang; urlQ: string }) {
           aria-activedescendant={active >= 0 && items[active] ? `sg-${active}` : undefined}
           aria-label={t.nav.search}
         />
-        <button type="submit" className="flex w-14 items-center justify-center bg-amber text-night hover:bg-amber-2" aria-label={t.nav.search}>
-          <IconSearch className="h-6 w-6" />
+        <button type="submit" className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-ink text-white hover:bg-ink-2" aria-label={t.nav.search}>
+          <IconSearch className="h-5 w-5" />
         </button>
       </form>
       {items.length > 0 && (
-        <ul id="search-list" role="listbox" aria-label={t.search.suggestions} className="absolute inset-x-0 top-full z-40 mt-1 max-h-[70vh] overflow-y-auto rounded-xl border border-line bg-white p-1.5 text-ink shadow-lift" data-testid="suggestions">
+        <ul id="search-list" role="listbox" aria-label={t.search.suggestions} className="absolute inset-x-0 top-full z-40 mt-1 max-h-[70vh] overflow-y-auto rounded-2xl border border-line bg-white p-1.5 text-ink shadow-lift" data-testid="suggestions">
           {items.map((it, i) => (
             <li key={it.key} id={`sg-${i}`} role="option" aria-selected={i === active}>
               <Link

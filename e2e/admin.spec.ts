@@ -8,8 +8,8 @@ async function placeOrder(page: Page, phone: string) {
   await page.getByTestId("phone").fill(phone);
   await page.getByTestId("governorate").selectOption("Tunis");
   await page.getByTestId("address").fill("La Marsa, rue Habib Bourguiba 5");
-  // First offer, "1 unité" at 69,000, plus 7,000 to Tunis. (Supplier stock: never runs out between runs.)
-  await expect(page.getByTestId("total")).toHaveText("76,000 DT");
+  // First offer, "1 unité" at 69,000, plus the one delivery fee of 8,000. (Supplier stock: never runs out between runs.)
+  await expect(page.getByTestId("total")).toHaveText("77,000 DT");
   await page.getByTestId("place-order").click();
   await expect(page).toHaveURL(/\/commande\/merci\/MN-/);
   return (await page.getByTestId("order-ref").textContent())!.trim();

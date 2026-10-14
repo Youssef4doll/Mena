@@ -272,7 +272,6 @@ export function BuyBox({ p, lang, settings, url, choice, idp = "bb", onAdded }: 
             return true;
           }}
           submitTitle={t.product.buyNow}
-          submitSub={t.buy.submitSub}
         />
       )}
     </div>
@@ -314,7 +313,7 @@ function OfferCard({ o, lang, name, locale, imageId, checked, disabled, onSelect
               <span className="ltr-nums">−{pct}%</span>
             </span>
           )}
-          {o.mostChosen && !disabled && <span className="rounded-full bg-sea px-2 text-[13px] font-bold leading-6 text-white">{t.buy.mostChosen}</span>}
+          {o.mostChosen && !disabled && <span className="rounded-full border border-sea bg-white px-2 text-[14px] font-bold leading-6 text-sea-2">{t.buy.mostChosen}</span>}
         </span>
         <span className="flex flex-wrap items-baseline gap-x-2">
           <span className="whitespace-nowrap text-[18px] font-bold text-ink price-nums ltr-nums">{formatTND(o.price, lang)}</span>

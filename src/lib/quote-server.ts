@@ -38,6 +38,7 @@ export async function quoteCart(input: {
     catalog,
     governorate: gov,
     zones: settings.delivery.zones,
+    deliveryFee: settings.delivery.fee,
     freeThreshold: settings.delivery.freeThreshold,
     promo,
     phoneAlreadyUsedPromo,

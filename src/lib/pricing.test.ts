@@ -12,23 +12,27 @@ function product(over: Partial<CatalogProduct> = {}): CatalogProduct {
     stockMode: "SUPPLIER", stockQty: 0, available: true, imageId: null, variants: [], ...over,
   };
 }
-const base = { governorate: null, zones, freeThreshold: null, promo: null, phoneAlreadyUsedPromo: false, now };
+const base = { governorate: null, zones, deliveryFee: DEFAULT_SETTINGS.delivery.fee, freeThreshold: null, promo: null, phoneAlreadyUsedPromo: false, now };
 
 test("prices from the catalog, not from the request", () => {
   const catalog = new Map([["p1", product()]]);
   // A tampered request can only send ids and quantities; there is no price field to lie in.
   const q = priceCart({ ...base, catalog, lines: [{ productId: "p1", qty: 2, price: 1 } as never] });
   assert.equal(q.subtotal, 99_800);
-  assert.equal(q.total, 99_800);
+  // One fee everywhere: delivery is in the total before the governorate is chosen.
+  assert.equal(q.total, 107_800);
   assert.equal(q.costTotal, 40_000);
 });
 
-test("delivery fee comes from the governorate", () => {
+test("one delivery fee for every governorate; the delay comes from the governorate", () => {
   const catalog = new Map([["p1", product()]]);
   const tunis = priceCart({ ...base, catalog, lines: [{ productId: "p1", qty: 1 }], governorate: "Tunis" });
   const sfax = priceCart({ ...base, catalog, lines: [{ productId: "p1", qty: 1 }], governorate: "Sfax" });
-  assert.equal(tunis.deliveryFee, 7_000);
+  assert.equal(tunis.deliveryFee, 8_000);
   assert.equal(sfax.deliveryFee, 8_000);
+  assert.deepEqual(tunis.delivery, { minDays: 1, maxDays: 2, fee: 8_000, free: false });
+  const changed = priceCart({ ...base, deliveryFee: 6_500, catalog, lines: [{ productId: "p1", qty: 1 }], governorate: "Sfax" });
+  assert.equal(changed.total, 56_400);
   assert.equal(sfax.total, 57_900);
   assert.deepEqual(sfax.delivery, { minDays: 2, maxDays: 3, fee: 8_000, free: false });
 });
@@ -44,7 +48,7 @@ test("a disabled governorate is reported, not silently charged", () => {
 test("free delivery threshold applies after discount", () => {
   const catalog = new Map([["p1", product()]]);
   const q = priceCart({ ...base, catalog, freeThreshold: 100_000, lines: [{ productId: "p1", qty: 2 }], governorate: "Tunis" });
-  assert.equal(q.deliveryFee, 7_000);
+  assert.equal(q.deliveryFee, 8_000);
   assert.equal(q.freeDeliveryRemaining, 200);
   const q3 = priceCart({ ...base, catalog, freeThreshold: 100_000, lines: [{ productId: "p1", qty: 3 }], governorate: "Tunis" });
   assert.equal(q3.deliveryFee, 0);
@@ -101,7 +105,7 @@ test("promo codes", () => {
   const promo = { code: "BIENVENUE", kind: "PERCENT" as const, value: 10, minSubtotal: 0, maxUses: null, usedCount: 0, oncePerPhone: true, startsAt: null, endsAt: null, active: true };
   const q = priceCart({ ...base, catalog, promo, lines: [{ productId: "p1", qty: 1 }], governorate: "Tunis" });
   assert.equal(q.discount, 4_900); // 4 990 rounded down to 100 millimes
-  assert.equal(q.total, 49_900 - 4_900 + 7_000);
+  assert.equal(q.total, 49_900 - 4_900 + 8_000);
 
   const used = priceCart({ ...base, catalog, promo, phoneAlreadyUsedPromo: true, lines: [{ productId: "p1", qty: 1 }] });
   assert.equal(used.discount, 0);

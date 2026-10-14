@@ -103,16 +103,15 @@ export function CartView({ lang, settings }: { lang: Lang; settings: PublicSetti
       <div className="mx-auto max-w-6xl px-4 pb-16 pt-5 md:pt-8">
         {title}
         {hydrated && (
-          <div className="mt-5 flex flex-col items-center gap-4 rounded-3xl border border-line bg-white px-5 py-10 text-center">
-            <span className="flex h-20 w-20 items-center justify-center rounded-full bg-sand text-ink-2">
-              <IconCart className="h-10 w-10" />
+          <div className="mt-10 flex flex-col items-center gap-5 text-center">
+            <span className="flex h-16 w-16 items-center justify-center rounded-full bg-sand text-ink-2">
+              <IconCart className="h-8 w-8" />
             </span>
-            <p className="text-[22px] font-bold text-ink">{t.cart.empty}</p>
+            <p className="text-[20px] font-bold text-ink">{t.cart.empty}</p>
             {notices.map((n) => (
               <p key={n} className="rounded-xl bg-clay-soft px-4 py-3 text-[16px] text-clay">{n}</p>
             ))}
-            <p className="max-w-md text-[17px] text-ink-2">{t.cart.emptySub}</p>
-            <Link href={href(lang, "/boutique")} className="flex min-h-14 items-center rounded-2xl bg-navy px-6 text-[17px] font-bold text-white">
+            <Link href={href(lang, "/boutique")} className="flex min-h-14 items-center rounded-full bg-ink px-7 text-[17px] font-bold text-white hover:bg-ink-2">
               {t.home.shopNow}
             </Link>
           </div>
@@ -131,14 +130,14 @@ export function CartView({ lang, settings }: { lang: Lang; settings: PublicSetti
             ))}
           </div>
         )}
-        <ul className="flex flex-col divide-y divide-line overflow-hidden rounded-2xl border border-line bg-white">
+        <ul className="flex flex-col divide-y divide-line border-y border-line">
           {items.map((i) => {
             const key = itemKey(i);
             const pl = priced(i);
             const option = [i.variantName ? pick(lang, i.variantName, i.variantNameAr) : null, i.offerLabel ? pick(lang, i.offerLabel, i.offerLabelAr) : null].filter(Boolean).join(" · ");
             return (
-              <li key={key} className="flex gap-3 p-3" data-testid="cart-line">
-                <Link href={href(lang, `/produit/${i.slug}`)} className="relative h-24 w-24 shrink-0 overflow-hidden rounded-xl bg-sand" prefetch={false}>
+              <li key={key} className="flex gap-3 py-4" data-testid="cart-line">
+                <Link href={href(lang, `/produit/${i.slug}`)} className="relative h-20 w-20 shrink-0 overflow-hidden rounded-xl border border-line bg-white" prefetch={false}>
                   {i.imageId && (
                     // eslint-disable-next-line @next/next/no-img-element
                     <img src={`/api/img/${i.imageId}/200`} alt="" className="h-full w-full object-cover" loading="lazy" />
@@ -150,13 +149,13 @@ export function CartView({ lang, settings }: { lang: Lang; settings: PublicSetti
                   </Link>
                   {option && <span className="text-[15px] text-muted">{option}</span>}
                   <span className="text-[19px] font-bold text-ink price-nums ltr-nums">{pl ? formatTND(pl.lineTotal, lang) : <span className="text-[15px] font-normal text-muted">{t.cart.loading}</span>}</span>
-                  {pl && !i.offerId && i.qty > 1 && <span className="text-[14px] text-muted">{t.cart.unit(formatTND(pl.unitPrice, lang))}</span>}
+                  {pl && !i.offerId && i.qty > 1 && <span className="text-[15px] text-muted">{t.cart.unit(formatTND(pl.unitPrice, lang))}</span>}
                   <div className="mt-1 flex flex-wrap items-center justify-between gap-2">
                     {i.offerId ? (
                       // An offer is a fixed pack: its size is said, nothing to change.
-                      pl && pl.qty > 1 && !(i.offerLabel ?? "").includes(String(pl.qty)) ? <span className="rounded-lg bg-sea-soft px-2.5 py-1 text-[15px] font-bold text-sea-2">{t.buy.units(pl.qty)}</span> : <span />
+                      pl && pl.qty > 1 && !(i.offerLabel ?? "").includes(String(pl.qty)) ? <span className="rounded-full bg-sea-soft px-3 py-0.5 text-[15px] font-bold text-sea-2">{t.buy.units(pl.qty)}</span> : <span />
                     ) : (
-                      <div className="inline-flex h-11 items-center rounded-xl border-2 border-field" role="group" aria-label={t.buy.quantity}>
+                      <div className="inline-flex h-11 items-center rounded-full border border-field bg-white px-1" role="group" aria-label={t.buy.quantity}>
                         <button type="button" className="flex h-11 w-11 items-center justify-center disabled:opacity-30" disabled={i.qty <= 1} onClick={() => { setNotices([]); setCartQty(key, i.qty - 1); }} aria-label={t.buy.qtyLess}>
                           <IconMinus className="h-5 w-5" />
                         </button>
@@ -168,7 +167,7 @@ export function CartView({ lang, settings }: { lang: Lang; settings: PublicSetti
                     )}
                     <button
                       type="button"
-                      className="min-h-11 min-w-11 px-3 text-[15px] text-clay underline underline-offset-4"
+                      className="min-h-11 min-w-11 px-2 text-[15px] text-muted underline underline-offset-4"
                       data-remove={key}
                       onClick={() => {
                         setNotices([]);
@@ -193,7 +192,7 @@ export function CartView({ lang, settings }: { lang: Lang; settings: PublicSetti
         </Link>
       </section>
 
-      <div className="-mx-4 border-y border-line bg-white px-4 py-5 md:sticky md:top-36 md:mx-0 md:rounded-2xl md:border md:p-6 md:shadow-soft">
+      <div className="border-t border-line pt-6 md:sticky md:top-36 md:rounded-2xl md:border md:p-6">
         <OrderForm
           lang={lang}
           settings={settings}
@@ -210,7 +209,6 @@ export function CartView({ lang, settings }: { lang: Lang; settings: PublicSetti
           onPlaced={clearCart}
           waText={lang === "ar" ? `${t.trust.waHello}: ${items.map((i) => name(i)).join("، ")}` : `${t.trust.waHello} : ${items.map((i) => name(i)).join(", ")}`}
           submitTitle={t.cart.submit}
-          submitSub={t.buy.submitSub}
         />
       </div>
     </div>

@@ -44,7 +44,7 @@ Un `.tn` s'achète chez un registrar agréé par l'ATI. Dans Vercel, *Settings �
 
 - **Boutique** : téléphone, e-mail, adresse, matricule fiscal. Ils apparaissent dans le pied de page et les conditions de vente.
 - **WhatsApp** : votre numéro. Sans lui, les boutons WhatsApp ne s'affichent pas.
-- **Livraison** : le tarif et le délai (en jours ouvrés) **par gouvernorat**, d'après la grille de votre société de livraison. Par défaut : 7 DT et 1 à 2 jours pour le Grand Tunis, 8 DT et 2 à 3 jours ailleurs. **À corriger avec vos vrais tarifs.** Ajoutez aussi un seuil de livraison offerte si votre marge le permet (par exemple 150 DT).
+- **Livraison** : **un seul tarif pour tous les gouvernorats** (8 DT par défaut, champ « Frais de livraison, tous les gouvernorats »), puis le délai (en jours ouvrés) par gouvernorat. Par défaut : 1 à 2 jours pour le Grand Tunis, 2 à 3 jours ailleurs. **À corriger avec vos vrais délais.** Ajoutez aussi un seuil de livraison offerte si votre marge le permet (par exemple 150 DT).
 - **Pixels** : les identifiants Meta, TikTok et GA4, et les jetons serveur (API Conversions). Ils ne se chargent que chez les visiteurs qui acceptent les cookies.
 - **SMS** : l'adresse de la passerelle de votre fournisseur de SMS. Sans passerelle, rien n'est envoyé, mais chaque message reste visible dans la commande, et le bouton WhatsApp le pré-remplit.
 

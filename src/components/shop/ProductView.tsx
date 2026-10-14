@@ -13,7 +13,7 @@ import { discountPct, leadOffer } from "@/lib/offer-display";
 import { Stars } from "./Stars";
 import { Gallery, slidesOf } from "./Gallery";
 import { BuyBox, useBuyChoice, type BuyChoice } from "./BuyBox";
-import { IconCheck, IconFire, IconTruck } from "./Icons";
+import { IconCheck, IconTruck } from "./Icons";
 
 type P = Omit<ProductPage, "related">;
 
@@ -87,7 +87,7 @@ export function ProductView({ p, lang, settings, url }: { p: P; lang: Lang; sett
           Computer: the pictures on the left (they stay in view), the rest on the right. */}
       <div className="grid gap-4 pt-1 md:grid-cols-[minmax(0,1.1fr)_minmax(0,1fr)] md:grid-rows-[auto_1fr] md:gap-x-10 md:gap-y-5 md:pt-4">
         <div ref={galleryRef} className="min-w-0 md:sticky md:top-36 md:col-start-1 md:row-span-2 md:row-start-1 md:self-start">
-          <Gallery slides={slides} name={name} productId={p.id} lang={lang} badge={pct} />
+          <Gallery slides={slides} name={name} productId={p.id} lang={lang} badge={0} />
         </div>
 
         <div className="flex min-w-0 flex-col gap-2 md:col-start-2 md:row-start-1">
@@ -107,9 +107,8 @@ export function ProductView({ p, lang, settings, url }: { p: P; lang: Lang; sett
                 </a>
               )}
               {p.sold && (
-                <span className="flex items-center gap-1 text-ink-2">
-                  <IconFire className="h-4 w-4 text-clay" />
-                  <span className="font-bold ltr-nums">+{p.sold}</span> {t.product.soldSuffix}
+                <span className="text-muted">
+                  <span className="font-bold text-ink-2 ltr-nums">+{p.sold}</span> {t.product.soldSuffix}
                 </span>
               )}
             </div>
@@ -134,14 +133,14 @@ export function ProductView({ p, lang, settings, url }: { p: P; lang: Lang; sett
           <StockLine lang={lang} p={p} variant={choice.variant} />
         </div>
 
-        <div ref={buyRef} className="min-w-0 pt-1 md:col-start-2 md:row-start-2 md:rounded-2xl md:border md:border-line md:p-6">
+        <div ref={buyRef} className="min-w-0 pt-1 md:col-start-2 md:row-start-2">
           <BuyBox p={p} lang={lang} settings={settings} url={url} choice={choice} />
         </div>
       </div>
 
       {/* The description as the shop wrote it, then its long pictures one under the other, edge to edge on a phone. */}
       {(description || p.detailImages.length > 0) && (
-        <section className="mx-auto mt-10 flex max-w-3xl flex-col gap-4" aria-labelledby="desc-title">
+        <section className="mx-auto mt-10 flex max-w-3xl flex-col gap-4 border-t border-line pt-8" aria-labelledby="desc-title">
           <TabTitle id="desc-title">{t.product.description}</TabTitle>
           {description && (
             <div className="flex flex-col gap-3 text-[17px] leading-relaxed text-ink-2">
@@ -172,7 +171,7 @@ export function ProductView({ p, lang, settings, url }: { p: P; lang: Lang; sett
       )}
 
       {specs.length > 0 && (
-        <section className="mx-auto mt-10 max-w-3xl" aria-labelledby="specs-title">
+        <section className="mx-auto mt-10 max-w-3xl border-t border-line pt-8" aria-labelledby="specs-title">
           <TabTitle id="specs-title">{t.product.specs}</TabTitle>
           <dl className="mt-1 divide-y divide-line text-[17px]">
             {specs.map((s, i) =>
@@ -197,13 +196,12 @@ export function ProductView({ p, lang, settings, url }: { p: P; lang: Lang; sett
 
       {/* Only real reviews: a new product shows no empty box. */}
       {p.reviews.length > 0 && (
-        <section id="avis" className="mx-auto mt-10 max-w-3xl scroll-mt-4" aria-labelledby="reviews-title">
+        <section id="avis" className="mx-auto mt-10 max-w-3xl scroll-mt-4 border-t border-line pt-8" aria-labelledby="reviews-title">
           <TabTitle id="reviews-title">
             {t.product.reviews}
-            {p.rating && <span className="ms-1.5 text-[16px] font-normal text-muted ltr-nums">({p.rating.count})</span>}
           </TabTitle>
           {p.rating && (
-            <p className="mt-4 flex items-center gap-2 text-[17px]">
+            <p className="mt-3 flex items-center gap-2 text-[17px]">
               <Stars value={p.rating.avg} size={22} />
               <span className="font-bold ltr-nums">{t.rating(p.rating.avg.toFixed(1), p.rating.count)}</span>
             </p>
@@ -252,14 +250,12 @@ export function ProductView({ p, lang, settings, url }: { p: P; lang: Lang; sett
   );
 }
 
-/** A section's name, underlined like a tab, on a hairline the width of the page. */
+/** A section's name; the hairline above the section already separates it. */
 function TabTitle({ id, children }: { id: string; children: React.ReactNode }) {
   return (
-    <div className="border-b border-line">
-      <h2 id={id} className="-mb-px inline-flex items-baseline border-b-2 border-ink pb-2.5 text-[19px] font-bold text-ink">
-        {children}
-      </h2>
-    </div>
+    <h2 id={id} className="text-[20px] font-bold text-ink">
+      {children}
+    </h2>
   );
 }
 

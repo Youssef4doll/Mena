@@ -146,9 +146,12 @@ export function Gallery({ slides, name, productId, badge, lang }: { slides: Slid
                 {s.kind === "image" ? (
                   <Image src={`/api/img/${s.image.id}`} alt="" fill sizes="72px" className="object-cover" />
                 ) : (
-                  <span className="flex h-full w-full items-center justify-center bg-night text-white">
-                    <IconPlay className="h-6 w-6" />
-                  </span>
+                  <>
+                    {s.poster && <Image src={`/api/img/${s.poster.id}`} alt="" fill sizes="72px" className="object-cover" />}
+                    <span className={`absolute inset-0 flex items-center justify-center text-white ${s.poster ? "bg-night/40" : "bg-night"}`}>
+                      <IconPlay className="h-6 w-6" />
+                    </span>
+                  </>
                 )}
               </button>
             ))}
