@@ -15,7 +15,7 @@ import { formatTND } from "@/lib/money";
 import { formatPhone, normalizePhone } from "@/lib/phone";
 import { GOVERNORATES, governorateLabel } from "@/lib/governorates";
 import { deliveryRangeLabel } from "@/lib/delivery";
-import { IconCartPlus, IconCheck, IconShield, IconTruck, IconWhatsApp } from "./Icons";
+import { IconCartPlus, IconCheck, IconChevronDown, IconPhone, IconShield, IconTruck, IconWhatsApp } from "./Icons";
 
 export type OrderLine = { productId: string; variantId: string | null; offerId: string | null; qty: number };
 type Form = { name: string; phone: string; governorate: string; address: string };
@@ -51,9 +51,8 @@ type Props = {
   onNotReady?: () => void;
   /** The page's own total, shown while the server's answer is on its way; null when the page has none (the basket). */
   pagePrice: number | null;
-  /** The first row of the summary: "Prix · Achetez 2, la 3e offerte", or "Articles (3)". */
+  /** The first row of the summary: "Prix", or "Articles (3)". */
   priceLabel: string;
-  priceNote?: string | null;
   /** Options at different prices and none chosen: the amount is a "from". */
   priceVaries?: boolean;
   /** The chosen offer includes delivery. */
@@ -70,8 +69,6 @@ type Props = {
   onAddToCart?: () => boolean;
   submitTitle: string;
   submitSub: string;
-  /** The number in front of "Vos coordonnées" (2 after the offers), or none. */
-  step?: number | null;
 };
 
 /**
@@ -297,173 +294,40 @@ export function OrderForm(props: Props) {
   return (
     // A container: the fields go two by two when the form itself is wide enough, wherever it sits.
     <form id={props.formId} onSubmit={submit} noValidate className="@container flex flex-col gap-4">
-      <fieldset className="grid min-w-0 items-start gap-x-3 gap-y-3.5 @lg:grid-cols-2" onFocus={start}>
-        <legend className="mb-3 flex items-center gap-2.5 text-[19px] font-bold text-ink">
-          {props.step != null && <StepBadge n={props.step} />}
-          {t.buy.step2}
-        </legend>
+      {/* Four fields, each with its name above it, and nothing else to read. */}
+      <fieldset className="grid min-w-0 items-start gap-x-3 gap-y-3 @lg:grid-cols-2" onFocus={start}>
+        <legend className="sr-only">{t.buy.step2}</legend>
         <Field id={id("name")} label={t.buy.name} error={show("name") ? t.buy.nameError : null}>
           <input id={id("name")} value={f.name} onChange={(e) => update("name", e.target.value)} onBlur={blur("name")} onKeyDown={next(id("phone"))} enterKeyHint="next" autoComplete="name" placeholder={t.buy.namePh} className={inputCls(show("name"))} aria-invalid={show("name")} aria-describedby={show("name") ? id("name-msg") : undefined} data-testid="name" />
         </Field>
-        <Field id={id("phone")} label={t.buy.phone} error={show("phone") ? (f.phone.trim() ? t.checkout.phoneInvalid : t.buy.phoneRequired) : null} hint={t.buy.phoneHint}>
-          <div className={`flex h-14 items-stretch overflow-hidden rounded-xl border-2 bg-white focus-within:border-sea ${show("phone") ? "border-danger" : "border-field"}`} dir="ltr">
-            <span className="flex items-center border-e-2 border-line bg-sand px-2.5 text-[18px] text-ink-2">+216</span>
-            <input id={id("phone")} value={f.phone} onChange={(e) => update("phone", e.target.value)} onBlur={blur("phone")} onKeyDown={next(id("governorate"))} enterKeyHint="next" inputMode="tel" autoComplete="tel-national" placeholder="22 123 456" maxLength={16} className="min-w-0 flex-1 bg-transparent px-3 text-[19px] tracking-wide outline-none placeholder:text-placeholder" aria-invalid={show("phone")} aria-describedby={id("phone-msg")} data-testid="phone" />
+        <Field id={id("phone")} label={t.buy.phone} error={show("phone") ? (f.phone.trim() ? t.checkout.phoneInvalid : t.buy.phoneRequired) : null}>
+          <div className={`flex h-[54px] items-stretch overflow-hidden rounded-full border bg-white focus-within:border-sea focus-within:ring-2 focus-within:ring-sea/20 ${show("phone") ? "border-danger" : "border-field"}`} dir="ltr">
+            <span className="flex items-center border-e border-line ps-5 pe-3 text-[17px] text-muted">+216</span>
+            <input id={id("phone")} value={f.phone} onChange={(e) => update("phone", e.target.value)} onBlur={blur("phone")} onKeyDown={next(id("governorate"))} enterKeyHint="next" inputMode="tel" autoComplete="tel-national" placeholder="22 123 456" maxLength={16} className="min-w-0 flex-1 bg-transparent px-3 text-[18px] tracking-wide outline-none placeholder:text-placeholder" aria-invalid={show("phone")} aria-describedby={show("phone") ? id("phone-msg") : undefined} data-testid="phone" />
           </div>
         </Field>
         <Field id={id("governorate")} label={t.buy.governorate} error={show("governorate") ? t.buy.govError : null}>
-          <select id={id("governorate")} value={f.governorate} onChange={(e) => update("governorate", e.target.value)} onBlur={blur("governorate")} autoComplete="address-level1" className={inputCls(show("governorate"))} aria-invalid={show("governorate")} aria-describedby={show("governorate") ? id("governorate-msg") : undefined} data-testid="governorate">
-            <option value="">{t.buy.chooseGov}</option>
-            {GOVERNORATES.map((g) => (
-              <option key={g.id} value={g.id} disabled={settings.delivery.zones[g.id]?.enabled === false}>
-                {governorateLabel(g.id, lang)}
-              </option>
-            ))}
-          </select>
+          <div className="relative">
+            <select id={id("governorate")} value={f.governorate} onChange={(e) => update("governorate", e.target.value)} onBlur={blur("governorate")} autoComplete="address-level1" className={`${inputCls(show("governorate"))} appearance-none pe-12`} aria-invalid={show("governorate")} aria-describedby={show("governorate") ? id("governorate-msg") : undefined} data-testid="governorate">
+              <option value="">{t.buy.chooseGov}</option>
+              {GOVERNORATES.map((g) => (
+                <option key={g.id} value={g.id} disabled={settings.delivery.zones[g.id]?.enabled === false}>
+                  {governorateLabel(g.id, lang)}
+                </option>
+              ))}
+            </select>
+            <IconChevronDown className="pointer-events-none absolute end-5 top-1/2 h-5 w-5 -translate-y-1/2 text-ink-2" />
+          </div>
         </Field>
-        <Field id={id("address")} label={t.buy.address} error={show("address") ? t.buy.addressError : null} hint={t.buy.addressHint}>
-          {/* Grows with what is typed, so the whole address can be read again before confirming. */}
-          <textarea id={id("address")} value={f.address} onChange={(e) => update("address", e.target.value)} onBlur={blur("address")} enterKeyHint="done" autoComplete="street-address" rows={2} maxLength={ADDRESS_MAX} placeholder={t.buy.addressPh} className={`${inputCls(show("address"))} h-auto max-h-40 min-h-14 resize-none py-3 leading-snug [field-sizing:content]`} aria-invalid={show("address")} aria-describedby={id("address-msg")} data-testid="address" />
+        <Field id={id("address")} label={t.buy.address} error={show("address") ? t.buy.addressError : null}>
+          {/* One line like the others, growing with what is typed so the whole address can be read again. */}
+          <textarea id={id("address")} value={f.address} onChange={(e) => update("address", e.target.value)} onBlur={blur("address")} enterKeyHint="done" autoComplete="street-address" rows={1} maxLength={ADDRESS_MAX} placeholder={t.buy.addressPh} className={`${inputCls(show("address"))} h-auto max-h-40 min-h-[54px] resize-none rounded-[27px] py-3.5 leading-snug [field-sizing:content]`} aria-invalid={show("address")} aria-describedby={show("address") ? id("address-msg") : undefined} data-testid="address" />
         </Field>
       </fieldset>
 
-      {/* ------------------------------------------------ summary */}
-      <dl className="flex flex-col gap-2 rounded-2xl bg-cream p-3.5 text-[16px]">
-        <div className="flex justify-between gap-3 text-ink-2">
-          <dt>
-            {props.priceLabel}
-            {props.priceNote && <span className="text-muted"> · {props.priceNote}</span>}
-          </dt>
-          <dd className="shrink-0 whitespace-nowrap price-nums ltr-nums">{waiting ? <span className="text-muted">{t.cart.loading}</span> : formatTND(price, lang)}</dd>
-        </div>
-        {discount > 0 && (
-          <div className="flex justify-between gap-3 text-olive">
-            <dt>{t.checkout.discount}</dt>
-            <dd className="shrink-0 whitespace-nowrap price-nums ltr-nums">−{formatTND(discount, lang)}</dd>
-          </div>
-        )}
-        <div className="flex justify-between gap-3 text-ink-2">
-          <dt>
-            {t.buy.delivery}
-            {f.governorate && <span className="text-muted"> · {governorateLabel(f.governorate, lang)}</span>}
-          </dt>
-          <dd className="shrink-0 whitespace-nowrap price-nums ltr-nums">
-            {freeKnown ? (
-              <span className="font-bold text-olive">{t.product.free}</span>
-            ) : delivery ? (
-              formatTND(delivery.fee, lang)
-            ) : fees ? (
-              // Before a governorate is chosen: the shop's real fees, lowest to highest.
-              fees.min === fees.max ? formatTND(fees.min, lang) : t.buy.deliveryRange(formatTND(fees.min, lang), formatTND(fees.max, lang))
-            ) : (
-              <span className="text-muted">{t.buy.deliveryChoose}</span>
-            )}
-          </dd>
-        </div>
-        <div className="flex items-baseline justify-between gap-3 border-t border-line pt-2.5">
-          <dt className="font-bold text-ink">{t.buy.total}</dt>
-          <dd className="shrink-0 text-end" data-testid="total">
-            {waiting ? (
-              <span className="text-[17px] text-muted">{t.cart.loading}</span>
-            ) : priced && (delivery || freeKnown) ? (
-              <span className="whitespace-nowrap text-[23px] font-bold text-ink price-nums ltr-nums">{formatTND(delivery ? quote.total : price - discount, lang)}</span>
-            ) : (
-              // Never a dash: the price is known, only the delivery (or the option) is still to come.
-              <>
-                <span className="block whitespace-nowrap text-[23px] font-bold text-ink">
-                  {props.priceVaries && <span className="text-[15px] font-normal text-muted">{t.product.from} </span>}
-                  <span className="price-nums ltr-nums">{formatTND(price - discount, lang)}</span>
-                </span>
-                {!freeKnown && <span className="block text-[15px] font-normal text-muted">{t.buy.plusDelivery}</span>}
-              </>
-            )}
-          </dd>
-        </div>
-        {delivery && (
-          <p className="flex items-center gap-2 text-[15px] text-muted">
-            <IconTruck className="h-4 w-4 shrink-0" />
-            {t.checkout.deliveryDelay(deliveryRangeLabel(delivery.minDays, delivery.maxDays, lang))}
-          </p>
-        )}
-        {quote?.deliveryUnavailable && <p className="text-[15px] text-danger">{t.checkout.errors.delivery_unavailable}</p>}
-        {!delivery && !freeKnown && threshold != null && <p className="text-[15px] text-muted">{t.product.freeFrom(formatTND(threshold, lang))}</p>}
-      </dl>
-
-      {error && (
-        <p className="rounded-xl bg-clay-soft px-4 py-3 text-[16px] text-clay" role="alert">
-          {error}
-        </p>
-      )}
-
-      {/* The strongest button on the page; the basket is the quieter choice under it. */}
-      <button type="submit" disabled={busy} className="flex min-h-[64px] w-full items-center justify-center gap-3 rounded-2xl bg-buy px-4 py-2.5 text-night shadow-[inset_0_-4px_0_var(--color-buy-2)] transition [--focus-ring:var(--color-night)] hover:bg-buy-2 active:scale-[.99] disabled:opacity-80" data-testid="place-order">
-        <IconTruck className="h-7 w-7 shrink-0" />
-        <span className="flex flex-col items-start leading-tight">
-          <span className="text-[20px] font-bold">{busy ? t.buy.sending : props.submitTitle}</span>
-          {!busy && <span className="text-[15px] text-night/85">{props.submitSub}</span>}
-        </span>
-      </button>
-      {props.onAddToCart && (
-        <button type="button" onClick={addToCart} className="flex min-h-14 w-full items-center justify-center gap-2.5 rounded-2xl border-2 border-night/80 bg-white px-4 text-[18px] font-bold text-night transition hover:bg-sand active:scale-[.99]" data-testid="add-to-cart">
-          <IconCartPlus className="h-6 w-6 shrink-0" />
-          {t.product.addToCart}
-        </button>
-      )}
-
-      {/* The cash-on-delivery promises, right where the decision is made. */}
-      <div className="flex flex-col items-center gap-1.5 text-center">
-        <p className="inline-flex max-w-full items-start gap-2 text-start text-[16px] font-bold text-olive">
-          <IconCheck className="mt-0.5 h-5 w-5 shrink-0" />
-          {t.buy.reassure}
-        </p>
-        {settings.delivery.openBeforePaying && (
-          <p className="inline-flex max-w-full items-start gap-2 text-start text-[16px] text-ink-2">
-            <IconShield className="mt-0.5 h-5 w-5 shrink-0 text-sea" />
-            {t.trust.openBeforePaying}
-          </p>
-        )}
-        <p className="mt-1 text-[15px] leading-relaxed text-muted">
-          {t.buy.consentPhone} {t.buy.consentTerms}{" "}
-          <Link href={href(lang, "/conditions")} className="py-2 underline underline-offset-2" prefetch={false}>
-            {t.buy.termsLink}
-          </Link>
-          .
-        </p>
-      </div>
-
-      {(shopPhone || settings.contact.whatsapp) && (
-        <div className="grid gap-2 border-t border-line pt-4 @lg:grid-cols-2">
-          {shopPhone && (
-            <a
-              href={`tel:+216${shopPhone}`}
-              className="flex min-h-12 items-center justify-center gap-2 rounded-xl border-2 border-field px-3 text-center text-[16px] text-ink"
-              onClick={() => {
-                track("phone_clicked", { productId, props: { where: origin } });
-                pixelContact();
-              }}
-            >
-              {t.buy.callUs} : <strong className="ltr-nums">{formatPhone(shopPhone)}</strong>
-            </a>
-          )}
-          {settings.contact.whatsapp && (
-            <a
-              href={`https://wa.me/216${settings.contact.whatsapp}?text=${encodeURIComponent(props.waText)}`}
-              target="_blank"
-              rel="noopener"
-              onClick={() => {
-                track("whatsapp_clicked", { productId, props: { where: origin } });
-                pixelContact();
-              }}
-              className="flex min-h-12 items-center justify-center gap-2 rounded-xl bg-wa-soft px-3 text-[16px] font-bold text-wa-ink"
-            >
-              <IconWhatsApp className="h-5 w-5" />
-              {t.buy.whatsapp}
-            </a>
-          )}
-        </div>
-      )}
+      {/* ------------------------------------------------ promo code: a quiet link until it is wanted */}
       {!showPromo && !promo ? (
-        <button type="button" onClick={() => setShowPromo(true)} className="inline-flex min-h-11 items-center self-center px-3 text-[15px] text-muted underline underline-offset-4">
+        <button type="button" onClick={() => setShowPromo(true)} className="-my-1 inline-flex min-h-11 items-center self-start text-[15px] text-sea underline underline-offset-4">
           {t.buy.promo}
         </button>
       ) : promo ? (
@@ -487,50 +351,174 @@ export function OrderForm(props: Props) {
             enterKeyHint="done"
             placeholder={t.checkout.promo}
             aria-label={t.checkout.promo}
-            className="h-12 min-w-0 flex-1 rounded-xl border-2 border-field px-3 text-[17px] uppercase outline-none placeholder:text-placeholder focus:border-sea"
+            className="h-12 min-w-0 flex-1 rounded-full border border-field px-5 text-[17px] uppercase outline-none placeholder:text-placeholder focus:border-sea focus:ring-2 focus:ring-sea/20"
             dir="ltr"
             autoCapitalize="characters"
           />
-          <button type="button" onClick={() => promoInput.trim() && setPromo(promoInput.trim())} className="h-12 rounded-xl bg-ink px-4 text-[16px] font-bold text-white">
+          <button type="button" onClick={() => promoInput.trim() && setPromo(promoInput.trim())} className="h-12 rounded-full bg-ink px-5 text-[16px] font-bold text-white">
             {t.checkout.apply}
           </button>
         </div>
       )}
       {promo && promoError && <p className="-mt-2 text-[15px] text-danger">{promoError}</p>}
+
+      {/* ------------------------------------------------ summary: three plain lines */}
+      <dl className="flex flex-col gap-2 text-[16px]">
+        <div className="flex justify-between gap-3 text-ink-2">
+          <dt>{props.priceLabel}</dt>
+          <dd className="shrink-0 whitespace-nowrap price-nums ltr-nums">{waiting ? <span className="text-muted">{t.cart.loading}</span> : formatTND(price, lang)}</dd>
+        </div>
+        {discount > 0 && (
+          <div className="flex justify-between gap-3 text-olive">
+            <dt>{t.checkout.discount}</dt>
+            <dd className="shrink-0 whitespace-nowrap price-nums ltr-nums">−{formatTND(discount, lang)}</dd>
+          </div>
+        )}
+        <div className="flex justify-between gap-3 text-ink-2">
+          <dt>
+            {t.buy.delivery}
+            {f.governorate && <span className="text-muted"> · {governorateLabel(f.governorate, lang)}</span>}
+          </dt>
+          <dd className="shrink-0 whitespace-nowrap price-nums ltr-nums">
+            {freeKnown ? (
+              <span className="font-bold text-olive">{t.product.free}</span>
+            ) : delivery ? (
+              formatTND(delivery.fee, lang)
+            ) : fees ? (
+              // Before a governorate is chosen: the shop's lowest real fee.
+              fees.min === fees.max ? formatTND(fees.min, lang) : t.buy.deliveryFrom(formatTND(fees.min, lang))
+            ) : (
+              <span className="text-muted">{t.buy.deliveryChoose}</span>
+            )}
+          </dd>
+        </div>
+        <div className="flex items-baseline justify-between gap-3 border-t border-line pt-3">
+          <dt className="text-[18px] font-bold text-ink">{t.buy.total}</dt>
+          <dd className="shrink-0 text-end" data-testid="total">
+            {waiting ? (
+              <span className="text-[17px] text-muted">{t.cart.loading}</span>
+            ) : priced && (delivery || freeKnown) ? (
+              <span className="whitespace-nowrap text-[22px] font-bold text-ink price-nums ltr-nums">{formatTND(delivery ? quote.total : price - discount, lang)}</span>
+            ) : (
+              // Never a dash: the price is known, only the delivery (or the option) is still to come.
+              <>
+                <span className="block whitespace-nowrap text-[22px] font-bold text-ink">
+                  {props.priceVaries && <span className="text-[15px] font-normal text-muted">{t.product.from} </span>}
+                  <span className="price-nums ltr-nums">{formatTND(price - discount, lang)}</span>
+                </span>
+                {!freeKnown && <span className="block text-[14px] font-normal text-muted">{t.buy.plusDelivery}</span>}
+              </>
+            )}
+          </dd>
+        </div>
+        {delivery && (
+          <p className="flex items-center gap-2 text-[15px] text-muted">
+            <IconTruck className="h-4 w-4 shrink-0" />
+            {t.checkout.deliveryDelay(deliveryRangeLabel(delivery.minDays, delivery.maxDays, lang))}
+          </p>
+        )}
+        {quote?.deliveryUnavailable && <p className="text-[15px] text-danger">{t.checkout.errors.delivery_unavailable}</p>}
+        {!delivery && !freeKnown && threshold != null && <p className="text-[15px] text-muted">{t.product.freeFrom(formatTND(threshold, lang))}</p>}
+      </dl>
+
+      {error && (
+        <p className="rounded-xl bg-clay-soft px-4 py-3 text-[16px] text-clay" role="alert">
+          {error}
+        </p>
+      )}
+
+      {/* The strongest button on the page; the basket is the quieter choice under it. */}
+      <button type="submit" disabled={busy} className="flex min-h-[62px] w-full items-center justify-center gap-3 rounded-full bg-buy px-6 py-2 text-night shadow-[inset_0_-3px_0_var(--color-buy-2)] transition [--focus-ring:var(--color-night)] hover:bg-buy-2 active:scale-[.99] disabled:opacity-80" data-testid="place-order">
+        <IconTruck className="h-6 w-6 shrink-0" />
+        <span className="flex flex-col items-start leading-tight">
+          <span className="text-[19px] font-bold">{busy ? t.buy.sending : props.submitTitle}</span>
+          {!busy && <span className="text-[14px] text-night/80">{props.submitSub}</span>}
+        </span>
+      </button>
+      {props.onAddToCart && (
+        <button type="button" onClick={addToCart} className="-mt-1 flex min-h-[52px] w-full items-center justify-center gap-2.5 rounded-full border border-ink/60 bg-white px-5 text-[17px] font-bold text-ink transition hover:bg-sand active:scale-[.99]" data-testid="add-to-cart">
+          <IconCartPlus className="h-6 w-6 shrink-0" />
+          {t.product.addToCart}
+        </button>
+      )}
+
+      {/* The cash-on-delivery promise, in one or two short lines. */}
+      <ul className="flex flex-col items-center gap-1 text-center text-[15px] text-ink-2">
+        <li className="inline-flex max-w-full items-start gap-1.5 text-start">
+          <IconCheck className="mt-0.5 h-5 w-5 shrink-0 text-olive" />
+          {t.buy.reassure}
+        </li>
+        {settings.delivery.openBeforePaying && (
+          <li className="inline-flex max-w-full items-start gap-1.5 text-start">
+            <IconShield className="mt-0.5 h-5 w-5 shrink-0 text-sea" />
+            {t.trust.openBeforePaying}
+          </li>
+        )}
+      </ul>
+
+      {(shopPhone || settings.contact.whatsapp) && (
+        <div className="flex flex-wrap justify-center gap-2">
+          {settings.contact.whatsapp && (
+            <a
+              href={`https://wa.me/216${settings.contact.whatsapp}?text=${encodeURIComponent(props.waText)}`}
+              target="_blank"
+              rel="noopener"
+              onClick={() => {
+                track("whatsapp_clicked", { productId, props: { where: origin } });
+                pixelContact();
+              }}
+              className="inline-flex min-h-11 items-center gap-2 rounded-full bg-wa-soft px-4 text-[15px] font-bold text-wa-ink"
+            >
+              <IconWhatsApp className="h-5 w-5" />
+              {t.buy.whatsapp}
+            </a>
+          )}
+          {shopPhone && (
+            <a
+              href={`tel:+216${shopPhone}`}
+              className="inline-flex min-h-11 items-center gap-2 rounded-full border border-line px-4 text-[15px] text-ink"
+              aria-label={`${t.buy.callUs} : ${formatPhone(shopPhone)}`}
+              onClick={() => {
+                track("phone_clicked", { productId, props: { where: origin } });
+                pixelContact();
+              }}
+            >
+              <IconPhone className="h-[18px] w-[18px] text-ink-2" />
+              <strong className="ltr-nums">{formatPhone(shopPhone)}</strong>
+            </a>
+          )}
+        </div>
+      )}
+
+      <p className="text-center text-[13px] leading-relaxed text-muted">
+        {t.buy.consentPhone} {t.buy.consentTerms}{" "}
+        <Link href={href(lang, "/conditions")} className="py-2 underline underline-offset-2" prefetch={false}>
+          {t.buy.termsLink}
+        </Link>
+        .
+      </p>
       {/* Honeypot: invisible to people, irresistible to bots. */}
       <input type="text" name="website" tabIndex={-1} autoComplete="off" className="absolute -start-[9999px] h-0 w-0 opacity-0" aria-hidden />
     </form>
   );
 }
 
-export function StepBadge({ n }: { n: number }) {
+export function Field({ id, label, error, children }: { id: string; label: string; error?: string | null; children: React.ReactNode }) {
   return (
-    <span aria-hidden className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-navy text-[16px] text-white">
-      {n}
-    </span>
-  );
-}
-
-export function Field({ id, label, hint, error, children }: { id: string; label: string; hint?: string; error?: string | null; children: React.ReactNode }) {
-  return (
-    <div className="flex min-w-0 flex-col gap-1">
-      <label htmlFor={id} className="text-[16px] font-bold text-ink">
+    <div className="flex min-w-0 flex-col gap-1.5">
+      <label htmlFor={id} className="ps-1 text-[16px] text-ink-2">
         {label}
       </label>
       {children}
-      {error ? (
-        <p id={`${id}-msg`} className="text-[15px] font-bold text-danger">
+      {error && (
+        <p id={`${id}-msg`} className="ps-1 text-[15px] font-bold text-danger">
           {error}
         </p>
-      ) : hint ? (
-        <p id={`${id}-msg`} className="text-[15px] leading-snug text-muted">
-          {hint}
-        </p>
-      ) : null}
+      )}
     </div>
   );
 }
 
 export function inputCls(invalid: boolean) {
-  return `h-14 w-full min-w-0 rounded-xl border-2 bg-white px-3 text-[18px] text-ink outline-none placeholder:text-placeholder focus:border-sea ${invalid ? "border-danger" : "border-field"}`;
+  return `h-[54px] w-full min-w-0 rounded-full border bg-white px-5 text-[17px] text-ink outline-none placeholder:text-placeholder focus:border-sea focus:ring-2 focus:ring-sea/20 ${invalid ? "border-danger" : "border-field"}`;
 }

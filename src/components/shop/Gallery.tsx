@@ -24,10 +24,10 @@ export function slidesOf(images: ImageRef[], video: Video | null): Slide[] {
 }
 
 /**
- * The pictures, Amazon's way: swiped on a phone with the thumbnails under
- * them, the thumbnails down the side on a computer, a counter, and the whole
- * set in full screen (with zoom) at a tap. The video plays in its place,
- * loaded only when asked for.
+ * The pictures in a light frame: swiped on a phone with the thumbnails
+ * centred under them, the thumbnails down the side on a computer, and the
+ * whole set in full screen (with zoom) at a tap. The video plays in its
+ * place, loaded only when asked for.
  */
 export function Gallery({ slides, name, productId, badge, lang }: { slides: Slide[]; name: string; productId: string; badge: number; lang: Lang }) {
   const t = dict(lang);
@@ -38,13 +38,13 @@ export function Gallery({ slides, name, productId, badge, lang }: { slides: Slid
   const swiped = useRef(false);
   const tag =
     badge > 0 ? (
-      <span className="pointer-events-none absolute start-3 top-3 z-10 rounded-lg bg-deal px-2.5 py-1 text-[16px] font-bold text-white">
+      <span className="pointer-events-none absolute start-3 top-3 z-10 rounded-full bg-deal px-2.5 text-[14px] font-bold leading-7 text-white">
         <span className="ltr-nums">−{badge}%</span>
       </span>
     ) : null;
   if (slides.length === 0)
     return (
-      <div className="relative -mx-4 aspect-square overflow-hidden md:mx-0 md:rounded-3xl">
+      <div className="relative aspect-square overflow-hidden rounded-2xl border border-line">
         {tag}
         <Placeholder />
       </div>
@@ -63,11 +63,11 @@ export function Gallery({ slides, name, productId, badge, lang }: { slides: Slid
 
   return (
     <div className="flex flex-col gap-2.5 md:flex-row md:items-start md:gap-3">
-      <div className="relative -mx-4 min-w-0 md:mx-0 md:flex-1">
+      <div className="relative min-w-0 md:flex-1">
         {tag}
         <div
           ref={ref}
-          className="flex aspect-square snap-x snap-mandatory overflow-x-auto overscroll-x-contain bg-white no-scrollbar md:rounded-3xl md:border md:border-line"
+          className="flex aspect-square snap-x snap-mandatory overflow-x-auto overscroll-x-contain rounded-2xl border border-line bg-white no-scrollbar"
           onScroll={(e) => {
             const el = e.currentTarget;
             const n = Math.round(Math.abs(el.scrollLeft) / el.clientWidth);
@@ -123,46 +123,36 @@ export function Gallery({ slides, name, productId, badge, lang }: { slides: Slid
             </div>
           ))}
         </div>
-        {/* Photos are counted as the full-screen viewer counts them; the video says what it is. */}
-        {slides.length > 1 && (
-          <span className="pointer-events-none absolute end-3 top-3 rounded-full bg-night/75 px-2.5 py-1 text-[14px] font-bold text-white" aria-hidden>
-            {slides[i]?.kind === "image" ? (
-              <span className="ltr-nums">
-                {photos.indexOf((slides[i] as { image: ImageRef }).image) + 1}/{photos.length}
-              </span>
-            ) : (
-              t.product.video
-            )}
-          </span>
-        )}
         {slides[i]?.kind === "image" && (
-          <button type="button" onClick={() => open(photos.indexOf((slides[i] as { image: ImageRef }).image))} onPointerDown={preloadViewer} className="absolute bottom-3 end-3 flex h-12 w-12 items-center justify-center rounded-full bg-white/95 text-ink shadow-soft" aria-label={t.product.zoom}>
-            <IconExpand className="h-6 w-6" />
+          <button type="button" onClick={() => open(photos.indexOf((slides[i] as { image: ImageRef }).image))} onPointerDown={preloadViewer} className="absolute bottom-3 end-3 flex h-11 w-11 items-center justify-center rounded-full border border-line bg-white/95 text-ink-2" aria-label={t.product.zoom}>
+            <IconExpand className="h-5 w-5" />
           </button>
         )}
       </div>
 
       {slides.length > 1 && (
-        // Thumbnails: under the picture on a phone (swiped if many), down the side on a computer.
-        <div className="flex gap-2 overflow-x-auto px-0.5 py-0.5 no-scrollbar md:order-first md:max-h-[560px] md:flex-col md:overflow-y-auto md:overflow-x-visible">
-          {slides.map((s, n) => (
-            <button
-              key={n}
-              type="button"
-              onClick={() => go(n)}
-              className={`relative h-16 w-16 shrink-0 overflow-hidden rounded-xl border-2 bg-white transition md:h-[72px] md:w-[72px] ${i === n ? "border-sea ring-2 ring-sea/30" : "border-line hover:border-sea/50"}`}
-              aria-label={s.kind === "video" ? t.product.playVideo : t.product.photo(photos.indexOf(s.image) + 1, photos.length)}
-              aria-current={i === n}
-            >
-              {s.kind === "image" ? (
-                <Image src={`/api/img/${s.image.id}`} alt="" fill sizes="72px" className="object-cover" />
-              ) : (
-                <span className="flex h-full w-full items-center justify-center bg-night text-white">
-                  <IconPlay className="h-7 w-7" />
-                </span>
-              )}
-            </button>
-          ))}
+        // Thumbnails: centred under the picture on a phone (swiped if many), down the side on a computer.
+        <div className="overflow-x-auto no-scrollbar md:order-first md:max-h-[560px] md:overflow-y-auto md:overflow-x-visible">
+          <div className="mx-auto flex w-max gap-2 p-0.5 md:mx-0 md:w-auto md:flex-col">
+            {slides.map((s, n) => (
+              <button
+                key={n}
+                type="button"
+                onClick={() => go(n)}
+                className={`relative h-14 w-14 shrink-0 overflow-hidden rounded-xl border bg-white transition md:h-[72px] md:w-[72px] ${i === n ? "border-sea ring-1 ring-sea" : "border-line hover:border-sea/50"}`}
+                aria-label={s.kind === "video" ? t.product.playVideo : t.product.photo(photos.indexOf(s.image) + 1, photos.length)}
+                aria-current={i === n}
+              >
+                {s.kind === "image" ? (
+                  <Image src={`/api/img/${s.image.id}`} alt="" fill sizes="72px" className="object-cover" />
+                ) : (
+                  <span className="flex h-full w-full items-center justify-center bg-night text-white">
+                    <IconPlay className="h-6 w-6" />
+                  </span>
+                )}
+              </button>
+            ))}
+          </div>
         </div>
       )}
 

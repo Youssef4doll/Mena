@@ -11,8 +11,8 @@ import { pixelAddToCart } from "@/lib/client/pixels";
 import { addToCart, type CartItem } from "@/lib/client/cart";
 import { formatTND } from "@/lib/money";
 import { discountPct, formatDay } from "@/lib/offer-display";
-import { OrderForm, StepBadge } from "./OrderForm";
-import { IconCheck, IconMinus, IconPlus } from "./Icons";
+import { OrderForm } from "./OrderForm";
+import { IconMinus, IconPlus, IconTruck } from "./Icons";
 
 type P = Omit<ProductPage, "related">;
 type Offer = P["offers"][number];
@@ -166,10 +166,7 @@ export function BuyBox({ p, lang, settings, url, choice, idp = "bb", onAdded }: 
       {/* ------------------------------------------------------ 1. choose */}
       {p.offers.length > 0 && (
         <fieldset className="flex min-w-0 flex-col gap-2.5">
-          <legend className="mb-3 flex items-center gap-2.5 text-[19px] font-bold text-ink">
-            <StepBadge n={1} />
-            {t.buy.step1}
-          </legend>
+          <legend className="sr-only">{t.buy.step1}</legend>
           {p.offers.map((o) => (
             <OfferCard
               key={o.id}
@@ -191,9 +188,9 @@ export function BuyBox({ p, lang, settings, url, choice, idp = "bb", onAdded }: 
 
       {p.variants.length > 0 && (
         <div id={id("variants")} className="flex scroll-mt-24 flex-col gap-2" role="group" aria-labelledby={id("variants-label")}>
-          <p id={id("variants-label")} className={`text-[19px] font-bold ${variantError && needsVariant ? "text-danger" : "text-ink"}`} aria-live="polite">
+          <p id={id("variants-label")} className={`ps-1 text-[16px] ${variantError && needsVariant ? "font-bold text-danger" : "text-ink-2"}`} aria-live="polite">
             {variantError && needsVariant ? t.buy.variantError : t.product.choose}
-            {variant && <span className="font-normal text-muted">{lang === "ar" ? ": " : " : "}{pick(lang, variant.name, variant.nameAr)}</span>}
+            {variant && <span className="font-bold text-ink">{lang === "ar" ? ": " : " : "}{pick(lang, variant.name, variant.nameAr)}</span>}
           </p>
           {/* Tiles like the shops customers know: the name, its price when it differs, and whether it is there. */}
           <div className="grid grid-cols-[repeat(auto-fill,minmax(104px,1fr))] gap-2">
@@ -207,8 +204,8 @@ export function BuyBox({ p, lang, settings, url, choice, idp = "bb", onAdded }: 
                   chose();
                 }}
                 aria-pressed={variant?.id === v.id}
-                className={`flex min-h-14 flex-col items-start justify-center rounded-xl border-2 px-3 py-2 text-start transition ${
-                  variant?.id === v.id ? "border-sea bg-sea-soft ring-2 ring-sea/30" : "border-field bg-white hover:border-sea/60"
+                className={`flex min-h-[52px] flex-col items-start justify-center rounded-2xl border px-4 py-2 text-start transition ${
+                  variant?.id === v.id ? "border-sea bg-sea-soft/60 ring-1 ring-sea" : "border-field bg-white hover:border-sea/60"
                 } disabled:cursor-not-allowed disabled:border-dashed disabled:border-line disabled:bg-sand/50`}
               >
                 <span className={`text-[16px] leading-tight ${variant?.id === v.id ? "font-bold text-sea-2" : "text-ink"} ${v.soldOut ? "text-muted line-through" : ""}`}>{pick(lang, v.name, v.nameAr)}</span>
@@ -225,8 +222,8 @@ export function BuyBox({ p, lang, settings, url, choice, idp = "bb", onAdded }: 
 
       {!hasOffers && !out && (
         <div className="flex items-center justify-between gap-3">
-          <span className="text-[17px] font-bold text-ink" id={id("qty-label")}>{t.buy.quantity}</span>
-          <div className="inline-flex h-12 items-center rounded-xl border-2 border-field bg-white" role="group" aria-labelledby={id("qty-label")}>
+          <span className="ps-1 text-[16px] text-ink-2" id={id("qty-label")}>{t.buy.quantity}</span>
+          <div className="inline-flex h-12 items-center rounded-full border border-field bg-white px-1" role="group" aria-labelledby={id("qty-label")}>
             <button type="button" className="flex h-12 w-12 items-center justify-center disabled:opacity-30" onClick={() => { choice.setQty(Math.max(1, qty - 1)); chose(); }} disabled={qty <= 1} aria-label={t.buy.qtyLess}>
               <IconMinus className="h-5 w-5" />
             </button>
@@ -257,7 +254,6 @@ export function BuyBox({ p, lang, settings, url, choice, idp = "bb", onAdded }: 
           onNotReady={askVariant}
           pagePrice={pageTotal}
           priceLabel={t.buy.price}
-          priceNote={offer ? pick(lang, offer.label, offer.labelAr) : null}
           priceVaries={priceVaries}
           freeOffer={offer?.freeDelivery}
           onQuote={onQuote}
@@ -277,7 +273,6 @@ export function BuyBox({ p, lang, settings, url, choice, idp = "bb", onAdded }: 
           }}
           submitTitle={t.product.buyNow}
           submitSub={t.buy.submitSub}
-          step={p.offers.length > 0 ? 2 : null}
         />
       )}
     </div>
@@ -286,8 +281,8 @@ export function BuyBox({ p, lang, settings, url, choice, idp = "bb", onAdded }: 
 
 /**
  * One offer, laid out like the cards Tunisian shoppers already know: the
- * picture with its quantity, the name, the price with the real price it
- * replaces and the saving, and the round choice at the end.
+ * picture with its quantity, the name and the saving, the price with the real
+ * price it replaces, and the round choice at the end. Light until chosen.
  */
 function OfferCard({ o, lang, name, locale, imageId, checked, disabled, onSelect }: { o: Offer; lang: Lang; name: string; locale: string; imageId: string | null; checked: boolean; disabled: boolean; onSelect: () => void }) {
   const t = dict(lang);
@@ -298,54 +293,55 @@ function OfferCard({ o, lang, name, locale, imageId, checked, disabled, onSelect
   const struck = o.compareAt != null && o.compareAt > o.price ? o.compareAt : null;
   return (
     <label
-      className={`relative flex items-center gap-3 rounded-2xl border-2 p-2.5 transition sm:p-3 ${
-        disabled ? "cursor-not-allowed border-dashed border-line bg-sand/50 opacity-70" : checked ? "cursor-pointer border-sea bg-sea-soft shadow-soft ring-2 ring-sea/30" : "cursor-pointer border-field bg-white hover:border-sea/60"
+      className={`relative flex items-center gap-3 rounded-2xl border p-2.5 transition ${
+        disabled ? "cursor-not-allowed border-dashed border-line bg-sand/50 opacity-70" : checked ? "cursor-pointer border-sea bg-sea-soft/60 ring-1 ring-sea" : "cursor-pointer border-sand-2 bg-white hover:border-sea/60"
       }`}
     >
-      <span className="relative h-[72px] w-[72px] shrink-0 overflow-hidden rounded-xl bg-sand">
+      <span className="relative h-16 w-16 shrink-0 overflow-hidden rounded-xl bg-sand">
         {imageId && (
           // eslint-disable-next-line @next/next/no-img-element
           <img src={`/api/img/${imageId}/200`} alt="" className="h-full w-full object-cover" loading="lazy" decoding="async" />
         )}
-        <span aria-hidden className="absolute bottom-1 end-1 rounded-md bg-sea px-2 text-[15px] font-bold leading-6 text-white">
+        <span aria-hidden className="absolute bottom-1 end-1 rounded-full bg-sea px-1.5 text-[13px] font-bold leading-5 text-white">
           <span className="ltr-nums">×{o.quantity}</span>
         </span>
       </span>
-      <span className="flex min-w-0 flex-1 flex-col gap-1">
+      <span className="flex min-w-0 flex-1 flex-col gap-0.5">
         <span className="flex flex-wrap items-center gap-x-2 gap-y-1">
-          <span className="text-[17px] font-bold leading-snug text-ink">{pick(lang, o.label, o.labelAr)}</span>
-          {o.mostChosen && !disabled && (
-            <span className="inline-flex items-center gap-1 rounded-full bg-sea px-2 py-0.5 text-[14px] font-bold text-white">
-              <IconCheck className="h-3.5 w-3.5" /> {t.buy.mostChosen}
-            </span>
-          )}
-        </span>
-        <span className="relative flex flex-wrap items-center gap-x-2 gap-y-1">
-          <span className="whitespace-nowrap text-[19px] font-bold text-ink price-nums ltr-nums">{formatTND(o.price, lang)}</span>
-          {struck != null && !disabled && (
-            <>
-              <span className="sr-only">{t.buy.instead(formatTND(struck, lang))}</span>
-              <span aria-hidden className="whitespace-nowrap text-[15px] text-muted line-through price-nums ltr-nums">{formatTND(struck, lang)}</span>
-            </>
-          )}
+          <span className="text-[16px] leading-snug text-ink">{pick(lang, o.label, o.labelAr)}</span>
           {pct > 0 && !disabled && (
-            <span className="rounded-md bg-deal px-2 py-0.5 text-[14px] font-bold text-white">
+            <span className="rounded-full bg-deal px-2 text-[13px] font-bold leading-6 text-white">
               <span className="ltr-nums">−{pct}%</span>
             </span>
           )}
+          {o.mostChosen && !disabled && <span className="rounded-full bg-sea px-2 text-[13px] font-bold leading-6 text-white">{t.buy.mostChosen}</span>}
+        </span>
+        <span className="flex flex-wrap items-baseline gap-x-2">
+          <span className="whitespace-nowrap text-[18px] font-bold text-ink price-nums ltr-nums">{formatTND(o.price, lang)}</span>
+          {struck != null && !disabled && (
+            <>
+              <span className="sr-only">{t.buy.instead(formatTND(struck, lang))}</span>
+              <span aria-hidden className="whitespace-nowrap text-[14px] text-muted line-through price-nums ltr-nums">{formatTND(struck, lang)}</span>
+            </>
+          )}
         </span>
         {disabled ? (
-          <span className="text-[15px] text-muted">{t.buy.packTooBig}</span>
+          <span className="text-[14px] text-muted">{t.buy.packTooBig}</span>
         ) : (
           (o.freeDelivery || o.lastDay) && (
-            <span className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[15px]">
-              {o.freeDelivery && <span className="rounded-lg bg-olive-soft px-2 py-0.5 font-bold text-olive">{t.buy.freeDelivery}</span>}
+            <span className="flex flex-wrap items-center gap-x-2 text-[14px]">
+              {o.freeDelivery && (
+                <span className="inline-flex items-center gap-1 font-bold text-olive">
+                  <IconTruck className="h-4 w-4" />
+                  {t.buy.freeDelivery}
+                </span>
+              )}
               {o.lastDay && <span className="text-muted">{t.buy.until(formatDay(o.lastDay, locale))}</span>}
             </span>
           )
         )}
       </span>
-      <input type="radio" name={name} checked={checked} disabled={disabled} onChange={onSelect} className="h-6 w-6 shrink-0 accent-[var(--color-sea)]" data-testid={`offer-${o.quantity}`} />
+      <input type="radio" name={name} checked={checked} disabled={disabled} onChange={onSelect} className="h-[22px] w-[22px] shrink-0 accent-[var(--color-sea)]" data-testid={`offer-${o.quantity}`} />
     </label>
   );
 }

@@ -8,21 +8,21 @@ import type { PublicSettings } from "@/lib/settings-schema";
 import { track } from "@/lib/client/track";
 import { pixelViewContent } from "@/lib/client/pixels";
 import { formatTND } from "@/lib/money";
-import { deliversEverywhere, governorateLabel } from "@/lib/governorates";
+import { governorateLabel } from "@/lib/governorates";
 import { discountPct, leadOffer } from "@/lib/offer-display";
 import { Stars } from "./Stars";
 import { Gallery, slidesOf } from "./Gallery";
-import { BuyBox, addChoiceToCart, useBuyChoice, type BuyChoice } from "./BuyBox";
-import { IconCartPlus, IconCash, IconCheck, IconFire, IconReturn, IconTruck } from "./Icons";
+import { BuyBox, useBuyChoice, type BuyChoice } from "./BuyBox";
+import { IconCheck, IconFire, IconTruck } from "./Icons";
 
 type P = Omit<ProductPage, "related">;
 
 /**
- * Amazon's product page, kept to what a cash-on-delivery customer needs: the
- * name and a line about the product, the pictures (and the video), the price,
- * and right under it the form that places the order. Under the form, all
- * there is to know: the description, the specifications, the long pictures,
- * the reviews of customers who received it.
+ * The product page, kept to what a cash-on-delivery customer needs, in the
+ * order they need it: the pictures (and the video), the name and a line about
+ * the product, the price, the offers and the four-field form. Under it, the
+ * description with its long pictures, the specifications, and the reviews of
+ * customers who received it. Few words, plain sizes, one strong button.
  */
 export function ProductView({ p, lang, settings, url }: { p: P; lang: Lang; settings: PublicSettings; url: string }) {
   const t = dict(lang);
@@ -35,9 +35,9 @@ export function ProductView({ p, lang, settings, url }: { p: P; lang: Lang; sett
   const choice = useBuyChoice(p);
   const shown = shownPrice(p, choice, lang);
   const pct = out ? 0 : discountPct(shown.price, shown.compareAt);
+  const struck = !out && shown.compareAt != null && shown.compareAt > shown.price ? shown.compareAt : null;
+  const pay = payNow(p, choice);
   const slides = useMemo(() => slidesOf(p.images, p.video), [p.images, p.video]);
-  // The struck price's line is kept whenever some choice has one, so picking an offer never moves the form.
-  const mayStrike = p.compareAt != null || p.offers.some((o) => o.compareAt != null || o.quantity > 1) || p.variants.some((v) => v.price !== p.price);
 
   const viewPrice = leadOffer(p.offers)?.price ?? p.price;
   useEffect(() => {
@@ -78,24 +78,22 @@ export function ProductView({ p, lang, settings, url }: { p: P; lang: Lang; sett
     setTimeout(() => target?.focus({ preventScroll: true }), 450);
   }
 
-  function stickyCart() {
-    if (p.variants.length > 0 && !choice.variant) return goToForm();
-    addChoiceToCart(p, choice, "sticky");
-  }
-
   const description = pick(lang, p.description, p.descriptionAr);
   const specs = lang === "ar" && p.specsAr ? p.specsAr : p.specs;
-  const hasDetails = Boolean(description) || specs.length > 0 || p.detailImages.length > 0;
 
   return (
     <div className="mx-auto max-w-6xl px-4 pb-28 md:pb-16">
-      {/* One copy of everything. Phone: name → pictures → price and form → details.
+      {/* One copy of everything. Phone: pictures → name and price → offers and form → details.
           Computer: the pictures on the left (they stay in view), the rest on the right. */}
-      <div className="grid gap-4 pt-3 md:grid-cols-[minmax(0,1.1fr)_minmax(0,1fr)] md:grid-rows-[auto_1fr] md:gap-x-10 md:gap-y-4 md:pt-6">
-        <div className="flex min-w-0 flex-col gap-1.5 md:col-start-2 md:row-start-1">
-          <h1 className="text-[22px] font-bold leading-snug text-ink md:text-[32px] md:leading-tight">{name}</h1>
+      <div className="grid gap-4 pt-1 md:grid-cols-[minmax(0,1.1fr)_minmax(0,1fr)] md:grid-rows-[auto_1fr] md:gap-x-10 md:gap-y-5 md:pt-4">
+        <div ref={galleryRef} className="min-w-0 md:sticky md:top-36 md:col-start-1 md:row-span-2 md:row-start-1 md:self-start">
+          <Gallery slides={slides} name={name} productId={p.id} lang={lang} badge={pct} />
+        </div>
+
+        <div className="flex min-w-0 flex-col gap-2 md:col-start-2 md:row-start-1">
+          <h1 className="text-[24px] font-bold leading-snug text-ink md:text-[30px] md:leading-tight">{name}</h1>
           {summary && (
-            <p className="text-[17px] leading-relaxed text-ink-2" dir="auto" data-testid="summary">
+            <p className="text-[16px] leading-relaxed text-ink-2" dir="auto" data-testid="summary">
               {summary}
             </p>
           )}
@@ -109,102 +107,53 @@ export function ProductView({ p, lang, settings, url }: { p: P; lang: Lang; sett
                 </a>
               )}
               {p.sold && (
-                <span className="flex items-center gap-1 font-bold text-ink-2">
+                <span className="flex items-center gap-1 text-ink-2">
                   <IconFire className="h-4 w-4 text-clay" />
-                  <span className="ltr-nums">+{p.sold}</span> <span className="font-normal">{t.product.soldSuffix}</span>
+                  <span className="font-bold ltr-nums">+{p.sold}</span> {t.product.soldSuffix}
                 </span>
               )}
             </div>
           )}
-        </div>
-
-        <div ref={galleryRef} className="min-w-0 md:sticky md:top-36 md:col-start-1 md:row-span-2 md:row-start-1 md:self-start">
-          <Gallery slides={slides} name={name} productId={p.id} lang={lang} badge={pct} />
-        </div>
-
-        <div className="flex min-w-0 flex-col gap-4 md:col-start-2 md:row-start-2">
-          <div className="flex flex-col gap-1">
-            {/* Amazon's price: the saving in red, the price large, the real former price under it. */}
-            <p className="flex flex-wrap items-baseline gap-x-3" data-testid="price">
-              {pct > 0 && <span className="text-[26px] font-normal text-deal ltr-nums">−{pct}%</span>}
-              {shown.note === t.product.from && <span className="text-[16px] text-muted">{shown.note}</span>}
-              <span className="whitespace-nowrap text-[32px] font-bold leading-none text-ink price-nums ltr-nums">{formatTND(shown.price, lang)}</span>
-            </p>
-            {mayStrike && (
-              <p className="min-h-[1.6em] text-[15px] text-muted">
-                {shown.note && shown.note !== t.product.from && <span className="me-2 font-bold text-ink-2">{shown.note}</span>}
-                {!out && shown.compareAt != null && shown.compareAt > shown.price && (
-                  <>
-                    {t.product.oldPrice} <s className="price-nums ltr-nums">{formatTND(shown.compareAt, lang)}</s>
-                  </>
-                )}
-              </p>
+          {/* The price on one line: the price, the real price it replaces, the saving. It stays put
+              while an offer is picked below (each offer shows its own price), so nothing moves under the finger. */}
+          <p className="flex flex-wrap items-center gap-x-2.5 gap-y-1 pt-1" data-testid="price">
+            {shown.note && <span className="text-[15px] text-muted">{shown.note}</span>}
+            <span className="whitespace-nowrap text-[28px] font-bold leading-none text-ink price-nums ltr-nums">{formatTND(shown.price, lang)}</span>
+            {struck != null && (
+              <>
+                <span className="sr-only">{t.buy.instead(formatTND(struck, lang))}</span>
+                <s aria-hidden className="whitespace-nowrap text-[17px] text-muted price-nums ltr-nums">{formatTND(struck, lang)}</s>
+              </>
             )}
-            <div className="mt-1 flex flex-wrap items-center gap-x-4 gap-y-1">
-              <StockLine lang={lang} p={p} variant={choice.variant} />
-              <span className="flex items-center gap-1.5 text-[16px] font-bold text-olive">
-                <IconCash className="h-5 w-5 shrink-0" />
-                {t.trust.cod}
+            {pct > 0 && (
+              <span className="rounded-full bg-deal px-2.5 text-[14px] font-bold leading-7 text-white">
+                <span className="ltr-nums">−{pct}%</span>
               </span>
-            </div>
-          </div>
+            )}
+          </p>
+          <StockLine lang={lang} p={p} variant={choice.variant} />
+        </div>
 
-          {/* The order form as one white panel: edge to edge on a phone, a card on a computer. */}
-          <div ref={buyRef} className="-mx-4 border-y border-line bg-white px-4 py-5 md:mx-0 md:rounded-2xl md:border md:p-6 md:shadow-soft">
-            <BuyBox p={p} lang={lang} settings={settings} url={url} choice={choice} />
-          </div>
-
-          {/* Delivery and returns; cash on delivery and checking the parcel are said next to the button. */}
-          <ul className="grid grid-cols-2 divide-x divide-line overflow-hidden rounded-2xl border border-line bg-white text-[16px] leading-snug text-ink-2 rtl:divide-x-reverse">
-            <Reassure icon={<IconTruck className="h-6 w-6" />} text={deliversEverywhere(settings.delivery.zones) ? t.trust.delivery : t.trust.deliveryHome} />
-            <Reassure icon={<IconReturn className="h-6 w-6" />} text={t.trust.returns(settings.returns.days)} />
-          </ul>
+        <div ref={buyRef} className="min-w-0 pt-1 md:col-start-2 md:row-start-2 md:rounded-2xl md:border md:border-line md:p-6">
+          <BuyBox p={p} lang={lang} settings={settings} url={url} choice={choice} />
         </div>
       </div>
 
-      {hasDetails && (
-        <section className="mx-auto mt-8 flex max-w-4xl flex-col gap-4 md:mt-12" aria-labelledby="details-title">
-          <h2 id="details-title" className="text-[23px] font-bold leading-tight text-ink md:text-[28px]">
-            {t.product.moreAbout}
-          </h2>
+      {/* The description as the shop wrote it, then its long pictures one under the other, edge to edge on a phone. */}
+      {(description || p.detailImages.length > 0) && (
+        <section className="mx-auto mt-10 flex max-w-3xl flex-col gap-4" aria-labelledby="desc-title">
+          <TabTitle id="desc-title">{t.product.description}</TabTitle>
           {description && (
-            <div className="rounded-3xl border border-line bg-white p-5">
-              <h3 className="mb-3 text-[19px] font-bold text-ink">{t.product.description}</h3>
-              <div className="flex flex-col gap-3 text-[17px] leading-relaxed text-ink-2">
-                {description.split(/\n{2,}/).map((para, i) => (
-                  <p key={i} className="whitespace-pre-line" dir="auto">
-                    {para}
-                  </p>
-                ))}
-              </div>
+            <div className="flex flex-col gap-3 text-[17px] leading-relaxed text-ink-2">
+              {description.split(/\n{2,}/).map((para, i) => (
+                <p key={i} className="whitespace-pre-line" dir="auto">
+                  {para}
+                </p>
+              ))}
             </div>
           )}
-          {specs.length > 0 && (
-            <div className="rounded-3xl border border-line bg-white p-5">
-              <h3 className="mb-2 text-[19px] font-bold text-ink">{t.product.specs}</h3>
-              <dl className="divide-y divide-line text-[17px]">
-                {specs.map((s, i) =>
-                  s.label ? (
-                    <div key={i} className="grid grid-cols-[minmax(0,2fr)_minmax(0,3fr)] gap-3 py-2.5">
-                      <dt className="font-bold text-ink" dir="auto">{s.label}</dt>
-                      <dd className="text-ink-2" dir="auto">{s.value}</dd>
-                    </div>
-                  ) : (
-                    <div key={i} className="flex items-start gap-2 py-2.5">
-                      <dt className="sr-only">·</dt>
-                      <dd className="flex items-start gap-2 text-ink-2" dir="auto">
-                        <IconCheck className="mt-1 h-4 w-4 shrink-0 text-olive" />
-                        {s.value}
-                      </dd>
-                    </div>
-                  ),
-                )}
-              </dl>
-            </div>
-          )}
-          {/* The long pictures, one under the other, edge to edge on a phone, like Amazon's. */}
           {p.detailImages.length > 0 && (
-            <div className="-mx-4 flex flex-col overflow-hidden bg-white md:mx-0 md:rounded-3xl md:border md:border-line">
+            <div className="-mx-4 flex flex-col overflow-hidden md:mx-0 md:rounded-2xl">
               {p.detailImages.map((img) => (
                 <Image
                   key={img.id}
@@ -212,7 +161,7 @@ export function ProductView({ p, lang, settings, url }: { p: P; lang: Lang; sett
                   alt={img.alt ?? ""}
                   width={img.width}
                   height={img.height}
-                  sizes="(min-width: 896px) 896px, 100vw"
+                  sizes="(min-width: 768px) 768px, 100vw"
                   className="block h-auto w-full"
                   {...(img.blur ? { placeholder: "blur" as const, blurDataURL: img.blur } : {})}
                 />
@@ -222,15 +171,39 @@ export function ProductView({ p, lang, settings, url }: { p: P; lang: Lang; sett
         </section>
       )}
 
+      {specs.length > 0 && (
+        <section className="mx-auto mt-10 max-w-3xl" aria-labelledby="specs-title">
+          <TabTitle id="specs-title">{t.product.specs}</TabTitle>
+          <dl className="mt-1 divide-y divide-line text-[17px]">
+            {specs.map((s, i) =>
+              s.label ? (
+                <div key={i} className="grid grid-cols-[minmax(0,2fr)_minmax(0,3fr)] gap-3 py-3">
+                  <dt className="text-muted" dir="auto">{s.label}</dt>
+                  <dd className="text-ink" dir="auto">{s.value}</dd>
+                </div>
+              ) : (
+                <div key={i} className="flex items-start gap-2 py-3">
+                  <dt className="sr-only">·</dt>
+                  <dd className="flex items-start gap-2 text-ink" dir="auto">
+                    <IconCheck className="mt-1 h-4 w-4 shrink-0 text-olive" />
+                    {s.value}
+                  </dd>
+                </div>
+              ),
+            )}
+          </dl>
+        </section>
+      )}
+
       {/* Only real reviews: a new product shows no empty box. */}
       {p.reviews.length > 0 && (
-        <section id="avis" className="mx-auto mt-6 max-w-4xl scroll-mt-4 rounded-3xl border border-line bg-white p-5">
-          <h2 className="mb-3 flex items-center gap-2 text-[21px] font-bold text-ink">
+        <section id="avis" className="mx-auto mt-10 max-w-3xl scroll-mt-4" aria-labelledby="reviews-title">
+          <TabTitle id="reviews-title">
             {t.product.reviews}
-            {p.rating && <span className="text-[16px] font-normal text-muted ltr-nums">({p.rating.count})</span>}
-          </h2>
+            {p.rating && <span className="ms-1.5 text-[16px] font-normal text-muted ltr-nums">({p.rating.count})</span>}
+          </TabTitle>
           {p.rating && (
-            <p className="mb-2 flex items-center gap-2 text-[17px]">
+            <p className="mt-4 flex items-center gap-2 text-[17px]">
               <Stars value={p.rating.avg} size={22} />
               <span className="font-bold ltr-nums">{t.rating(p.rating.avg.toFixed(1), p.rating.count)}</span>
             </p>
@@ -256,24 +229,22 @@ export function ProductView({ p, lang, settings, url }: { p: P; lang: Lang; sett
         </section>
       )}
 
-      {/* Phone: the price and "Acheter maintenant" stay one look away, and the basket beside it. */}
+      {/* Phone: what the current choice costs and the button, one look away. */}
       <div
-        className={`fixed inset-x-0 bottom-0 z-30 border-t border-line bg-white/95 px-3 pb-[max(.625rem,env(safe-area-inset-bottom))] pt-2.5 shadow-[0_-6px_20px_-12px_rgb(0_0_0/.25)] backdrop-blur transition-transform duration-300 md:hidden ${
+        className={`fixed inset-x-0 bottom-0 z-30 border-t border-line bg-white/95 px-4 pb-[max(.625rem,env(safe-area-inset-bottom))] pt-2.5 shadow-[0_-6px_20px_-12px_rgb(0_0_0/.25)] backdrop-blur transition-transform duration-300 md:hidden ${
           sticky && !out ? "translate-y-0" : "translate-y-full"
         }`}
         aria-hidden={!sticky || out}
         data-testid="sticky-bar"
       >
-        <div className="flex items-stretch gap-2">
-          <button type="button" tabIndex={sticky && !out ? 0 : -1} onClick={stickyCart} className="flex h-[58px] w-[58px] shrink-0 items-center justify-center rounded-2xl border-2 border-night/80 bg-white text-night" aria-label={t.product.addToCart}>
-            <IconCartPlus className="h-7 w-7" />
-          </button>
-          <button type="button" tabIndex={sticky && !out ? 0 : -1} onClick={goToForm} className="flex h-[58px] min-w-0 flex-1 flex-col items-center justify-center rounded-2xl bg-buy px-3 leading-tight text-night shadow-[inset_0_-3px_0_var(--color-buy-2)]">
-            <span className="text-[18px] font-bold">{t.buy.sticky}</span>
-            <span className="text-[15px]">
-              {shown.note && <span className="me-1">{shown.note}</span>}
-              <span className="font-bold price-nums ltr-nums">{formatTND(shown.price, lang)}</span>
-            </span>
+        <div className="flex items-center gap-3">
+          <p className="flex shrink-0 flex-col leading-tight">
+            <span className="text-[14px] text-muted">{pay.from ? t.product.from : t.buy.price}</span>
+            <span className="whitespace-nowrap text-[19px] font-bold text-ink price-nums ltr-nums">{formatTND(pay.price, lang)}</span>
+          </p>
+          <button type="button" tabIndex={sticky && !out ? 0 : -1} onClick={goToForm} className="flex h-[54px] min-w-0 flex-1 items-center justify-center gap-2 rounded-full bg-buy px-4 text-[18px] font-bold text-night shadow-[inset_0_-3px_0_var(--color-buy-2)]">
+            <IconTruck className="h-6 w-6 shrink-0" />
+            {t.buy.sticky}
           </button>
         </div>
       </div>
@@ -281,34 +252,47 @@ export function ProductView({ p, lang, settings, url }: { p: P; lang: Lang; sett
   );
 }
 
-function Reassure({ icon, text }: { icon: React.ReactNode; text: string }) {
+/** A section's name, underlined like a tab, on a hairline the width of the page. */
+function TabTitle({ id, children }: { id: string; children: React.ReactNode }) {
   return (
-    <li className="flex min-h-14 items-center gap-2.5 px-3 py-2.5">
-      <span className="shrink-0 text-sea">{icon}</span>
-      {text}
-    </li>
+    <div className="border-b border-line">
+      <h2 id={id} className="-mb-px inline-flex items-baseline border-b-2 border-ink pb-2.5 text-[19px] font-bold text-ink">
+        {children}
+      </h2>
+    </div>
   );
 }
 
 /**
- * The price at the top says what the form will charge: the chosen offer (with
- * its pack size when it is more than one), else the chosen option's price,
- * else the lowest option price as "from".
+ * The price under the name is the product's own: one unit (or the smallest
+ * pack, said as such) when there are offers, else the chosen option's price,
+ * else the lowest option price as "from". Each offer shows its own price.
  */
 function shownPrice(p: P, c: BuyChoice, lang: Lang): { price: number; compareAt: number | null; note: string | null } {
   const t = dict(lang);
-  if (c.offer) return { price: c.offer.price, compareAt: c.offer.compareAt, note: c.offer.quantity > 1 ? t.product.pack(c.offer.quantity) : null };
+  const lead = leadOffer(p.offers.filter(c.fits));
+  if (lead) return { price: lead.price, compareAt: lead.compareAt, note: lead.quantity > 1 ? t.product.pack(lead.quantity) : null };
   if (c.variant) return { price: c.variant.price, compareAt: c.variant.price === p.price ? p.compareAt : null, note: null };
   const prices = p.variants.map((v) => v.price);
   const min = prices.length ? Math.min(...prices) : p.price;
   return { price: min, compareAt: min === p.price ? p.compareAt : null, note: prices.some((x) => x !== min) ? t.product.from : null };
 }
 
+/** What the current choice costs before delivery, for the bar at the bottom: the offer, or the option × quantity. */
+function payNow(p: P, c: BuyChoice): { price: number; from: boolean } {
+  if (c.offer) return { price: c.offer.price, from: false };
+  if (c.variant) return { price: c.variant.price * c.qty, from: false };
+  const prices = p.variants.map((v) => v.price);
+  const min = prices.length ? Math.min(...prices) : p.price;
+  return { price: min * c.qty, from: prices.some((x) => x !== min) };
+}
+
+/** Said only when it matters: a few left, or none. */
 function StockLine({ lang, p, variant }: { lang: Lang; p: P; variant: BuyChoice["variant"] }) {
   const t = dict(lang);
   const stock = variant ? (variant.soldOut ? { kind: "out" as const } : variant.lowQty ? { kind: "low" as const, qty: variant.lowQty } : { kind: "in_stock" as const }) : p.stock;
   if (stock.kind === "out")
     return <p className="flex items-center gap-2 text-[16px] text-muted"><span className="h-2.5 w-2.5 rounded-full bg-muted" />{t.product.out}</p>;
   if (stock.kind === "low") return <p className="flex items-center gap-2 text-[16px] font-bold text-clay"><span className="h-2.5 w-2.5 rounded-full bg-clay" />{t.product.low(stock.qty)}</p>;
-  return <p className="flex items-center gap-2 text-[16px] font-bold text-olive"><span className="h-2.5 w-2.5 rounded-full bg-olive" />{t.product.inStock}</p>;
+  return null;
 }

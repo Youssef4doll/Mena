@@ -68,18 +68,25 @@ export default async function ProductPageRoute({ params }: PageProps<"/[lang]/pr
           { name: pick(lang, p.name, p.nameAr), url },
         ])}
       />
-      <nav className="mx-auto hidden max-w-6xl px-4 pt-5 text-sm text-muted md:block" aria-label="breadcrumb">
-        <Link href={href(lang, "/")}>{t.nav.home}</Link>
-        {p.category && (
-          <>
-            {" / "}
-            <Link href={href(lang, `/categorie/${p.category.slug}`)}>{pick(lang, p.category.name, p.category.nameAr)}</Link>
-          </>
-        )}
-      </nav>
-      <ProductView p={product} lang={lang} settings={publicSettings(settings)} url={url} />
+      {/* The page itself on white, like the shops customers know; the suggestions under it on the shop's light grey. */}
+      <div className="bg-white">
+        <nav className="mx-auto flex max-w-6xl flex-wrap items-center gap-x-1.5 px-4 py-1 text-[14px] text-muted md:pt-4" aria-label="breadcrumb">
+          <Link href={href(lang, "/")} className="flex min-h-10 items-center hover:text-ink">
+            {t.nav.home}
+          </Link>
+          {p.category && (
+            <>
+              <span aria-hidden>/</span>
+              <Link href={href(lang, `/categorie/${p.category.slug}`)} className="flex min-h-10 items-center hover:text-ink">
+                {pick(lang, p.category.name, p.category.nameAr)}
+              </Link>
+            </>
+          )}
+        </nav>
+        <ProductView p={product} lang={lang} settings={publicSettings(settings)} url={url} />
+      </div>
       {related.length > 0 && (
-        <section className="mx-auto max-w-6xl px-4">
+        <section className="mx-auto max-w-6xl px-4 pt-8">
           <h2 className="mb-4 text-[24px] font-bold leading-tight">{t.product.related}</h2>
           <ProductGrid products={related.slice(0, 8)} lang={lang} />
         </section>

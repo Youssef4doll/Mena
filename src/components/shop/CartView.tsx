@@ -211,7 +211,6 @@ export function CartView({ lang, settings }: { lang: Lang; settings: PublicSetti
           waText={lang === "ar" ? `${t.trust.waHello}: ${items.map((i) => name(i)).join("، ")}` : `${t.trust.waHello} : ${items.map((i) => name(i)).join(", ")}`}
           submitTitle={t.cart.submit}
           submitSub={t.buy.submitSub}
-          step={null}
         />
       </div>
     </div>
