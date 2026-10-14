@@ -113,3 +113,21 @@ test("saved details alone do not count as a started order", async ({ page }) => 
   await page.getByTestId("address").fill("Sfax Ville, rue 5");
   await expect.poll(() => saves.length, { timeout: 5000 }).toBeGreaterThan(0);
 });
+
+test("Acheter maintenant on a card orders without leaving the list", async ({ page }) => {
+  await page.goto("/categorie/maison");
+  const card = page.locator("div.group", { hasText: "Diffuseur d'huiles essentielles" }).first();
+  await card.getByRole("button", { name: "Acheter maintenant" }).click();
+  const sheet = page.getByRole("dialog");
+  await expect(sheet.getByText("Commande rapide")).toBeVisible();
+  await expect(page).toHaveURL(/\/categorie\/maison$/);
+  await sheet.getByTestId("offer-3").check();
+  await sheet.getByTestId("name").fill("Amira Ben Salah");
+  await sheet.getByTestId("phone").fill("22 123 456");
+  await sheet.getByTestId("address").fill("Sfax Ville, rue de la République 12");
+  await sheet.getByTestId("governorate").selectOption("Sfax");
+  // Same server prices as the product page: 2 × 69,000, delivery included.
+  await expect(sheet.getByTestId("total")).toHaveText("138,000 DT");
+  await sheet.getByTestId("place-order").click();
+  await expect(page).toHaveURL(/\/commande\/merci\/MN-/);
+});

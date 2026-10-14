@@ -173,7 +173,7 @@ export function ProductView({ p, lang, settings, url }: { p: P; lang: Lang; sett
               <span className="whitespace-nowrap ltr-nums">{formatTND(shown.price, lang)}</span>
             </span>
           </div>
-          <button type="button" tabIndex={sticky && !out ? 0 : -1} onClick={goToForm} className="h-14 shrink-0 rounded-2xl bg-navy px-7 text-[18px] font-bold text-white">
+          <button type="button" tabIndex={sticky && !out ? 0 : -1} onClick={goToForm} className="h-14 shrink-0 rounded-2xl bg-navy px-5 text-[17px] font-bold text-white">
             {t.buy.sticky}
           </button>
         </div>

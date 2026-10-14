@@ -3,41 +3,50 @@ import type { ProductCard as Card } from "@/lib/catalog";
 import { dict, href, pick, type Lang } from "@/i18n";
 import { discountPct } from "@/lib/offer-display";
 import { Img } from "./Img";
+import { QuickBuy } from "./QuickBuy";
 import { Price } from "./Price";
 import { Stars } from "./Stars";
 
 /**
  * A product in a list: a white card, a large picture, the name in plain
- * reading size, the price, and one clear button. The whole card is the link.
+ * reading size, the price, and one clear button that orders it on the spot.
+ * The picture, name and price open the product page.
  */
 export function ProductCard({ p, lang, priority = false }: { p: Card; lang: Lang; priority?: boolean }) {
   const t = dict(lang);
   const name = pick(lang, p.name, p.nameAr);
   const out = p.stock.kind === "out";
+  const pct = out ? 0 : discountPct(p.price, p.compareAt);
   return (
-    <Link href={href(lang, `/produit/${p.slug}`)} className="group flex h-full flex-col overflow-hidden rounded-2xl border border-line bg-white transition hover:shadow-soft" prefetch={false}>
-      <div className="relative aspect-square overflow-hidden bg-sand">
-        <Img image={p.images[0] ?? null} alt={p.images[0]?.alt ?? name} sizes="(min-width: 1024px) 25vw, (min-width: 640px) 33vw, 50vw" priority={priority} className={`transition duration-500 group-hover:scale-[1.02] ${out ? "opacity-60 grayscale" : ""}`} />
-        <div className="absolute start-2 top-2 flex flex-col items-start gap-1">
-          {out && <span className="rounded-full bg-ink/80 px-2.5 py-1 text-[14px] font-bold text-white">{t.product.out}</span>}
-          {!out && discountPct(p.price, p.compareAt) > 0 && <span className="rounded-full bg-olive px-2.5 py-1 text-[14px] font-bold text-white ltr-nums">−{discountPct(p.price, p.compareAt)}%</span>}
+    <div className="group flex h-full flex-col overflow-hidden rounded-2xl border border-line bg-white transition hover:shadow-soft">
+      <Link href={href(lang, `/produit/${p.slug}`)} className="flex flex-1 flex-col" prefetch={false}>
+        <div className="relative aspect-square overflow-hidden bg-sand">
+          <Img image={p.images[0] ?? null} alt={p.images[0]?.alt ?? name} sizes="(min-width: 1024px) 25vw, (min-width: 640px) 33vw, 50vw" priority={priority} className={`transition duration-500 group-hover:scale-[1.02] ${out ? "opacity-60 grayscale" : ""}`} />
+          <div className="absolute start-2 top-2 flex flex-col items-start gap-1">
+            {out && <span className="rounded-full bg-ink/80 px-2.5 py-1 text-[14px] font-bold text-white">{t.product.out}</span>}
+            {pct > 0 && <span className="rounded-full bg-olive px-2.5 py-1 text-[14px] font-bold text-white ltr-nums">−{pct}%</span>}
+          </div>
         </div>
-      </div>
-      <div className="flex flex-1 flex-col gap-1.5 p-3">
-        <h3 className="line-clamp-2 text-[16px] leading-snug text-ink">{name}</h3>
-        {p.rating && (
-          <span className="flex items-center gap-1 text-[14px] text-muted">
-            <Stars value={p.rating.avg} size={14} />
-            <span className="ltr-nums">({p.rating.count})</span>
-          </span>
-        )}
-        <div className="mt-auto pt-1">
-          <Price value={p.price} compareAt={p.compareAt} lang={lang} size="md" from={p.packOf ? t.product.pack(p.packOf) : p.priceFrom ? t.product.from : undefined} />
+        <div className="flex flex-1 flex-col gap-1.5 p-3 pb-2">
+          <h3 className="line-clamp-2 text-[16px] leading-snug text-ink">{name}</h3>
+          {p.rating && (
+            <span className="flex items-center gap-1 text-[14px] text-muted">
+              <Stars value={p.rating.avg} size={14} />
+              <span className="ltr-nums">({p.rating.count})</span>
+            </span>
+          )}
+          <div className="mt-auto pt-1">
+            <Price value={p.price} compareAt={p.compareAt} lang={lang} size="md" from={p.packOf ? t.product.pack(p.packOf) : p.priceFrom ? t.product.from : undefined} />
+          </div>
+          {p.stock.kind === "low" && <span className="text-[14px] font-bold text-clay">{t.product.low(p.stock.qty)}</span>}
         </div>
-        {p.stock.kind === "low" && <span className="text-[14px] font-bold text-clay">{t.product.low(p.stock.qty)}</span>}
-        {!out && <span className="mt-1.5 flex min-h-11 items-center justify-center rounded-xl bg-sea-soft text-[16px] font-bold text-sea-2 transition group-hover:bg-sea group-hover:text-white">{t.product.buyNow}</span>}
-      </div>
-    </Link>
+      </Link>
+      {!out && (
+        <div className="px-3 pb-3">
+          <QuickBuy slug={p.slug} productId={p.id} lang={lang} />
+        </div>
+      )}
+    </div>
   );
 }
 

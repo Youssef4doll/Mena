@@ -92,7 +92,9 @@ export type BuyChoice = ReturnType<typeof useBuyChoice>;
  * exactly this choice and this governorate, or the page's own price while
  * that answer is on its way.
  */
-export function BuyBox({ p, lang, settings, url, choice }: { p: P; lang: Lang; settings: PublicSettings; url: string; choice: BuyChoice }) {
+export function BuyBox({ p, lang, settings, url, choice, idp = "bb" }: { p: P; lang: Lang; settings: PublicSettings; url: string; choice: BuyChoice; idp?: string }) {
+  // Ids are prefixed, so the quick form (in a sheet) and the product page's form never share one.
+  const id = (k: string) => `${idp}-${k}`;
   const t = dict(lang);
   const router = useRouter();
   const hydrated = useHydrated();
@@ -181,7 +183,7 @@ export function BuyBox({ p, lang, settings, url, choice }: { p: P; lang: Lang; s
       phoneLogged.current = true;
       track("checkout_phone_entered", { productId: p.id });
     }
-    const id = setTimeout(() => {
+    const timer = setTimeout(() => {
       let token = store.get(FORM_TOKEN);
       if (!token) {
         token = randomId();
@@ -195,7 +197,7 @@ export function BuyBox({ p, lang, settings, url, choice }: { p: P; lang: Lang; s
         keepalive: true,
       }).catch(() => {});
     }, 900);
-    return () => clearTimeout(id);
+    return () => clearTimeout(timer);
   }, [engaged, phone, f.name, f.governorate, line, out, p.id]);
 
   const pageTotal = offer ? offer.price : unit * qty;
@@ -243,9 +245,9 @@ export function BuyBox({ p, lang, settings, url, choice }: { p: P; lang: Lang; s
     if (bad.length) {
       setTouched(Object.fromEntries(bad.map((k) => [k, true])));
       if (bad[0] === "variant") {
-        document.getElementById("variants")?.scrollIntoView({ behavior: "smooth", block: "center" });
-        document.querySelector<HTMLButtonElement>("#variants button:not(:disabled)")?.focus({ preventScroll: true });
-      } else document.getElementById(`bb-${bad[0]}`)?.focus();
+        document.getElementById(id("variants"))?.scrollIntoView({ behavior: "smooth", block: "center" });
+        document.querySelector<HTMLButtonElement>(`#${id("variants")} button:not(:disabled)`)?.focus({ preventScroll: true });
+      } else document.getElementById(id(bad[0]))?.focus();
       return;
     }
     const honeypot = (e.currentTarget.elements.namedItem("website") as HTMLInputElement | null)?.value ?? "";
@@ -317,7 +319,7 @@ export function BuyBox({ p, lang, settings, url, choice }: { p: P; lang: Lang; s
 
   return (
     // A container: the fields go two by two when the form itself is wide enough, wherever it sits.
-    <form id="commander" onSubmit={submit} noValidate className="@container flex flex-col gap-4">
+    <form id={idp === "bb" ? "commander" : id("form")} onSubmit={submit} noValidate className="@container flex flex-col gap-4">
       {/* ------------------------------------------------------ 1. choose */}
       {p.offers.length > 0 && (
         <fieldset className="flex min-w-0 flex-col gap-2.5">
@@ -341,8 +343,8 @@ export function BuyBox({ p, lang, settings, url, choice }: { p: P; lang: Lang; s
       )}
 
       {p.variants.length > 0 && (
-        <div id="variants" className="flex flex-col gap-2" role="group" aria-labelledby="bb-variants-label">
-          <p id="bb-variants-label" className={`text-[17px] font-bold ${show("variant") ? "text-danger" : "text-ink"}`} aria-live="polite">
+        <div id={id("variants")} className="flex flex-col gap-2" role="group" aria-labelledby={id("variants-label")}>
+          <p id={id("variants-label")} className={`text-[17px] font-bold ${show("variant") ? "text-danger" : "text-ink"}`} aria-live="polite">
             {show("variant") ? t.buy.variantError : t.product.choose}
             {variant && <span className="font-normal text-muted"> · {variant.name}</span>}
           </p>
@@ -371,8 +373,8 @@ export function BuyBox({ p, lang, settings, url, choice }: { p: P; lang: Lang; s
 
       {!hasOffers && !out && (
         <div className="flex items-center justify-between gap-3">
-          <span className="text-[17px] font-bold text-ink" id="bb-qty-label">{t.buy.quantity}</span>
-          <div className="inline-flex h-12 items-center rounded-xl border-2 border-field bg-white" role="group" aria-labelledby="bb-qty-label">
+          <span className="text-[17px] font-bold text-ink" id={id("qty-label")}>{t.buy.quantity}</span>
+          <div className="inline-flex h-12 items-center rounded-xl border-2 border-field bg-white" role="group" aria-labelledby={id("qty-label")}>
             <button type="button" className="flex h-12 w-12 items-center justify-center disabled:opacity-30" onClick={() => { choice.setQty(Math.max(1, qty - 1)); chose(); }} disabled={qty <= 1} aria-label={t.buy.qtyLess}>
               <IconMinus className="h-5 w-5" />
             </button>
@@ -397,21 +399,21 @@ export function BuyBox({ p, lang, settings, url, choice }: { p: P; lang: Lang; s
           {/* -------------------------------------------- 2. details: two by two when there is room, like the shops customers know */}
           <fieldset className="grid min-w-0 items-start gap-x-3 gap-y-3.5 @lg:grid-cols-2" onFocus={start}>
             <legend className="mb-2 text-[17px] font-bold text-ink">{t.buy.step2}</legend>
-            <Field id="name" label={t.buy.name} error={show("name") ? t.buy.nameError : null}>
-              <input id="bb-name" value={f.name} onChange={(e) => update("name", e.target.value)} onBlur={blur("name")} onKeyDown={next("bb-phone")} enterKeyHint="next" autoComplete="name" placeholder={t.buy.namePh} className={inputCls(show("name"))} aria-invalid={show("name")} aria-describedby={show("name") ? "bb-name-msg" : undefined} data-testid="name" />
+            <Field id={id("name")} label={t.buy.name} error={show("name") ? t.buy.nameError : null}>
+              <input id={id("name")} value={f.name} onChange={(e) => update("name", e.target.value)} onBlur={blur("name")} onKeyDown={next(id("phone"))} enterKeyHint="next" autoComplete="name" placeholder={t.buy.namePh} className={inputCls(show("name"))} aria-invalid={show("name")} aria-describedby={show("name") ? id("name-msg") : undefined} data-testid="name" />
             </Field>
-            <Field id="phone" label={t.buy.phone} error={show("phone") ? (f.phone.trim() ? t.checkout.phoneInvalid : t.buy.phoneRequired) : null} hint={t.buy.phoneHint}>
+            <Field id={id("phone")} label={t.buy.phone} error={show("phone") ? (f.phone.trim() ? t.checkout.phoneInvalid : t.buy.phoneRequired) : null} hint={t.buy.phoneHint}>
               <div className={`flex h-14 items-stretch overflow-hidden rounded-xl border-2 bg-white focus-within:border-sea ${show("phone") ? "border-danger" : "border-field"}`} dir="ltr">
                 <span className="flex items-center border-e-2 border-line bg-sand px-2.5 text-[18px] text-ink-2">+216</span>
-                <input id="bb-phone" value={f.phone} onChange={(e) => update("phone", e.target.value)} onBlur={blur("phone")} onKeyDown={next("bb-address")} enterKeyHint="next" inputMode="tel" autoComplete="tel-national" placeholder="22 123 456" maxLength={16} className="min-w-0 flex-1 bg-transparent px-3 text-[19px] tracking-wide outline-none placeholder:text-placeholder" aria-invalid={show("phone")} aria-describedby="bb-phone-msg" data-testid="phone" />
+                <input id={id("phone")} value={f.phone} onChange={(e) => update("phone", e.target.value)} onBlur={blur("phone")} onKeyDown={next(id("address"))} enterKeyHint="next" inputMode="tel" autoComplete="tel-national" placeholder="22 123 456" maxLength={16} className="min-w-0 flex-1 bg-transparent px-3 text-[19px] tracking-wide outline-none placeholder:text-placeholder" aria-invalid={show("phone")} aria-describedby={id("phone-msg")} data-testid="phone" />
               </div>
             </Field>
-            <Field id="address" label={t.buy.address} error={show("address") ? t.buy.addressError : null} hint={t.buy.addressHint}>
+            <Field id={id("address")} label={t.buy.address} error={show("address") ? t.buy.addressError : null} hint={t.buy.addressHint}>
               {/* Grows with what is typed, so the whole address can be read again before confirming. */}
-              <textarea id="bb-address" value={f.address} onChange={(e) => update("address", e.target.value)} onBlur={blur("address")} onKeyDown={next("bb-governorate")} enterKeyHint="next" autoComplete="street-address" rows={2} maxLength={ADDRESS_MAX} placeholder={t.buy.addressPh} className={`${inputCls(show("address"))} h-auto max-h-40 min-h-14 resize-none py-3 leading-snug [field-sizing:content]`} aria-invalid={show("address")} aria-describedby="bb-address-msg" data-testid="address" />
+              <textarea id={id("address")} value={f.address} onChange={(e) => update("address", e.target.value)} onBlur={blur("address")} onKeyDown={next(id("governorate"))} enterKeyHint="next" autoComplete="street-address" rows={2} maxLength={ADDRESS_MAX} placeholder={t.buy.addressPh} className={`${inputCls(show("address"))} h-auto max-h-40 min-h-14 resize-none py-3 leading-snug [field-sizing:content]`} aria-invalid={show("address")} aria-describedby={id("address-msg")} data-testid="address" />
             </Field>
-            <Field id="governorate" label={t.buy.governorate} error={show("governorate") ? t.buy.govError : null}>
-              <select id="bb-governorate" value={f.governorate} onChange={(e) => update("governorate", e.target.value)} onBlur={blur("governorate")} autoComplete="address-level1" className={inputCls(show("governorate"))} aria-invalid={show("governorate")} aria-describedby={show("governorate") ? "bb-governorate-msg" : undefined} data-testid="governorate">
+            <Field id={id("governorate")} label={t.buy.governorate} error={show("governorate") ? t.buy.govError : null}>
+              <select id={id("governorate")} value={f.governorate} onChange={(e) => update("governorate", e.target.value)} onBlur={blur("governorate")} autoComplete="address-level1" className={inputCls(show("governorate"))} aria-invalid={show("governorate")} aria-describedby={show("governorate") ? id("governorate-msg") : undefined} data-testid="governorate">
                 <option value="">{t.buy.chooseGov}</option>
                 {GOVERNORATES.map((g) => (
                   <option key={g.id} value={g.id} disabled={settings.delivery.zones[g.id]?.enabled === false}>
@@ -623,16 +625,16 @@ function OfferCard({ o, lang, locale, imageId, checked, disabled, onSelect }: { 
 function Field({ id, label, hint, error, children }: { id: string; label: string; hint?: string; error?: string | null; children: React.ReactNode }) {
   return (
     <div className="flex min-w-0 flex-col gap-1">
-      <label htmlFor={`bb-${id}`} className="text-[16px] font-bold text-ink">
+      <label htmlFor={id} className="text-[16px] font-bold text-ink">
         {label}
       </label>
       {children}
       {error ? (
-        <p id={`bb-${id}-msg`} className="text-[15px] font-bold text-danger">
+        <p id={`${id}-msg`} className="text-[15px] font-bold text-danger">
           {error}
         </p>
       ) : hint ? (
-        <p id={`bb-${id}-msg`} className="text-[15px] leading-snug text-muted">
+        <p id={`${id}-msg`} className="text-[15px] leading-snug text-muted">
           {hint}
         </p>
       ) : null}

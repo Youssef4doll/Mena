@@ -5,6 +5,7 @@
 export const CLIENT_EVENTS = [
   "page_view",
   "product_viewed",
+  "quick_buy_opened",
   "category_viewed",
   "checkout_started",
   "checkout_phone_entered",
@@ -35,6 +36,7 @@ export type ServerEvent = (typeof SERVER_EVENTS)[number];
 export const EVENT_LABELS: Record<string, string> = {
   page_view: "Pages vues",
   product_viewed: "Fiches produit vues",
+  quick_buy_opened: "Commandes rapides ouvertes",
   category_viewed: "Catégories vues",
   add_to_cart: "Ajouts au panier",
   remove_from_cart: "Retraits du panier",
