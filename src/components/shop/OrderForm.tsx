@@ -175,12 +175,17 @@ export function OrderForm(props: Props) {
         token = randomId();
         store.set(FORM_TOKEN, token);
       }
-      void save(token)
+      const sent = token;
+      void save(sent)
         .then((d) => {
           // This token's form became an order long ago (placed in another browser): start a new one, once.
+          // Only if no other save renewed it meanwhile (a slow answer), so one form keeps one row.
           if (!d?.renew) return;
-          const fresh = randomId();
-          store.set(FORM_TOKEN, fresh);
+          let fresh = store.get(FORM_TOKEN);
+          if (!fresh || fresh === sent) {
+            fresh = randomId();
+            store.set(FORM_TOKEN, fresh);
+          }
           return save(fresh);
         })
         .catch(() => {});
@@ -295,7 +300,9 @@ export function OrderForm(props: Props) {
         // What was just ordered leaves the basket, so the cart icon does not invite the same order twice.
         if (origin !== "cart") removeOrdered(lines);
         props.onPlaced?.();
-        router.push(href(lang, `/commande/merci/${data.ref}`));
+        // From the quick sheet, the thank-you page takes the sheet's history entry: Back returns to the list.
+        if (origin === "quick") router.replace(href(lang, `/commande/merci/${data.ref}`));
+        else router.push(href(lang, `/commande/merci/${data.ref}`));
         return;
       }
       trackNow("checkout_failed", { productId, props: { error: data.error, where: origin } });
@@ -335,7 +342,7 @@ export function OrderForm(props: Props) {
     // A container: the fields go two by two when the form itself is wide enough, wherever it sits.
     <form id={props.formId} onSubmit={submit} noValidate className="@container flex flex-col gap-4">
       {/* Four fields, each with its name above it, and nothing else to read. */}
-      <fieldset className="grid min-w-0 items-start gap-x-3 gap-y-3 @lg:grid-cols-2" onPointerDown={start} onKeyDown={start}>
+      <fieldset className="grid min-w-0 items-start gap-x-3 gap-y-3 @lg:grid-cols-2" onClick={start} onKeyDown={start}>
         <legend className="sr-only">{t.buy.step2}</legend>
         <Field id={id("name")} label={t.buy.name} error={show("name") ? t.buy.nameError : null}>
           <input id={id("name")} value={f.name} onChange={(e) => update("name", e.target.value)} onBlur={blur("name")} onKeyDown={next(id("phone"))} enterKeyHint="next" autoComplete="name" className={inputCls(show("name"))} aria-invalid={show("name")} aria-describedby={show("name") ? id("name-msg") : undefined} data-testid="name" />

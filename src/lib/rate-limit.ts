@@ -27,6 +27,8 @@ export const LIMITS = {
   events: { limit: 120, windowMs: 60_000 },
   // A product page asks for a price on each choice; many customers can share one carrier address (CGNAT).
   quote: { limit: 300, windowMs: 60_000 },
+  // A price check with a promo code also says whether the code exists: tighter, so codes cannot be guessed.
+  promo: { limit: 30, windowMs: 10 * 60_000 },
   // Loose: Tunisian mobile carriers put many customers behind one address (CGNAT).
   order: { limit: 20, windowMs: 10 * 60_000 },
   lookup: { limit: 10, windowMs: 10 * 60_000 },

@@ -17,6 +17,10 @@ export async function POST(request: Request) {
   if (limited) return limited;
   const parsed = body.safeParse(await readJson(request));
   if (!parsed.success) return json({ ok: false }, 400);
+  if (parsed.data.promoCode) {
+    const slow = limit(request, "promo", LIMITS.promo);
+    if (slow) return slow;
+  }
   const q = await quoteCart({ ...parsed.data, phone: parsed.data.phone ? normalizePhone(parsed.data.phone) : null });
   return json(publicQuote(q));
 }

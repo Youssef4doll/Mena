@@ -79,8 +79,9 @@ export function matchWord(typed: string, word: string, last: boolean): number {
   if (typed === word) return 1;
   if (typed.length >= 2 && word.startsWith(typed)) return last ? 0.92 : 0.75;
   if (typed.length >= 3 && word.includes(typed)) return 0.6;
-  // The shorter of the two decides how many mistakes are forgiven: "makina" is not "main".
-  const max = allowed(Math.max(4, Math.min(typed.length, word.length)));
+  // Short typed words must be right ("sac" is not "bac"); otherwise the shorter of the two
+  // decides how many mistakes are forgiven: "makina" is not "main", "kess" is "kes".
+  const max = typed.length <= 3 ? 0 : allowed(Math.max(4, Math.min(typed.length, word.length)));
   if (max === 0) return 0;
   const d = distance(typed, word, max);
   if (d <= max) return 0.8 - 0.15 * d;

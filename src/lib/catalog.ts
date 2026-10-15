@@ -182,13 +182,17 @@ export function outLast<T extends { stock: StockState }>(list: T[]): T[] {
 /** The price a card shows, per unit for a pack, so "cheapest first" follows what the customer reads. */
 const shownUnit = (p: ProductCard) => (p.packOf ? p.price / p.packOf : p.price);
 
-/** A list in the order the customer asked for. Prices are sorted on the price each card shows, not on the stored one. */
+/**
+ * A list in the order the customer asked for. Prices are sorted on the price
+ * each card shows, not on the stored one, over every product of the list
+ * (then cut), so the cheapest are never left out of "cheapest first".
+ */
 async function sorted(where: Prisma.ProductWhereInput, sort: SortKey, take: number) {
   if (sort === "popular") return outLast(await popularIn(where, take));
-  const list = await cards(where, NEWEST, take);
-  if (sort === "price_asc") list.sort((a, b) => shownUnit(a) - shownUnit(b));
-  if (sort === "price_desc") list.sort((a, b) => shownUnit(b) - shownUnit(a));
-  return outLast(list);
+  if (sort === "new") return outLast(await cards(where, NEWEST, take));
+  const list = await cards(where, NEWEST, 2000);
+  list.sort((a, b) => (sort === "price_asc" ? shownUnit(a) - shownUnit(b) : shownUnit(b) - shownUnit(a)));
+  return outLast(list).slice(0, take);
 }
 
 /** An order counts as a sale once the shop confirmed it; waiting, cancelled, refused and returned orders do not. */

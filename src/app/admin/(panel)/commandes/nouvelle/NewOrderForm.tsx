@@ -27,8 +27,8 @@ export function NewOrderForm({ products }: { products: P[] }) {
   const [offerId, setOfferId] = useState("");
   const [qty, setQty] = useState(1);
   const [f, setF] = useState({ name: "", phone: "", governorate: "", address: "", note: "", channel: "whatsapp" as (typeof CHANNELS)[number][0], locale: "ar" as "ar" | "fr", confirmed: true });
-  const [total, setTotal] = useState<number | null>(null);
-  const [problem, setProblem] = useState<string | null>(null);
+  // The server's answer, for the exact choice it was asked for: another choice shows no total until its own answer.
+  const [answer, setAnswer] = useState<{ key: string; total: number | null; problem: string | null } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [pending, start] = useTransition();
 
@@ -36,20 +36,22 @@ export function NewOrderForm({ products }: { products: P[] }) {
   const lines = p ? [{ productId: p.id, variantId: variantId || null, offerId: offerId || null, qty: offerId ? 1 : qty }] : [];
   const key = JSON.stringify([lines, f.governorate]);
   useEffect(() => {
-    if (!p || (p.variants.length > 0 && !variantId)) return;
+    if (!p || (p.variants.length > 0 && !variantId) || (p.offers.length > 0 && !offerId)) return;
     const ctrl = new AbortController();
     fetchQuote({ lines, governorate: f.governorate || null }, ctrl.signal).then((q) => {
       if (ctrl.signal.aborted) return;
-      setTotal(q && q.lines.length ? q.total : null);
-      setProblem(q && q.problems.length ? "Ce choix n'est pas disponible (stock, option ou offre)." : null);
+      setAnswer({ key, total: q && q.lines.length ? q.total : null, problem: q && q.problems.length ? "Ce choix n'est pas disponible (stock, option ou offre)." : null });
     });
     return () => ctrl.abort();
     // key holds lines and governorate.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [key]);
 
+  const total = answer?.key === key ? answer.total : null;
+  const problem = answer?.key === key ? answer.problem : null;
   const needsVariant = Boolean(p && p.variants.length > 0 && !variantId);
-  const ready = p && !needsVariant && total != null && !problem && f.governorate && f.name.trim().length >= 2 && f.address.trim().length >= 4 && f.phone.trim();
+  const needsOffer = Boolean(p && p.offers.length > 0 && !offerId);
+  const ready = p && !needsVariant && !needsOffer && total != null && !problem && f.governorate && f.name.trim().length >= 2 && f.address.trim().length >= 4 && f.phone.trim();
 
   function submit() {
     if (!p || total == null) return;
@@ -59,7 +61,7 @@ export function NewOrderForm({ products }: { products: P[] }) {
       if (r.ok) router.push(`/admin/commandes/${r.id}`);
       else {
         setError(r.error);
-        if (r.total != null) setTotal(r.total);
+        if (r.total != null) setAnswer({ key, total: r.total, problem: null });
       }
     });
   }
@@ -101,7 +103,7 @@ export function NewOrderForm({ products }: { products: P[] }) {
             <label className={label}>Quantité<input type="number" min={1} max={10} value={qty} onChange={(e) => setQty(Math.min(10, Math.max(1, Number(e.target.value) || 1)))} className={input} /></label>
           )}
           <p className="mt-2 text-sm">
-            Total à annoncer : <strong className="tabular-nums">{needsVariant || (p && p.offers.length > 0 && !offerId) ? "choisir d'abord" : total == null ? "…" : formatTND(total)}</strong>
+            Total à annoncer : <strong className="tabular-nums">{needsVariant || needsOffer ? "choisir d'abord" : total == null ? "…" : formatTND(total)}</strong>
             {!f.governorate && total != null && <span className="text-muted"> (livraison comprise)</span>}
           </p>
           {problem && <p className="text-sm text-danger">{problem}</p>}

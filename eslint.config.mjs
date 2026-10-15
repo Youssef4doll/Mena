@@ -12,6 +12,8 @@ const eslintConfig = defineConfig([
     ".next-e2e/**",
     ".next-shots/**",
     ".next-build/**",
+    // Any other local build folder (NEXT_DIST_DIR=.next-…).
+    ".next-*/**",
     "test-results/**",
     "playwright-report/**",
     "out/**",

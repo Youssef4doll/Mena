@@ -339,8 +339,9 @@ async function basket(from: Date, to: Date) {
  */
 async function profitability(from: Date, to: Date) {
   const [[o], sourceRows, spendRows, settings] = await Promise.all([
-    prisma.$queryRaw<{ revenue: bigint; delivered: bigint; cost: bigint; unknown: bigint; parcels: bigint; back: bigint }[]>`
+    prisma.$queryRaw<{ revenue: bigint; delivered: bigint; cost: bigint; unknown: bigint; parcels: bigint; back: bigint; open: bigint }[]>`
       SELECT COALESCE(SUM(total) FILTER (WHERE status = 'DELIVERED'), 0) AS revenue,
+        COUNT(*) FILTER (WHERE status IN ('PENDING','CONFIRMED','SUPPLIER_ORDERED','SHIPPED')) AS open,
         COUNT(*) FILTER (WHERE status = 'DELIVERED') AS delivered,
         COALESCE(SUM("costTotal") FILTER (WHERE status = 'DELIVERED' AND "costTotal" IS NOT NULL), 0) AS cost,
         COUNT(*) FILTER (WHERE status = 'DELIVERED' AND "costTotal" IS NULL) AS unknown,
@@ -350,20 +351,28 @@ async function profitability(from: Date, to: Date) {
     prisma.$queryRaw<{ source: string; delivered: bigint }[]>`
       SELECT COALESCE(source, 'direct') AS source, COUNT(*) FILTER (WHERE status = 'DELIVERED') AS delivered
       FROM "Order" WHERE "createdAt" >= ${from} AND "createdAt" < ${to} GROUP BY 1`,
-    // Entries that may overlap the period (a row covers at most a few weeks).
-    prisma.adSpend.findMany({ where: { day: { lt: to, gte: new Date(from.getTime() - 92 * 86_400_000) } }, select: { day: true, days: true, source: true, amount: true } }),
+    // Entries that may overlap the period (a row covers at most 92 days). `day` is a calendar date:
+    // compared with the Tunisian days of the period, not with instants.
+    prisma.adSpend.findMany({
+      where: { day: { lt: new Date(`${tunisDay(to)}T00:00:00Z`), gte: new Date(Date.parse(`${tunisDay(from)}T00:00:00Z`) - 92 * 86_400_000) } },
+      select: { day: true, days: true, source: true, amount: true },
+    }),
     getSettings(),
   ]);
   const f = tunisDay(from);
   const t = tunisDay(to);
   const bySource = new Map<string, number>();
   let spend = 0;
+  let covered = false;
   for (const row of spendRows) {
     const part = spendInRange({ day: row.day.toISOString().slice(0, 10), days: row.days, amount: row.amount }, f, t);
     if (part === 0) continue;
+    covered = true;
     spend += part;
     bySource.set(row.source, (bySource.get(row.source) ?? 0) + part);
   }
+  // No entry covers the period: unknown, not zero.
+  const adSpend = covered ? spend : null;
   const delivered = new Map(sourceRows.map((s) => [s.source, n(s.delivered)]));
   return {
     revenue: n(o.revenue),
@@ -372,7 +381,9 @@ async function profitability(from: Date, to: Date) {
     costUnknown: n(o.unknown),
     parcels: n(o.parcels),
     backParcels: n(o.back),
-    adSpend: spendRows.length ? spend : null,
+    /** Orders of the period not delivered or refused yet: their money is not in yet, their costs partly are. */
+    open: n(o.open),
+    adSpend,
     ...profit({
       deliveredRevenue: n(o.revenue),
       delivered: n(o.delivered),
@@ -382,7 +393,7 @@ async function profitability(from: Date, to: Date) {
       backParcels: n(o.back),
       carrierPerParcel: settings.costs.carrierPerParcel,
       returnPerParcel: settings.costs.returnPerParcel,
-      adSpend: spendRows.length ? spend : null,
+      adSpend,
     }),
     sources: [...bySource.entries()]
       .map(([source, amount]) => ({ source, spend: amount, delivered: delivered.get(source) ?? 0, costPerDelivered: (delivered.get(source) ?? 0) > 0 ? Math.round(amount / delivered.get(source)!) : null }))

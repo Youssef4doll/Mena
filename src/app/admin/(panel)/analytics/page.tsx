@@ -484,6 +484,11 @@ function ProfitCard({ m }: { m: Awaited<ReturnType<typeof getAnalytics>>["profit
           <p>
             Coût publicitaire par commande livrée : <strong className="tabular-nums">{m.costPerDelivered == null ? "?" : fmt(m.costPerDelivered, "tnd")}</strong>
           </p>
+          {m.open > 0 && (
+            <p className="rounded-xl bg-[#fff8e6] p-3">
+              {m.open} commande(s) de la période sont encore en cours (à confirmer, confirmées ou en route) : leur argent n&apos;est pas encore compté, alors qu&apos;une partie de la publicité l&apos;est. Le bénéfice d&apos;une période récente est donc provisoire.
+            </p>
+          )}
           {m.sources.length > 0 && (
             <TableView head={["Source", "Dépense", "Livrées", "Coût par livrée"]} rows={m.sources.map((x) => [x.source, fmt(x.spend, "tnd"), x.delivered, x.costPerDelivered == null ? "—" : fmt(x.costPerDelivered, "tnd")])} />
           )}

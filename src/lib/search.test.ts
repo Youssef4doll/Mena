@@ -75,6 +75,9 @@ test("the shorter word decides the mistakes forgiven, so a long typo does not la
   // "kess" (Tunisian for a glass) is "kes" with one letter more.
   assert.ok(matchWord("kess", "kes", false) > 0);
   assert.equal(matchWord("makina", "main", false), 0);
+  // Short words must still be right: a bag is not an ice tray.
+  assert.equal(matchWord("sac", "bac", false), 0);
+  assert.equal(matchWord("كاس", "راس", false), 0);
   // A short start with a mistake no longer matches half the catalogue; five letters still do.
   assert.equal(matchWord("lemp", "lampadaire", true), 0);
   assert.ok(matchWord("difus", "diffuseur", true) > 0);

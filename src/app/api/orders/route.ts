@@ -16,6 +16,8 @@ export async function POST(request: Request) {
   }
   // A filled honeypot gets a plausible refusal and nothing is written.
   if (parsed.data.website) return json({ ok: false, error: "server" }, 400);
+  // "Typed in the back office" is said by the back office only.
+  if (parsed.data.origin === "admin") parsed.data.origin = undefined;
   const ctx = clientContext(request);
   const result = await placeOrder(parsed.data, { ...ctx, device: deviceFromUA(ctx.ua) });
   if (result.ok) {

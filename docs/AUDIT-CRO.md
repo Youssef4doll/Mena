@@ -69,14 +69,25 @@ Notes **estimées** (qualité d'usage, sur 10), sauf la vitesse, **mesurée**.
 
 Faits, avec résultat :
 - Types (`tsc`) et lint : sans erreur.
-- Tests unitaires : 75/75 (dont nouveaux : rentabilité, dépenses sur une période, chiffres arabes, recherche).
+- Tests unitaires : 72/72 (dont nouveaux : rentabilité, dépenses sur une période, chiffres arabes, recherche).
 - Tests navigateur (Playwright, téléphone) : 15/15, dont un nouveau : réponse perdue puis deuxième appui → une seule commande, même référence ; produit retiré du panier ; Retour ferme la commande rapide.
 - Serveur, requêtes falsifiées : quantité 0, −1, 999, 1,5 refusées ; total faux → nouveau total renvoyé ; variante d'un autre produit ignorée ; gouvernorat inconnu refusé ; autre site refusé ; carte refusée. Trois envois identiques simultanés → une commande.
 - Back-office : coûts saisis, dépense de 70 DT sur 7 jours → bénéfice et coût par livrée justes (316,8 − 131 − 48 − 4 − 70 = 63,8 DT ; 17,5 DT par livrée). Commande WhatsApp créée, confirmée, source « whatsapp ».
 - Captures téléphone : premier écran 360×640 avec prix et bouton ; bandeau cookies au-dessus de la barre ; recherche « sac femme » ; page introuvable avec produits ; pas de défilement horizontal.
 - Version de production : construite sans erreur (un avertissement de police, déjà présent).
 
-Vitesse (avant → après) : voir le tableau ajouté en fin de rapport.
+Vitesse, version de production locale, téléphone simulé (4G lente, processeur ×4), médiane de 3 chargements :
+
+| Page | Affichage principal avant → après | Code chargé avant → après | Décalage avant → après |
+|---|---|---|---|
+| Accueil | 1,52 s → 1,40 s | 165 → 168 Ko | 0 → 0 |
+| Fiche lampe (arabe) | 1,49 s → 1,76 s* | 185 → 190 Ko | 0 → 0 |
+| Fiche diffuseur (français) | 1,24 s → 1,40 s* | 185 → 190 Ko | 0 → 0 |
+| Catégorie | 1,24 s → 1,11 s | 172 → 176 Ko | 0 → 0 |
+| Recherche | 0,92 s → 0,95 s | 172 → 176 Ko | 0 → 0 |
+| Panier | 0,88 s → 0,94 s | 173 → 177 Ko | **0,143 → 0** |
+
+\* Remesuré en alternant les deux versions (3 + 3 chargements, sans préchauffage) : 1,58 / 1,73 / 1,63 s avant, 1,60 / 1,49 / 1,59 s après. L'écart du tableau est du bruit de mesure ; l'élément affiché en dernier reste la photo du produit. Mesures sur un serveur local (temps de réponse quasi nul) : elles comparent les versions, elles ne prédisent pas la vitesse en ligne.
 
 ## D. Ce qui reste
 

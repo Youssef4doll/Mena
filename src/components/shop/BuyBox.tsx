@@ -102,7 +102,7 @@ export function addChoiceToCart(p: P, c: BuyChoice, where: string): boolean {
   if (result === "added" || result === "more" || result === "replaced") {
     track("add_to_cart", { productId: p.id, value: unit * units, props: { where, offer: Boolean(c.offer), result } });
     pixelAddToCart({ id: p.id, name: p.name, price: unit, qty: units });
-  } else track("add_to_cart", { productId: p.id, props: { where, offer: Boolean(c.offer), result } });
+  }
   return true;
 }
 
