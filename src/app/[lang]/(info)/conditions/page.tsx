@@ -11,7 +11,7 @@ export async function generateMetadata({ params }: PageProps<"/[lang]/conditions
 }
 
 /**
- * A plain starting text, filled from the settings. The shop should have it
+ * A plain starting text, filled from the settings, in both languages. The shop should have it
  * read by someone who knows Tunisian consumer law before launch.
  */
 export default async function TermsRoute({ params }: PageProps<"/[lang]/conditions">) {
@@ -19,8 +19,32 @@ export default async function TermsRoute({ params }: PageProps<"/[lang]/conditio
   if (!isLang(lang)) notFound();
   const s = await getSettings();
   const shop = s.shop;
+  const phone = shop.phone ? formatPhone(normalizePhone(shop.phone) || shop.phone) : "";
+  if (lang === "ar")
+    return (
+      <Prose title="شروط البيع">
+        <p>
+          ينشر هذا الموقع {shop.legalName || shop.name}
+          {shop.legalId && <>، المعرّف الجبائي <bdi>{shop.legalId}</bdi></>}
+          {shop.address && <>، {shop.address}</>}.{phone && <> الهاتف: <bdi dir="ltr">{phone}</bdi>.</>}
+          {shop.email && <> البريد الإلكتروني: <bdi>{shop.email}</bdi>.</>}
+        </p>
+        <h2>الطلبية</h2>
+        <p>تُسجَّل الطلبية عند تأكيدها على الموقع. نتصل بك بعد ذلك بالهاتف أو على واتساب لتأكيدها. يمكن إلغاء الطلبية التي لم يتمّ تأكيدها.</p>
+        <h2>الأسعار</h2>
+        <p>الأسعار معروضة بالدينار التونسي، وتشمل كل الأداءات. معلوم التوصيل <bdi>{formatTND(s.delivery.fee, "ar")}</bdi> مهما كانت الولاية، ويظهر قبل تأكيد الطلبية. المبلغ الجملي المعروض عند الطلب هو المبلغ الذي تدفعه.</p>
+        <h2>الدفع</h2>
+        <p>يتمّ الدفع نقدًا عند الاستلام.</p>
+        <h2>التوصيل</h2>
+        <p>آجال التوصيل المذكورة هي الآجال المعتادة، تُحتسب من تاريخ تأكيد الطلبية، وليست تاريخًا مضمونًا. التفاصيل في صفحة التوصيل والإرجاع.</p>
+        <h2>حقّ الإرجاع</h2>
+        <p>طبقًا للقانون عدد 83 لسنة 2000 المتعلّق بالمبادلات والتجارة الإلكترونية، يمكنك العدول عن الشراء في أجل {s.returns.days} {s.returns.days > 10 ? "يومًا" : "أيام"} من تاريخ استلام المنتوج. يجب إرجاع المنتوج في حالته الأصلية. يتمّ استرجاع المبلغ بعد استلام المنتوج والتثبّت منه.</p>
+        <h2>الشكايات</h2>
+        <p>لأيّ سؤال أو شكاية، اتصل بنا{s.contact.whatsapp ? " على واتساب" : ""}{phone ? <> على الرقم <bdi dir="ltr">{phone}</bdi></> : ""}.</p>
+      </Prose>
+    );
   return (
-    <Prose title="Conditions générales de vente" french={lang === "ar"}>
+    <Prose title="Conditions générales de vente">
       <p>
         Le site est édité par {shop.legalName || shop.name}
         {shop.legalId && <>, matricule fiscal {shop.legalId}</>}

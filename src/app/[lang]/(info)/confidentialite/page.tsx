@@ -13,8 +13,28 @@ export default async function PrivacyRoute({ params }: PageProps<"/[lang]/confid
   if (!isLang(lang)) notFound();
   const s = await getSettings();
   const pixels = [s.tracking.metaPixelId && "Meta (Facebook, Instagram)", s.tracking.tiktokPixelId && "TikTok", s.tracking.ga4Id && "Google Analytics"].filter(Boolean);
+  if (lang === "ar")
+    return (
+      <Prose title="الخصوصية والكوكيز">
+        <p>يعالج {s.shop.name} معطياتك الشخصية طبقًا للقانون الأساسي عدد 63 لسنة 2004 المتعلّق بحماية المعطيات الشخصية.</p>
+        <h2>ما نحتفظ به</h2>
+        <ul>
+          <li>عند الطلب: الاسم، الهاتف، عنوان التوصيل، ومحتوى الطلبية. تُستعمل لتأكيد الطلبية وتوصيلها ومتابعتها.</li>
+          <li>إذا بدأت طلبية ولم تكملها، نحتفظ بالاسم والهاتف والولاية التي كتبتها، لنتصل بك مرّة واحدة ونساعدك على إتمامها.</li>
+          <li>قياس داخلي لزيارات الموقع، دون كوكيز إشهارية: الصفحات التي تمّت زيارتها، الطلبيات التي بدأت، وعمليات البحث، مع معرّف مجهول.</li>
+        </ul>
+        <h2>الكوكيز الإشهارية</h2>
+        {pixels.length > 0 ? (
+          <p>إذا قبلتها، نستعمل أدوات القياس الخاصة بـ <bdi dir="ltr">{pixels.join(", ")}</bdi> لقياس إعلاناتنا. إذا رفضتها، لا يتمّ تحميلها ويعمل الموقع بنفس الطريقة.</p>
+        ) : (
+          <p>لا يستعمل الموقع حاليًا أيّ كوكيز إشهارية.</p>
+        )}
+        <h2>حقوقك</h2>
+        <p>يمكنك طلب الاطّلاع على معطياتك أو تصحيحها أو حذفها بالاتصال بنا{s.shop.email ? <> على <bdi>{s.shop.email}</bdi></> : ""}{s.shop.phone ? <> أو على الرقم <bdi dir="ltr">{s.shop.phone}</bdi></> : ""}.</p>
+      </Prose>
+    );
   return (
-    <Prose title="Confidentialité et cookies" french={lang === "ar"}>
+    <Prose title="Confidentialité et cookies">
       <p>{s.shop.name} traite vos données conformément à la loi organique n° 2004-63 sur la protection des données à caractère personnel.</p>
       <h2>Ce que nous gardons</h2>
       <ul>

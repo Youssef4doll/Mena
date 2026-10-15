@@ -3,7 +3,8 @@
 import { useRouter } from "next/navigation";
 import { useRef, useState, useSyncExternalStore, useTransition } from "react";
 import { deleteImage, deleteProduct, importImage, moveImage, saveProduct, setImageAlt, translateTexts, uploadImages, type ProductInput } from "../actions";
-import type { ProductTexts } from "@/lib/translate-merge";
+import { mergeTranslation, type ProductTexts } from "@/lib/translate-merge";
+import { manualRequest, readManualAnswer } from "@/lib/translate-prompt";
 import { parseTND, toInputTND, formatTND } from "@/lib/money";
 import { offerCompareAt } from "@/lib/offer-display";
 import { slugify } from "@/lib/slug";
@@ -196,7 +197,14 @@ function Form({ id, initial, images, categories, suppliers, shopName, siteUrl, e
                   </label>
                 </>
               ) : (
-                <p className="text-sm text-ink-2">Traduction automatique en arabe tunisien : ajoutez la variable <code>ANTHROPIC_API_KEY</code> dans Vercel, puis redéployez (voir docs/DEPLOIEMENT.md).</p>
+                <ManualTranslate
+                  texts={textsOf(p)}
+                  todo={missing(p)}
+                  onAnswer={(answer) => {
+                    setP((x) => withTexts(x, mergeTranslation(textsOf(x), answer, "fill")));
+                    setMsg({ ok: true, text: "Traduction ajoutée dans les champs vides. Relisez puis enregistrez." });
+                  }}
+                />
               )}
             </div>
             <div className="grid gap-3 sm:grid-cols-2">
@@ -605,5 +613,81 @@ function Images({ productId, images, kind }: { productId: string; images: Img[];
       </div>
       {err && <p className="mt-2 text-sm text-danger">{err}</p>}
     </Card>
+  );
+}
+
+/**
+ * Translation without an API key: the request is copied, pasted into any chat
+ * assistant (claude.ai, free), and its reply pasted back here. Only the empty
+ * fields are filled, as with the automatic translation; nothing is saved.
+ */
+function ManualTranslate({ texts, todo, onAnswer }: { texts: ProductTexts; todo: boolean; onAnswer: (t: ProductTexts) => void }) {
+  const [open, setOpen] = useState(false);
+  const [shown, setShown] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
+  const [reply, setReply] = useState("");
+  const [bad, setBad] = useState(false);
+
+  async function copy() {
+    const text = manualRequest(texts, "fill");
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopied(true);
+      setShown(null);
+    } catch {
+      // No clipboard (old browser, page not in https): the text is shown to copy by hand.
+      setShown(text);
+    }
+  }
+
+  if (!open)
+    return (
+      <>
+        <p className="text-sm text-ink-2">Pas de traduction automatique (pas de clé <code>ANTHROPIC_API_KEY</code>).</p>
+        <button type="button" className={btn.sea} onClick={() => setOpen(true)} disabled={!todo}>
+          {todo ? "Traduire avec claude.ai (gratuit)" : "Rien à traduire"}
+        </button>
+      </>
+    );
+  return (
+    <div className="grid w-full gap-2 text-sm text-ink-2">
+      <p>
+        1. <button type="button" className={btn.sea} onClick={copy}>{copied ? "Demande copiée" : "Copier la demande"}</button>
+      </p>
+      {shown && <textarea readOnly aria-label="Demande à copier" className={`${input} h-28 font-mono text-xs`} value={shown} onFocus={(e) => e.currentTarget.select()} />}
+      <p>
+        2. Ouvrez <a href="https://claude.ai/new" target="_blank" rel="noopener" className="text-sea underline underline-offset-4">claude.ai</a> (ou une autre IA), collez la demande et envoyez-la.
+      </p>
+      <p>3. Copiez toute sa réponse et collez-la ici :</p>
+      <textarea
+        aria-label="Réponse de l'IA"
+        className={`${input} h-28 font-mono text-xs`}
+        dir="auto"
+        value={reply}
+        onChange={(e) => {
+          setReply(e.target.value);
+          setBad(false);
+        }}
+      />
+      {bad && <p className="text-danger">{"Réponse illisible : copiez toute la réponse, du premier « { » au dernier « } »."}</p>}
+      <div className="flex gap-2">
+        <button
+          type="button"
+          className={btn.sea}
+          disabled={!reply.trim()}
+          onClick={() => {
+            const answer = readManualAnswer(reply);
+            if (!answer) return setBad(true);
+            onAnswer(answer);
+            setOpen(false);
+            setReply("");
+            setCopied(false);
+          }}
+        >
+          Mettre la traduction dans les champs
+        </button>
+        <button type="button" className={btn.ghost} onClick={() => setOpen(false)}>Fermer</button>
+      </div>
+    </div>
   );
 }
