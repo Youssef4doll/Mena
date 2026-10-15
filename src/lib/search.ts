@@ -79,12 +79,14 @@ export function matchWord(typed: string, word: string, last: boolean): number {
   if (typed === word) return 1;
   if (typed.length >= 2 && word.startsWith(typed)) return last ? 0.92 : 0.75;
   if (typed.length >= 3 && word.includes(typed)) return 0.6;
-  const max = allowed(typed.length);
+  // The shorter of the two decides how many mistakes are forgiven: "makina" is not "main".
+  const max = allowed(Math.max(4, Math.min(typed.length, word.length)));
   if (max === 0) return 0;
   const d = distance(typed, word, max);
   if (d <= max) return 0.8 - 0.15 * d;
   // Still typing, with a mistake: "difus" against the start of "diffuseur" (a letter more or less included).
-  if (last && word.length > typed.length) {
+  // Only from five letters: shorter starts with a mistake match half the catalogue.
+  if (last && typed.length >= 5 && word.length > typed.length) {
     let dp = max + 1;
     for (let n = typed.length - 1; n <= typed.length + 1; n++) if (n >= 2 && n <= word.length) dp = Math.min(dp, distance(typed, word.slice(0, n), max));
     if (dp <= max) return 0.7 - 0.15 * dp;
@@ -95,13 +97,16 @@ export function matchWord(typed: string, word: string, last: boolean): number {
 export type Field = { tokens: string[]; weight: number };
 export type Doc = { id: string; fields: Field[] };
 
+/** "noire" and "noir", "verres" and "verre": the same word for a "did you mean". */
+const stem = (w: string) => w.replace(/(es|e|s|x)$/, "");
+
 /** The best match of one typed word in a document: its score (field weight included) and the word it found. */
 function bestIn(typed: string, doc: Doc, last: boolean): Match {
   let best: Match = { score: 0, word: "", exact: false };
   for (const f of doc.fields) {
     for (const w of f.tokens) {
       const m = matchWord(typed, w, last) * f.weight;
-      if (m > best.score) best = { score: m, word: w, exact: typed === w || (last && w.startsWith(typed)) || w.startsWith(typed) };
+      if (m > best.score) best = { score: m, word: w, exact: typed === w || w.startsWith(typed) || stem(typed) === stem(w) };
     }
   }
   return best;

@@ -305,6 +305,10 @@ model Order {
   accessSalt      String
   /// Keyed hash of that link's token, to find the order from it.
   accessHash      String          @unique
+  /// Keyed hash of the random key the browser sends with an order attempt.
+  /// The same attempt sent again (a lost answer, a second tap) returns this
+  /// order instead of making a second one.
+  submitKeyHash   String?         @unique
   /// Attribution (first touch) and context, for the analytics.
   source          String?
   medium          String?
@@ -561,6 +565,26 @@ model AdminSession {
 /// First-party analytics: no external service needed to read the funnel.
 /// Append-only, no relations. Hot dimensions are real columns (indexed,
 /// groupable in SQL); the rest sits in `props`.
+/// Advertising spend as the ads manager reports it, entered by hand: the cost
+/// per delivered order and the profit after ads are computed from it. A row
+/// covers one or several days (a weekly total is spread evenly over its days).
+model AdSpend {
+  id        String   @id @default(cuid())
+  /// First Tunisian calendar day covered.
+  day       DateTime @db.Date
+  /// Days covered, from `day` on (1 for one day).
+  days      Int      @default(1)
+  /// Same words as an order's source: facebook, instagram, tiktok, google…
+  source    String
+  campaign  String?
+  /// Millimes, as paid (taxes and card fees included).
+  amount    Int
+  note      String?
+  createdAt DateTime @default(now())
+
+  @@index([day])
+}
+
 model AnalyticsEvent {
   id        String   @id @default(cuid())
   /// snake_case: page_view, product_viewed, add_to_cart, checkout_started,

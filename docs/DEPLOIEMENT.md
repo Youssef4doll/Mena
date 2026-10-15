@@ -42,10 +42,11 @@ Un `.tn` s'achète chez un registrar agréé par l'ATI. Dans Vercel, *Settings �
 
 *Paramètres* :
 
-- **Boutique** : téléphone, e-mail, adresse, matricule fiscal. Ils apparaissent dans le pied de page et les conditions de vente.
+- **Boutique** : le vrai téléphone, l'e-mail, l'adresse (au moins la ville), le **vendeur** (nom de la société ou de la personne) et le matricule fiscal, la page Facebook. Ils apparaissent dans le pied de page, la page Contact et les conditions de vente : c'est ce que regardent les clients qui hésitent avant une commande à la livraison. Un avertissement reste affiché tant que l'adresse ou le matricule manquent.
 - **WhatsApp** : votre numéro. Sans lui, les boutons WhatsApp ne s'affichent pas.
 - **Livraison** : **un seul tarif pour tous les gouvernorats** (8 DT par défaut, champ « Frais de livraison, tous les gouvernorats »), puis le délai (en jours ouvrés) par gouvernorat. Par défaut : 1 à 2 jours pour le Grand Tunis, 2 à 3 jours ailleurs. **À corriger avec vos vrais délais.** Ajoutez aussi un seuil de livraison offerte si votre marge le permet (par exemple 150 DT).
-- **Pixels** : les identifiants Meta, TikTok et GA4, et les jetons serveur (API Conversions). Ils ne se chargent que chez les visiteurs qui acceptent les cookies.
+- **Ce que vous payez par colis** (carte *Livraison*, jamais affiché aux clients) : ce que le transporteur vous facture par colis, et le coût en plus d'un colis refusé ou retourné. Avec eux, *Analytics → Rentabilité* donne le vrai bénéfice, et l'éditeur de produit la marge de chaque offre « après transport ».
+- **Pixels** : les identifiants Meta, TikTok et GA4, et les jetons serveur (API Conversions). Ils ne se chargent que chez les visiteurs qui acceptent les cookies. « Signaler l'achat aux publicités » : à la commande, à la confirmation, ou **à la livraison** (les publicités apprennent seulement sur les clients qui ont payé ; il faut alors les jetons serveur et assez de livraisons par semaine).
 - **SMS** : l'adresse de la passerelle de votre fournisseur de SMS. Sans passerelle, rien n'est envoyé, mais chaque message reste visible dans la commande, et le bouton WhatsApp le pré-remplit.
 
 ## 6. Les produits
@@ -94,11 +95,14 @@ https://mena.tn/produit/lampe-de-chevet-tactile?utm_source=facebook&utm_medium=p
 
 `utm_source` : facebook, instagram ou tiktok. `utm_campaign` : un nom par campagne. *Analytics → Sources* et *Campagnes* montrent ensuite, pour chaque pub, les visites, les commandes, les commandes confirmées, les livraisons et les refus.
 
-Conseil : envoyez les pubs directement sur la **fiche produit**, pas sur l'accueil. Le lien sans préfixe ouvre la fiche en arabe ; pour une pub en français, ajoutez `/fr` : `https://mena.tn/fr/produit/…`.
+**Dépenses pub** (menu du back-office) : recopiez chaque jour, ou chaque semaine, ce que le gestionnaire de publicités a dépensé, avec la même source (facebook, tiktok…) et, si vous voulez, le nom de campagne de `utm_campaign`. *Analytics → Rentabilité* en tire le **coût publicitaire par commande livrée**, par source, et le bénéfice après publicité. Une campagne qui coûte plus par commande livrée que ce que la commande rapporte avant publicité perd de l'argent, même si elle « fait des commandes ».
+
+Conseil : envoyez les pubs directement sur la **fiche produit**, pas sur l'accueil. Si vous mettez un produit en pause alors qu'une pub tourne encore, la page « introuvable » propose d'autres produits, et *Analytics* compte ces visites ; coupez quand même la pub. Le lien sans préfixe ouvre la fiche en arabe ; pour une pub en français, ajoutez `/fr` : `https://mena.tn/fr/produit/…`.
 
 ## 8. La routine quotidienne
 
-1. **Tableau de bord → À appeler en premier** : appelez, ou envoyez le WhatsApp de confirmation pré-rempli, puis notez le résultat. Les commandes à risque (liste noire, refus passés, doublons) sont en tête de file.
+1. **Tableau de bord → À appeler en premier** : appelez, ou envoyez le WhatsApp de confirmation pré-rempli, puis notez le résultat. Les commandes à risque (liste noire, refus passés, doublons) sont en tête de file. « Doublon possible » : le même numéro a déjà une commande ouverte avec un des mêmes produits ; demandez au client s'il en veut vraiment deux.
+   Une commande prise sur WhatsApp ou au téléphone : *Commandes → Nouvelle commande*. Mêmes prix, stock et contrôles que le site, et elle compte dans les statistiques avec son canal (WhatsApp, téléphone…).
 2. **Fournisseurs** : la liste « À commander maintenant » regroupe les commandes confirmées de chaque fournisseur.
 3. **Commandes → Confirmées** : passez-les en « Expédiée » avec le numéro de suivi. Le client reçoit un SMS si une passerelle est configurée.
 4. Au retour du livreur : « Livrée » ou « Refusée » (avec le motif). Les refus alimentent la liste noire et le taux de refus par gouvernorat.

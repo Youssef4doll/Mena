@@ -5,7 +5,7 @@ import { prisma } from "./prisma";
 import type { CatalogProduct } from "./pricing";
 import { leadOffer, offerCompareAt, offerLastDay, offersApply } from "./offer-display";
 import { parseSpecs, parseVideo, soldStep } from "./product-content";
-import { complete, normalize, rank, tokenize } from "./search";
+import { complete, normalize, rank, tokenize, type Ranked } from "./search";
 
 /**
  * Storefront reads. Cached under one tag the back office expires on every
@@ -174,6 +174,26 @@ async function cards(where: Prisma.ProductWhereInput, orderBy: Prisma.ProductOrd
   return rows.map((r) => toCard(r, ratings, sold));
 }
 
+/** Products that can be bought first, the others after them, each group in its order: the first taps go to what can be ordered. */
+export function outLast<T extends { stock: StockState }>(list: T[]): T[] {
+  return [...list.filter((p) => p.stock.kind !== "out"), ...list.filter((p) => p.stock.kind === "out")];
+}
+
+/** The price a card shows, per unit for a pack, so "cheapest first" follows what the customer reads. */
+const shownUnit = (p: ProductCard) => (p.packOf ? p.price / p.packOf : p.price);
+
+/** A list in the order the customer asked for. Prices are sorted on the price each card shows, not on the stored one. */
+async function sorted(where: Prisma.ProductWhereInput, sort: SortKey, take: number) {
+  if (sort === "popular") return outLast(await popularIn(where, take));
+  const list = await cards(where, NEWEST, take);
+  if (sort === "price_asc") list.sort((a, b) => shownUnit(a) - shownUnit(b));
+  if (sort === "price_desc") list.sort((a, b) => shownUnit(b) - shownUnit(a));
+  return outLast(list);
+}
+
+/** An order counts as a sale once the shop confirmed it; waiting, cancelled, refused and returned orders do not. */
+const SOLD: Prisma.EnumOrderStatusFilter = { in: ["CONFIRMED", "SUPPLIER_ORDERED", "SHIPPED", "DELIVERED"] };
+
 /**
  * The home page's category boxes: each category with up to four of its
  * products (the shop's selection first), like Amazon's "2 × 2" cards.
@@ -224,26 +244,18 @@ export const getCategoryPage = unstable_cache(
   async (slug: string, sort: SortKey) => {
     const category = await prisma.category.findFirst({ where: { slug, active: true }, select: { id: true, slug: true, name: true, nameAr: true } });
     if (!category) return null;
-    const products = sort === "popular" ? await popularIn({ categoryId: category.id }, 60) : await cards({ categoryId: category.id }, orderFor(sort), 60);
+    const products = await sorted({ categoryId: category.id }, sort, 60);
     return { category, products };
   },
-  ["category-page-v3"],
+  ["category-page-v4"],
   { tags: [CATALOG_TAG], revalidate: TTL },
 );
 
-function orderFor(sort: SortKey): Prisma.ProductOrderByWithRelationInput[] {
-  switch (sort) {
-    case "price_asc":
-      return [{ price: "asc" }];
-    case "price_desc":
-      return [{ price: "desc" }];
-    default:
-      return [{ featured: "desc" }, { createdAt: "desc" }];
-  }
-}
+/** The shop's own order: its selection first, then the newest. */
+const NEWEST: Prisma.ProductOrderByWithRelationInput[] = [{ featured: "desc" }, { createdAt: "desc" }];
 
 /**
- * Real units sold in the last 60 days (cancelled orders excluded). As a sort
+ * Real units sold in the last 60 days, in orders the shop confirmed. As a sort
  * order the list is topped up with the newest; as a "most ordered" claim
  * (fill = false) it is only what really sold.
  */
@@ -251,7 +263,7 @@ async function popularIn(where: Prisma.ProductWhereInput, take: number, fill = t
   const since = new Date(Date.now() - 60 * 86_400_000);
   const sold = await prisma.orderItem.groupBy({
     by: ["productId"],
-    where: { productId: { not: null }, order: { createdAt: { gte: since }, status: { notIn: ["CANCELLED"] } }, product: { active: true, ...where } },
+    where: { productId: { not: null }, order: { createdAt: { gte: since }, status: SOLD }, product: { active: true, ...where } },
     _sum: { qty: true },
     orderBy: { _sum: { qty: "desc" } },
     take,
@@ -260,20 +272,20 @@ async function popularIn(where: Prisma.ProductWhereInput, take: number, fill = t
   const ranked = ids.length ? await cards({ id: { in: ids } }, [], ids.length) : [];
   ranked.sort((a, b) => ids.indexOf(a.id) - ids.indexOf(b.id));
   if (ranked.length >= take || !fill) return ranked;
-  const rest = await cards({ ...where, id: { notIn: ids } }, orderFor("new"), take - ranked.length);
+  const rest = await cards({ ...where, id: { notIn: ids } }, NEWEST, take - ranked.length);
   return [...ranked, ...rest];
 }
 
 export const getShop = unstable_cache(
-  async (sort: SortKey) => (sort === "popular" ? popularIn({}, 120) : cards({}, orderFor(sort), 120)),
-  ["shop-v3"],
+  async (sort: SortKey) => sorted({}, sort, 120),
+  ["shop-v4"],
   { tags: [CATALOG_TAG], revalidate: TTL },
 );
 
 export const getHome = unstable_cache(
   async () => {
     const since = new Date(Date.now() - 60 * 86_400_000);
-    const soldCount = await prisma.orderItem.count({ where: { order: { createdAt: { gte: since }, status: { not: "CANCELLED" } } } });
+    const soldCount = await prisma.orderItem.count({ where: { order: { createdAt: { gte: since }, status: SOLD } } });
     const [featured, newest, bestsellers, reviews] = await Promise.all([
       cards({ featured: true }, [{ createdAt: "desc" }], 8),
       cards({}, [{ createdAt: "desc" }], 8),
@@ -288,7 +300,7 @@ export const getHome = unstable_cache(
     ]);
     return { featured, newest, bestsellers, reviews: reviews.map((r) => ({ ...r, createdAt: r.createdAt.toISOString() })) };
   },
-  ["home-v4"],
+  ["home-v5"],
   { tags: [CATALOG_TAG], revalidate: TTL },
 );
 
@@ -337,7 +349,7 @@ export const getProduct = unstable_cache(
         select: { id: true, rating: true, text: true, authorName: true, governorate: true, createdAt: true },
       }),
       prisma.review.aggregate({ where: { productId: p.id, status: "APPROVED" }, _avg: { rating: true }, _count: { _all: true } }),
-      cards({ id: { not: p.id }, ...(p.category ? { category: { slug: p.category.slug } } : {}) }, [{ featured: "desc" }, { createdAt: "desc" }], 8),
+      relatedTo(p.id, p.category?.slug ?? null),
       p.offers.length > 1
         ? prisma.orderItem.groupBy({
             by: ["offerId"],
@@ -397,10 +409,17 @@ export const getProduct = unstable_cache(
       related,
     };
   },
-  ["product-v5"],
+  ["product-v6"],
   { tags: [CATALOG_TAG], revalidate: TTL },
 );
 export type ProductPage = NonNullable<Awaited<ReturnType<typeof getProduct>>>;
+
+/** Others from the same category first; a small category is topped up with the shop's selection, so a page never ends on nothing. */
+async function relatedTo(id: string, categorySlug: string | null) {
+  const same = categorySlug ? await cards({ id: { not: id }, category: { slug: categorySlug } }, NEWEST, 8) : [];
+  const more = same.length < 4 ? await cards({ id: { notIn: [id, ...same.map((c) => c.id)] } }, NEWEST, 8 - same.length) : [];
+  return outLast([...same, ...more]);
+}
 
 /** A product's former address → its current one (the shop renamed it): old links and Google results still arrive. */
 export const productMovedTo = unstable_cache(
@@ -453,30 +472,60 @@ const getSearchIndex = unstable_cache(
 
 const ARABIC = /[\u0600-\u06ff]/;
 
-/** The products a query finds, best first, even with a typing mistake. */
+/**
+ * The products a query finds, best first, even with a typing mistake. Results
+ * far below the best one are dropped (a carpet for "montre" because its text
+ * says "entretenir"). When every word cannot be found ("sac femme": the shop
+ * never wrote "femme"), the word that finds the most in the names and keywords
+ * is used alone, and said so: `relaxed` is that word.
+ */
 async function findProducts(q: string, opts: { prefix: boolean; limit: number }) {
   const index = await getSearchIndex();
   const featured = new Set(index.docs.filter((d) => d.featured).map((d) => d.id));
-  const ranked = rank(q, index.docs, opts).map((r) => ({ ...r, score: r.score + (featured.has(r.id) ? 0.02 : 0) }));
+  const boost = (r: Ranked) => ({ ...r, score: r.score + (featured.has(r.id) ? 0.02 : 0) });
+  let ranked = rank(q, index.docs, opts).map(boost);
+  let relaxed: string | null = null;
+  const words = tokenize(q).filter((w, i, a) => a.indexOf(w) === i);
+  if (ranked.length === 0 && words.length >= 2) {
+    // Names and keywords only: "noire" alone must not bring every black product.
+    const strong = index.docs.map((d) => ({ id: d.id, fields: d.fields.slice(0, 2) }));
+    const best = words
+      .map((w, i) => ({ w, r: rank(w, strong, { ...opts, prefix: opts.prefix && i === words.length - 1 }) }))
+      .filter((x) => x.r.length > 0)
+      .sort((a, b) => b.r[0].score - a.r[0].score)[0];
+    if (best) {
+      ranked = best.r.map(boost);
+      relaxed = best.r[0].corrected.get(best.w) ?? best.w;
+    }
+  }
   ranked.sort((a, b) => b.score - a.score);
-  return { ranked, index };
+  const top = ranked[0]?.score ?? 0;
+  ranked = ranked.filter((r) => r.score >= top * 0.5);
+  return { ranked, index, relaxed };
 }
 
 /**
  * The results page. When the best result was found by correcting a word,
  * the corrected query is returned, for "Résultats pour « lampe »".
  */
-export async function searchProducts(q: string, take = 40): Promise<{ products: ProductCard[]; corrected: string | null }> {
+export async function searchProducts(q: string, take = 40): Promise<{ products: ProductCard[]; corrected: string | null; relaxed: string | null }> {
   const term = q.trim().slice(0, 80);
-  if (term.length < 2) return { products: [], corrected: null };
-  const { ranked } = await findProducts(term, { prefix: true, limit: take });
-  if (ranked.length === 0) return { products: [], corrected: null };
+  if (term.length < 2) return { products: [], corrected: null, relaxed: null };
+  const { ranked, relaxed } = await findProducts(term, { prefix: true, limit: take });
+  if (ranked.length === 0) return { products: [], corrected: null, relaxed: null };
+  if (relaxed) {
+    const order = ranked.map((r) => r.id);
+    const found = await cards({ id: { in: order } }, [], order.length);
+    found.sort((a, b) => order.indexOf(a.id) - order.indexOf(b.id));
+    return { products: outLast(found), corrected: null, relaxed };
+  }
   const order = ranked.map((r) => r.id);
-  const list = await cards({ id: { in: order } }, [], order.length);
-  list.sort((a, b) => order.indexOf(a.id) - order.indexOf(b.id));
+  const found = await cards({ id: { in: order } }, [], order.length);
+  found.sort((a, b) => order.indexOf(a.id) - order.indexOf(b.id));
+  const list = outLast(found);
   const fix = ranked[0].corrected;
   const corrected = fix.size ? tokenize(term).filter((w, i, a) => a.indexOf(w) === i).map((w) => fix.get(w) ?? w).join(" ") : null;
-  return { products: list, corrected: corrected && corrected !== normalize(term) ? corrected : null };
+  return { products: list, corrected: corrected && corrected !== normalize(term) ? corrected : null, relaxed: null };
 }
 
 /** As the customer types: completions (Google's grey lines), products with their picture and price, categories. */

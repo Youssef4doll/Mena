@@ -13,8 +13,9 @@ import { randomId, store } from "@/lib/client/storage";
 import { useHydrated } from "@/lib/client/hydrated";
 import { formatTND } from "@/lib/money";
 import { formatPhone, normalizePhone } from "@/lib/phone";
+import { removeOrdered } from "@/lib/client/cart";
 import { GOVERNORATES, governorateLabel } from "@/lib/governorates";
-import { deliveryRangeLabel } from "@/lib/delivery";
+import { deliveryRangeLabel, deliverySpan } from "@/lib/delivery";
 import { IconCartPlus, IconCash, IconChevronDown, IconPhone, IconShield, IconTruck, IconWhatsApp } from "./Icons";
 
 export type OrderLine = { productId: string; variantId: string | null; offerId: string | null; qty: number };
@@ -29,6 +30,8 @@ const DRAFT = "mena_draft";
 /** Ties an unfinished form to the back office's "commandes non terminées". Renewed after each order. */
 const FORM_TOKEN = "mena_form_token";
 const ADDRESS_MAX = 300;
+/** When a price check got no answer: try again after these delays. */
+const RETRY_MS = [1500, 4000, 10_000];
 
 function readJson(raw: string): Partial<Form> {
   try {
@@ -104,6 +107,10 @@ export function OrderForm(props: Props) {
   const [answer, setAnswer] = useState<{ key: string; q: PublicQuote } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  // The order is made and the thank-you page is loading: the button stays off, a second tap is not a second order.
+  const placed = useRef(false);
+  // One key per attempt: the same details sent again (no answer came back) reuse it, and the server returns the order it made.
+  const attempt = useRef<{ sig: string; key: string } | null>(null);
   // The visitor has used the form itself (not just looked at the page with saved details).
   const [engaged, setEngaged] = useState(false);
   const phoneLogged = useRef(false);
@@ -122,10 +129,26 @@ export function OrderForm(props: Props) {
     if (!hydrated || !ready || lines.length === 0) return;
     const ctrl = new AbortController();
     const key = quoteKey;
-    fetchQuote({ lines, governorate: f.governorate || null, promoCode: promo, phone }, ctrl.signal).then((q) => {
-      if (!ctrl.signal.aborted && q) absorb(q, key);
-    });
-    return () => ctrl.abort();
+    let tries = 0;
+    let timer: ReturnType<typeof setTimeout>;
+    // A dropped request on mobile data, or a busy shared address (429): ask again a little later,
+    // and as soon as the phone is back online, rather than leaving the summary without prices.
+    const run = () => {
+      clearTimeout(timer);
+      fetchQuote({ lines, governorate: f.governorate || null, promoCode: promo, phone }, ctrl.signal).then((q) => {
+        if (ctrl.signal.aborted) return;
+        if (q) absorb(q, key);
+        else if (tries < RETRY_MS.length) timer = setTimeout(run, RETRY_MS[tries++]);
+      });
+    };
+    // Several taps in a row (offers, options) cost one request.
+    timer = setTimeout(run, 200);
+    addEventListener("online", run);
+    return () => {
+      ctrl.abort();
+      clearTimeout(timer);
+      removeEventListener("online", run);
+    };
     // absorb only reads values that are part of quoteKey.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [hydrated, quoteKey, ready]);
@@ -139,18 +162,28 @@ export function OrderForm(props: Props) {
       track("checkout_phone_entered", { productId, props: { where: origin } });
     }
     const timer = setTimeout(() => {
+      const a = currentAttribution();
+      const save = (token: string) =>
+        fetch("/api/cart", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ token, lines, phone, name: f.name || undefined, governorate: f.governorate || undefined, visitorId: a.visitorId, source: a.attribution.source, campaign: a.attribution.campaign }),
+          keepalive: true,
+        }).then((r) => r.json() as Promise<{ renew?: boolean }>);
       let token = store.get(FORM_TOKEN);
       if (!token) {
         token = randomId();
         store.set(FORM_TOKEN, token);
       }
-      const a = currentAttribution();
-      void fetch("/api/cart", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ token, lines, phone, name: f.name || undefined, governorate: f.governorate || undefined, visitorId: a.visitorId, source: a.attribution.source, campaign: a.attribution.campaign }),
-        keepalive: true,
-      }).catch(() => {});
+      void save(token)
+        .then((d) => {
+          // This token's form became an order long ago (placed in another browser): start a new one, once.
+          if (!d?.renew) return;
+          const fresh = randomId();
+          store.set(FORM_TOKEN, fresh);
+          return save(fresh);
+        })
+        .catch(() => {});
     }, 900);
     return () => clearTimeout(timer);
   }, [engaged, phone, f.name, f.governorate, lines, productId, origin]);
@@ -196,7 +229,7 @@ export function OrderForm(props: Props) {
 
   async function submit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
-    if (busy || lines.length === 0) return;
+    if (busy || placed.current || lines.length === 0) return;
     start();
     if (!ready) {
       props.onNotReady?.();
@@ -211,32 +244,35 @@ export function OrderForm(props: Props) {
     const honeypot = (e.currentTarget.elements.namedItem("website") as HTMLInputElement | null)?.value ?? "";
     setBusy(true);
     setError(null);
+    // Without a price answer (no network a moment ago, a busy shared address), the order goes with the
+    // total on screen: the server prices it again and, if it differs, answers with its own total to confirm.
+    // The basket has no total of its own: the server's answer is then shown first.
+    let blind = false;
     try {
       // The price check may still be on its way (slow network) or may have failed: ask again now.
       let q = quote;
       if (!q) {
         q = await fetchQuote({ lines, governorate: f.governorate, promoCode: promo, phone });
-        if (!q) {
-          setError(t.checkout.errors.server);
-          return;
-        }
-        absorb(q, quoteKey);
-        // Something changed (stock, an offer): the customer sees it before confirming again.
-        if (q.lines.length === 0 || q.problems.length > 0) return;
+        if (q) {
+          absorb(q, quoteKey);
+          // Something changed (stock, an offer): the customer sees it before confirming again.
+          if (q.lines.length === 0 || q.problems.length > 0) return;
+        } else blind = pagePrice == null;
       }
+      const expectedTotal = q ? q.total : blind ? 0 : total;
+      const details = { lines, phone: f.phone, name: f.name, governorate: f.governorate, address: f.address, promoCode: promo ?? undefined, expectedTotal };
+      const sig = JSON.stringify(details);
+      if (attempt.current?.sig !== sig) attempt.current = { sig, key: randomId() };
       const a = currentAttribution();
       const res = await fetch("/api/orders", {
         method: "POST",
         headers: { "content-type": "application/json" },
+        // A request that hangs on a weak signal ends with a sentence, not an endless "sending".
+        signal: AbortSignal.timeout(25_000),
         body: JSON.stringify({
-          lines,
-          phone: f.phone,
-          name: f.name,
-          governorate: f.governorate,
-          address: f.address,
-          promoCode: promo ?? undefined,
+          ...details,
           payment: "COD",
-          expectedTotal: q.total,
+          submitKey: attempt.current.key,
           cartToken: store.get(FORM_TOKEN) ?? undefined,
           restoredCartId: props.restoredCartId ?? undefined,
           visitorId: a.visitorId,
@@ -251,10 +287,13 @@ export function OrderForm(props: Props) {
       });
       const data = await res.json().catch(() => ({ ok: false, error: "server" }));
       if (data.ok) {
+        placed.current = true;
         // The ref ties the saved number to this order's thank-you page only.
         store.set(SAVED, JSON.stringify({ name: f.name, phone: f.phone, governorate: f.governorate, address: f.address, ref: data.ref }));
         store.remove(FORM_TOKEN);
         store.remove(DRAFT);
+        // What was just ordered leaves the basket, so the cart icon does not invite the same order twice.
+        if (origin !== "cart") removeOrdered(lines);
         props.onPlaced?.();
         router.push(href(lang, `/commande/merci/${data.ref}`));
         return;
@@ -263,11 +302,12 @@ export function OrderForm(props: Props) {
       if (data.quote) absorb(data.quote, quoteKey);
       if (data.error === "invalid") setServerBad(data.fields ?? []);
       const offerGone = data.quote?.problems?.some((x: { kind: string }) => x.kind === "offer_unavailable");
-      setError(offerGone ? t.buy.offerGone : (t.checkout.errors[data.error] ?? t.checkout.errors.server));
+      setError(offerGone ? t.buy.offerGone : blind && data.error === "price_changed" ? t.checkout.errors.checkTotal : (t.checkout.errors[data.error] ?? t.checkout.errors.server));
     } catch {
-      setError(t.checkout.errors.server);
+      // No answer (timeout, no network). The same tap again sends the same key: still one order.
+      setError(t.checkout.errors.network);
     } finally {
-      setBusy(false);
+      if (!placed.current) setBusy(false);
     }
   }
 
@@ -276,7 +316,8 @@ export function OrderForm(props: Props) {
   const price = priced ? quote.subtotal : (pagePrice ?? 0);
   // The basket has no price of its own: "Un instant…" until the server answers.
   const waiting = !priced && pagePrice == null;
-  const delivery = priced ? quote.delivery : null;
+  // The governorate's own delay once it is chosen; before that, the shortest to the longest the shop set.
+  const delivery = (priced ? quote.delivery : null) ?? deliverySpan(settings.delivery.zones);
   const discount = priced ? quote.discount : 0;
   // Free delivery is often known before the governorate: an offer, a promo code, or the shop's threshold.
   const promoFree = Boolean(priced && quote.promo?.result.ok && quote.promo.result.freeDelivery);
@@ -294,7 +335,7 @@ export function OrderForm(props: Props) {
     // A container: the fields go two by two when the form itself is wide enough, wherever it sits.
     <form id={props.formId} onSubmit={submit} noValidate className="@container flex flex-col gap-4">
       {/* Four fields, each with its name above it, and nothing else to read. */}
-      <fieldset className="grid min-w-0 items-start gap-x-3 gap-y-3 @lg:grid-cols-2" onFocus={start}>
+      <fieldset className="grid min-w-0 items-start gap-x-3 gap-y-3 @lg:grid-cols-2" onPointerDown={start} onKeyDown={start}>
         <legend className="sr-only">{t.buy.step2}</legend>
         <Field id={id("name")} label={t.buy.name} error={show("name") ? t.buy.nameError : null}>
           <input id={id("name")} value={f.name} onChange={(e) => update("name", e.target.value)} onBlur={blur("name")} onKeyDown={next(id("phone"))} enterKeyHint="next" autoComplete="name" className={inputCls(show("name"))} aria-invalid={show("name")} aria-describedby={show("name") ? id("name-msg") : undefined} data-testid="name" />
@@ -403,19 +444,7 @@ export function OrderForm(props: Props) {
         </p>
       )}
 
-      {/* The strongest button on the page; the basket is the quieter choice under it. */}
-      <button type="submit" disabled={busy} className="flex min-h-[58px] w-full items-center justify-center gap-2.5 rounded-full bg-buy px-6 text-[19px] font-bold text-night shadow-[inset_0_-3px_0_var(--color-buy-2)] transition [--focus-ring:var(--color-night)] hover:bg-buy-2 active:scale-[.99] disabled:opacity-80" data-testid="place-order">
-        <IconTruck className="h-6 w-6 shrink-0" />
-        {busy ? t.buy.sending : props.submitTitle}
-      </button>
-      {props.onAddToCart && (
-        <button type="button" onClick={addToCart} className="-mt-1 flex min-h-[52px] w-full items-center justify-center gap-2.5 rounded-full border border-ink/60 bg-white px-5 text-[17px] font-bold text-ink transition hover:bg-sand active:scale-[.99]" data-testid="add-to-cart">
-          <IconCartPlus className="h-6 w-6 shrink-0" />
-          {t.product.addToCart}
-        </button>
-      )}
-
-      {/* The cash-on-delivery promises, in a few words on one row. */}
+      {/* The cash-on-delivery promises, read just before the button: in a few words, on one row. */}
       <ul className="flex flex-wrap items-center justify-center gap-x-5 gap-y-1 text-[15px] text-ink-2">
         <li className="inline-flex items-center gap-1.5">
           <IconCash className="h-5 w-5 shrink-0 text-olive" />
@@ -428,6 +457,18 @@ export function OrderForm(props: Props) {
           </li>
         )}
       </ul>
+
+      {/* The strongest button on the page; the basket is the quieter choice under it. */}
+      <button type="submit" disabled={busy} className="flex min-h-[58px] w-full items-center justify-center gap-2.5 rounded-full bg-buy px-6 text-[19px] font-bold text-night shadow-[inset_0_-3px_0_var(--color-buy-2)] transition [--focus-ring:var(--color-night)] hover:bg-buy-2 active:scale-[.99] disabled:opacity-80" data-testid="place-order">
+        <IconTruck className="h-6 w-6 shrink-0" />
+        {busy ? t.buy.sending : props.submitTitle}
+      </button>
+      {props.onAddToCart && (
+        <button type="button" onClick={addToCart} className="-mt-1 flex min-h-[52px] w-full items-center justify-center gap-2.5 rounded-full border border-ink/60 bg-white px-5 text-[17px] font-bold text-ink transition hover:bg-sand active:scale-[.99]" data-testid="add-to-cart">
+          <IconCartPlus className="h-6 w-6 shrink-0" />
+          {t.product.addToCart}
+        </button>
+      )}
 
       {(shopPhone || settings.contact.whatsapp) && (
         <div className="flex flex-wrap justify-center gap-2">

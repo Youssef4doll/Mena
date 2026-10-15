@@ -11,5 +11,7 @@ playwright-report
 .pgdata
 .next-e2e
 .next-build
+# Any other local build folder (NEXT_DIST_DIR): never committed, never scanned by Tailwind.
+.next-*
 /screenshots/
 .next-shots

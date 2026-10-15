@@ -12,7 +12,7 @@ export type CustomerHistory = {
   refused: number;
   /** Orders by this phone in the last 24 hours, cancelled ones included. */
   last24h: number;
-  /** An open order (not cancelled/delivered/refused) for the same products in the last 48 hours. */
+  /** An open order (not cancelled/delivered/refused) sharing a product with this one, in the last 48 hours. */
   duplicateOpen: boolean;
 };
 

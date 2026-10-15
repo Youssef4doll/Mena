@@ -196,6 +196,22 @@ html {
   }
 }
 
+/* The cookie question sits above what floats at the bottom of a phone's screen:
+   the product page's order bar (ProductView sets data-sticky while it shows)
+   and the WhatsApp button (lifted above the question while it is asked). */
+.consent-box {
+  bottom: 0.75rem;
+  transition: bottom 0.3s;
+}
+@media (max-width: 767px) {
+  :root[data-sticky] .consent-box {
+    bottom: calc(5.25rem + env(safe-area-inset-bottom));
+  }
+}
+:root[data-consent="ask"] .wa-float {
+  bottom: calc(var(--consent-h, 0px) + 1.5rem);
+}
+
 /* Room under the footer for what floats over the bottom of the screen: the
    WhatsApp button, and on a phone the product page's order bar. */
 body:has(.wa-float) footer {

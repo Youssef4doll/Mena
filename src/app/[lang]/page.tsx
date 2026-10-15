@@ -77,18 +77,18 @@ export default async function Home({ params }: PageProps<"/[lang]">) {
       {/* --------------------------------------------------- shelves */}
       {home.featured.length > 0 && (
         <Shelf title={t.home.featured} link={{ href: href(lang, "/boutique"), label: t.home.seeMore }}>
-          <ProductRow products={home.featured} lang={lang} />
+          <ProductRow products={home.featured} lang={lang} list="home_featured" />
         </Shelf>
       )}
       {/* "Most ordered" only when at least four products really sold. */}
       {best.length > 0 && (
         <Shelf title={t.home.bestsellers} link={{ href: href(lang, "/boutique?tri=popular"), label: t.home.seeMore }}>
-          <ProductRow products={best} lang={lang} />
+          <ProductRow products={best} lang={lang} list="home_best" />
         </Shelf>
       )}
       {fresh.length >= 4 && (
         <Shelf title={t.home.newest} link={{ href: href(lang, "/boutique"), label: t.home.seeMore }}>
-          <ProductRow products={fresh} lang={lang} />
+          <ProductRow products={fresh} lang={lang} list="home_new" />
         </Shelf>
       )}
 

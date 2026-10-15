@@ -63,10 +63,12 @@ export const placeOrderSchema = z.object({
     .object({ fbp: text(120).optional(), fbc: text(200).optional(), ttp: text(120).optional(), ttclid: text(200).optional(), gaClientId: text(60).optional() })
     .optional(),
   locale: z.enum(["fr", "ar"]).default("ar"),
-  /** Where the order was placed: the product page's form, the quick form on a card, or the basket. Analytics only. */
-  origin: z.enum(["product", "quick", "cart"]).optional(),
+  /** Where the order was placed: the product page's form, the quick form on a card, the basket, or typed in the back office. Analytics only. */
+  origin: z.enum(["product", "quick", "cart", "admin"]).optional(),
   /** Honeypot: hidden from people, filled by bots. */
   website: z.string().max(200).optional(),
+  /** Random, one per checkout attempt: the same attempt sent twice makes one order. */
+  submitKey: z.string().regex(/^[A-Za-z0-9-]{16,64}$/).optional(),
 });
 export type PlaceOrderInput = z.infer<typeof placeOrderSchema>;
 
@@ -87,6 +89,14 @@ class StockGone extends Error {}
  * again, rather than being charged something they did not read.
  */
 export async function placeOrder(input: PlaceOrderInput, ctx: { ua: string | null; ip: string; ipHash: string; device: string }, attempt = 0): Promise<PlaceResult> {
+  // The same attempt again (the answer was lost on a weak connection, or a second tap):
+  // the order it already made, never a second one. Only the browser that sent it knows the key.
+  const submitKeyHash = input.submitKey ? hashToken(input.submitKey) : null;
+  if (submitKeyHash) {
+    const done = await prisma.order.findUnique({ where: { submitKeyHash }, select: { ref: true, accessSalt: true } });
+    if (done) return { ok: true, ref: done.ref, token: accessTokenFromSalt(done.accessSalt) };
+  }
+
   const phone = normalizePhone(input.phone);
   const phoneAlt = input.phoneAlt ? normalizePhone(input.phoneAlt) : null;
   const bad: string[] = [];
@@ -136,10 +146,9 @@ export async function placeOrder(input: PlaceOrderInput, ctx: { ua: string | nul
             select: { items: { select: { productId: true } } },
           }),
         ]);
-        const duplicateOpen = open.some((o) => {
-          const ids = o.items.map((i) => i.productId).filter(Boolean).sort();
-          return ids.length === productIds.length && ids.every((id, i) => id === productIds[i]);
-        });
+        // Any product already in an open order from this phone: the caller checks it is not the same order twice
+        // (the product ordered from its page, then again from the basket with something else).
+        const duplicateOpen = open.some((o) => o.items.some((i) => i.productId && productIds.includes(i.productId)));
         const flags = orderFlags(
           { blacklisted: customer.blacklisted, delivered, refused, last24h, duplicateOpen },
           { maxPerDay: settings.checkout.maxOrdersPerPhonePerDay, phoneIsMobile: isMobile(phone!) },
@@ -194,6 +203,7 @@ export async function placeOrder(input: PlaceOrderInput, ctx: { ua: string | nul
             flags,
             accessSalt,
             accessHash: hashToken(token),
+            submitKeyHash,
             source: a.source || "direct",
             medium: a.medium || null,
             campaign: a.campaign || null,
@@ -242,7 +252,8 @@ export async function placeOrder(input: PlaceOrderInput, ctx: { ua: string | nul
       return { ok: false, error: "cart_changed", quote: publicQuote(fresh) };
     }
     if (e instanceof Prisma.PrismaClientKnownRequestError && (e.code === "P2034" || e.code === "P2002") && attempt < 2) {
-      // A serialization conflict (two orders for the last unit) or a ref collision: retry, a couple of times at most.
+      // A serialization conflict (two orders for the last unit), a ref collision, or the same attempt
+      // arriving twice at once (the retry then finds the order the other one made): retry, a couple of times at most.
       return placeOrder(input, ctx, attempt + 1);
     }
     console.error("[order] placement failed", e);
@@ -261,7 +272,7 @@ export async function placeOrder(input: PlaceOrderInput, ctx: { ua: string | nul
   // In the language the customer ordered in.
   const trackUrl = `${site}${href(orderLang(order.locale), `/suivi/t/${token}`)}`;
   after(async () => {
-    await recordOrderEvent("order_placed", order, { items: quote.lines.reduce((s, l) => s + l.qty, 0), lines: quote.lines.length, payment: input.payment, promo: Boolean(quote.discount), origin: input.origin ?? "product" });
+    await recordOrderEvent("order_placed", order, { items: quote.lines.reduce((s, l) => s + l.qty, 0), lines: quote.lines.length, payment: input.payment, promo: Boolean(quote.discount), origin: input.origin ?? "product", restored: Boolean(input.restoredCartId) });
     if (settings.notify.smsOnPlaced) await sendSms({ to: order.phone, text: placedText(order, settings.shop.name, trackUrl), kind: "order_placed", orderId: order.id });
     if (order.email) {
       await sendEmail({
@@ -344,6 +355,7 @@ export async function changeStatus(orderId: string, to: OrderStatus, by: string,
       await recordOrderEvent(ev, updated, { from: current.status, hoursFromOrder: hours, ...(to === "REFUSED" ? { reason: extra.refusalReason ?? null } : {}) });
     }
     if (to === "CONFIRMED") await sendPurchase(orderId, "confirmed");
+    if (to === "DELIVERED") await sendPurchase(orderId, "delivered");
     if (to === "SHIPPED" && settings.notify.smsOnShipped) {
       const token = accessTokenFromSalt(updated.accessSalt);
       const site = process.env.NEXT_PUBLIC_SITE_URL ?? "";

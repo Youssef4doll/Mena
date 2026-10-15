@@ -37,6 +37,7 @@ export default async function ProductEditPage({ params }: PageProps<"/admin/prod
         categories={categories}
         shopName={settings.shop.name}
         everywhere={deliversEverywhere(settings.delivery.zones)}
+        shipping={{ fee: settings.delivery.fee, carrier: settings.costs.carrierPerParcel }}
         aiReady={translationReady()}
         siteUrl={SITE_URL}
         oldSlugs={p?.oldSlugs ?? []}

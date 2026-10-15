@@ -24,6 +24,8 @@ export const settingsSchema = z.object({
     phone: z.string().max(20),
     email: z.string().max(120),
     address: z.string().max(200),
+    /** Who sells, as registered (company or person); empty → the shop's name. Footer, contact and legal pages. */
+    legalName: z.string().max(120),
     /** Matricule fiscal / RNE — shown in the footer and the legal pages. */
     legalId: z.string().max(60),
     instagram: z.string().max(200),
@@ -33,8 +35,6 @@ export const settingsSchema = z.object({
   hero: z.object({
     title: z.string().max(80),
     titleAr: z.string().max(80),
-    subtitle: z.string().max(200),
-    subtitleAr: z.string().max(200),
     /** Media id of the hero picture; none → a typographic hero. */
     imageId: z.string().max(40).nullable(),
   }),
@@ -54,6 +54,13 @@ export const settingsSchema = z.object({
     freeThreshold: z.number().int().min(0).nullable(),
     /** Whether the customer may open the parcel before paying (depends on the carrier). */
     openBeforePaying: z.boolean(),
+  }),
+  /** What the shop pays, for the profit figures. Never sent to the browser (not in publicSettings). */
+  costs: z.object({
+    /** Millimes the carrier charges the shop per parcel sent (delivered or not); null = not given. */
+    carrierPerParcel: z.number().int().min(0).max(100_000).nullable(),
+    /** Millimes a refused or returned parcel costs on top (the way back); null = not given. */
+    returnPerParcel: z.number().int().min(0).max(100_000).nullable(),
   }),
   returns: z.object({
     /** Days after delivery. The law (2000-83) gives 10. */
@@ -77,9 +84,10 @@ export const settingsSchema = z.object({
     ga4Id: z.string().max(30),
     tiktokPixelId: z.string().max(40),
     /** When the ad platforms are told about a "Purchase": as soon as the order
-     *  is placed, or once it is confirmed by phone (fewer fake orders in the
-     *  audiences the ads learn from). */
-    purchaseAt: z.enum(["placed", "confirmed"]),
+     *  is placed, once it is confirmed by phone (fewer fake orders in the
+     *  audiences the ads learn from), or once it is delivered and paid (the
+     *  ads learn only from customers who really paid; fewer, later events). */
+    purchaseAt: z.enum(["placed", "confirmed", "delivered"]),
   }),
   notify: z.object({
     /** SMS through a plain HTTP gateway. {to} {text} {key} are substituted. */
@@ -125,6 +133,7 @@ export const DEFAULT_SETTINGS: Settings = {
     phone: "",
     email: "",
     address: "",
+    legalName: "",
     legalId: "",
     instagram: "",
     facebook: "",
@@ -133,8 +142,6 @@ export const DEFAULT_SETTINGS: Settings = {
   hero: {
     title: "Choisi avec soin. Payé à la livraison.",
     titleAr: "مختار بعناية. تخلّص كي توصلك.",
-    subtitle: "Livraison dans les 24 gouvernorats. Retour possible sous 10 jours.",
-    subtitleAr: "توصيل لكل الولايات. إرجاع ممكن في 10 أيام.",
     imageId: null,
   },
   contact: { whatsapp: "", messenger: "" },
@@ -145,6 +152,7 @@ export const DEFAULT_SETTINGS: Settings = {
     freeThreshold: null,
     openBeforePaying: true,
   },
+  costs: { carrierPerParcel: null, returnPerParcel: null },
   returns: { days: 10 },
   payments: { cod: true, card: false, konnectWalletId: "", konnectSandbox: true },
   checkout: { askEmail: false, maxOrdersPerPhonePerDay: 3 },

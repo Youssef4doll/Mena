@@ -1,7 +1,9 @@
 import "server-only";
 import { prisma } from "./prisma";
-import { daysOf, type Range } from "./analytics-range";
+import { daysOf, tunisDay, type Range } from "./analytics-range";
 import { abandonedCarts } from "./abandoned";
+import { getSettings } from "./settings";
+import { profit, spendInRange } from "./profit";
 
 /**
  * Everything the analytics dashboard reads. Three rules, held throughout:
@@ -330,9 +332,67 @@ async function basket(from: Date, to: Date) {
   return { added: n(r.added), viewed: n(r.viewed), orders: { product: n(r.product), quick: n(r.quick), cart: n(r.cart), unknown: n(r.unknown) }, videos: n(r.videos), zooms: n(r.zooms) };
 }
 
+/**
+ * What the period leaves after every cost the owner gave: products, carrier,
+ * parcels that came back, ads. Orders are those placed in the period (as for
+ * every other figure here); ad spend is the part of each entry inside it.
+ */
+async function profitability(from: Date, to: Date) {
+  const [[o], sourceRows, spendRows, settings] = await Promise.all([
+    prisma.$queryRaw<{ revenue: bigint; delivered: bigint; cost: bigint; unknown: bigint; parcels: bigint; back: bigint }[]>`
+      SELECT COALESCE(SUM(total) FILTER (WHERE status = 'DELIVERED'), 0) AS revenue,
+        COUNT(*) FILTER (WHERE status = 'DELIVERED') AS delivered,
+        COALESCE(SUM("costTotal") FILTER (WHERE status = 'DELIVERED' AND "costTotal" IS NOT NULL), 0) AS cost,
+        COUNT(*) FILTER (WHERE status = 'DELIVERED' AND "costTotal" IS NULL) AS unknown,
+        COUNT(*) FILTER (WHERE status IN ('SHIPPED','DELIVERED','REFUSED','RETURNED')) AS parcels,
+        COUNT(*) FILTER (WHERE status IN ('REFUSED','RETURNED')) AS back
+      FROM "Order" WHERE "createdAt" >= ${from} AND "createdAt" < ${to}`,
+    prisma.$queryRaw<{ source: string; delivered: bigint }[]>`
+      SELECT COALESCE(source, 'direct') AS source, COUNT(*) FILTER (WHERE status = 'DELIVERED') AS delivered
+      FROM "Order" WHERE "createdAt" >= ${from} AND "createdAt" < ${to} GROUP BY 1`,
+    // Entries that may overlap the period (a row covers at most a few weeks).
+    prisma.adSpend.findMany({ where: { day: { lt: to, gte: new Date(from.getTime() - 92 * 86_400_000) } }, select: { day: true, days: true, source: true, amount: true } }),
+    getSettings(),
+  ]);
+  const f = tunisDay(from);
+  const t = tunisDay(to);
+  const bySource = new Map<string, number>();
+  let spend = 0;
+  for (const row of spendRows) {
+    const part = spendInRange({ day: row.day.toISOString().slice(0, 10), days: row.days, amount: row.amount }, f, t);
+    if (part === 0) continue;
+    spend += part;
+    bySource.set(row.source, (bySource.get(row.source) ?? 0) + part);
+  }
+  const delivered = new Map(sourceRows.map((s) => [s.source, n(s.delivered)]));
+  return {
+    revenue: n(o.revenue),
+    delivered: n(o.delivered),
+    productCost: n(o.cost),
+    costUnknown: n(o.unknown),
+    parcels: n(o.parcels),
+    backParcels: n(o.back),
+    adSpend: spendRows.length ? spend : null,
+    ...profit({
+      deliveredRevenue: n(o.revenue),
+      delivered: n(o.delivered),
+      productCost: n(o.cost),
+      costUnknown: n(o.unknown),
+      parcels: n(o.parcels),
+      backParcels: n(o.back),
+      carrierPerParcel: settings.costs.carrierPerParcel,
+      returnPerParcel: settings.costs.returnPerParcel,
+      adSpend: spendRows.length ? spend : null,
+    }),
+    sources: [...bySource.entries()]
+      .map(([source, amount]) => ({ source, spend: amount, delivered: delivered.get(source) ?? 0, costPerDelivered: (delivered.get(source) ?? 0) > 0 ? Math.round(amount / delivered.get(source)!) : null }))
+      .sort((a, b) => b.spend - a.spend),
+  };
+}
+
 export async function getAnalytics(r: Range) {
   const [k, prev] = await Promise.all([kpis(r.from, r.to), kpis(r.prevFrom, r.prevTo)]);
-  const [days, steps, sources, campaigns, devices, prods, search, govs, reasons, cust, cohortRows, hours, conf, contact, carts, bask] = await Promise.all([
+  const [days, steps, sources, campaigns, devices, prods, search, govs, reasons, cust, cohortRows, hours, conf, contact, carts, bask, money] = await Promise.all([
     daily(r),
     funnel(r.from, r.to, k),
     bySource(r.from, r.to, false),
@@ -349,6 +409,7 @@ export async function getAnalytics(r: Range) {
     contacts(r.from, r.to),
     abandonedCarts(Math.max(1, r.days), 500),
     basket(r.from, r.to),
+    profitability(r.from, r.to),
   ]);
   const cartsInRange = carts.filter((c) => c.cart.updatedAt >= r.from && c.cart.updatedAt < r.to);
   return {
@@ -357,6 +418,7 @@ export async function getAnalytics(r: Range) {
     days,
     funnel: steps,
     basket: bask,
+    profit: money,
     sources,
     campaigns,
     devices,

@@ -21,7 +21,9 @@ const EMPTY: ProductInput = {
 };
 
 type Msg = { ok: boolean; text: string };
-type Props = { id: string | null; version: string; initial: ProductInput | null; images: Img[]; categories: Opt[]; suppliers: Opt[]; shopName: string; siteUrl: string; everywhere: boolean; oldSlugs: string[]; aiReady: boolean };
+type Props = { id: string | null; version: string; initial: ProductInput | null; images: Img[]; categories: Opt[]; suppliers: Opt[]; shopName: string; siteUrl: string; everywhere: boolean; oldSlugs: string[]; aiReady: boolean;
+  /** The customer's delivery fee and what the carrier charges the shop (null: not given), for the margin of each offer. */
+  shipping: { fee: number; carrier: number | null } };
 
 /** The texts a translation reads and writes. */
 const textsOf = (p: ProductInput): ProductTexts => ({
@@ -69,7 +71,7 @@ export function ProductEditor(props: Props) {
   return <Form key={props.version} {...props} msg={msg} setMsg={setMsg} />;
 }
 
-function Form({ id, initial, images, categories, suppliers, shopName, siteUrl, everywhere, oldSlugs, aiReady, msg, setMsg }: Props & { msg: Msg | null; setMsg: (m: Msg | null) => void }) {
+function Form({ id, initial, images, categories, suppliers, shopName, siteUrl, everywhere, oldSlugs, aiReady, shipping, msg, setMsg }: Props & { msg: Msg | null; setMsg: (m: Msg | null) => void }) {
   const router = useRouter();
   const [p, setP] = useState<ProductInput>(initial ?? EMPTY);
   const [money, setMoney] = useState({ price: toInputTND(initial?.price || null), compareAt: toInputTND(initial?.compareAt), cost: toInputTND(initial?.cost) });
@@ -280,6 +282,11 @@ function Form({ id, initial, images, categories, suppliers, shopName, siteUrl, e
                         {formatTND(Math.round(total / q))} l&apos;unité
                         {insteadOf != null && <span className="text-olive"> · au lieu de {formatTND(insteadOf)}, économie client {formatTND(insteadOf - total)}</span>}
                         {cost != null && <span className={total - cost * q > 0 ? "text-olive" : "text-danger"}> · marge {formatTND(total - cost * q)}</span>}
+                        {/* What one order of this offer leaves once the parcel is paid: the delivery the customer pays (none if offered), minus the carrier. */}
+                        {cost != null && shipping.carrier != null && (() => {
+                          const left = total + (o.freeDelivery ? 0 : shipping.fee) - cost * q - shipping.carrier;
+                          return <span className={left > 0 ? "text-olive" : "text-danger font-medium"}> · après transport {formatTND(left)}</span>;
+                        })()}
                       </span>
                     )}
                     <span className="ms-auto flex gap-3">

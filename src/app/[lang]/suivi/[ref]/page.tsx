@@ -9,6 +9,7 @@ import { formatTND } from "@/lib/money";
 import { governorateLabel } from "@/lib/governorates";
 import { TrackView } from "@/components/shop/TrackView";
 import { ReturnForm, ReviewForm } from "@/components/shop/AfterSale";
+import { ContactLink } from "@/components/shop/ContactLink";
 import { IconWhatsApp } from "@/components/shop/Icons";
 
 export const metadata: Metadata = { robots: { index: false } };
@@ -146,10 +147,10 @@ export default async function OrderRoute({ params, searchParams }: PageProps<"/[
       {canReturn && <ReturnForm lang={lang} orderRef={o.ref} days={settings.returns.days} />}
 
       {settings.contact.whatsapp && (
-        <a href={`https://wa.me/216${settings.contact.whatsapp}?text=${encodeURIComponent(`${t.track.help} ${o.ref}`)}`} target="_blank" rel="noopener" className="flex min-h-14 items-center justify-center gap-2 rounded-full border border-field bg-white text-[17px] font-bold text-ink hover:bg-sand">
+        <ContactLink kind="whatsapp" where="tracking" href={`https://wa.me/216${settings.contact.whatsapp}?text=${encodeURIComponent(`${t.track.help} ${o.ref}`)}`} className="flex min-h-14 items-center justify-center gap-2 rounded-full border border-field bg-white text-[17px] font-bold text-ink hover:bg-sand">
           <IconWhatsApp className="h-5 w-5 text-wa" />
           {t.track.help}
-        </a>
+        </ContactLink>
       )}
     </div>
   );

@@ -5,7 +5,7 @@ import { revalidatePath } from "next/cache";
 import type { CallOutcome, OrderStatus } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { requireAdmin } from "@/lib/admin-auth";
-import { changeStatus } from "@/lib/orders";
+import { changeStatus, placeOrder } from "@/lib/orders";
 import { normalizePhone } from "@/lib/phone";
 
 type Result = { ok: true; message?: string } | { ok: false; error: string };
@@ -99,4 +99,61 @@ export async function setBlacklist(customerId: string, on: boolean, reason: stri
   revalidatePath("/admin/commandes");
   revalidatePath("/admin/clients");
   return { ok: true };
+}
+
+// ------------------------------------------------------------ typed by the shop
+
+const adminOrder = z.object({
+  productId: z.string().min(1).max(40),
+  variantId: z.string().max(40).optional(),
+  offerId: z.string().max(40).optional(),
+  qty: z.number().int().min(1).max(10),
+  name: z.string().trim().min(2).max(80),
+  phone: z.string().trim().max(30),
+  governorate: z.string().max(40),
+  address: z.string().trim().min(4).max(300),
+  note: z.string().trim().max(300),
+  channel: z.enum(["whatsapp", "phone", "messenger", "facebook", "instagram", "autre"]),
+  locale: z.enum(["ar", "fr"]),
+  expectedTotal: z.number().int().min(0),
+  confirmed: z.boolean(),
+});
+
+/**
+ * An order taken on WhatsApp or by phone, typed by the shop: the same prices,
+ * stock and checks as the site, counted with its channel as the source, so
+ * the delivered orders by source stay true.
+ */
+export async function createAdminOrder(input: z.input<typeof adminOrder>): Promise<{ ok: true; id: string } | { ok: false; error: string; total?: number }> {
+  const admin = await requireAdmin();
+  const parsed = adminOrder.safeParse(input);
+  if (!parsed.success) return { ok: false, error: "Vérifiez le nom, le téléphone et l'adresse." };
+  const d = parsed.data;
+  const r = await placeOrder(
+    {
+      lines: [{ productId: d.productId, variantId: d.variantId || null, offerId: d.offerId || null, qty: d.offerId ? 1 : d.qty }],
+      phone: d.phone,
+      name: d.name,
+      governorate: d.governorate,
+      address: d.address,
+      note: d.note || undefined,
+      payment: "COD",
+      expectedTotal: d.expectedTotal,
+      locale: d.locale,
+      origin: "admin",
+      attribution: { source: d.channel, medium: d.channel === "phone" ? "call" : "chat" },
+    },
+    { ua: null, ip: "", ipHash: "", device: "admin" },
+  );
+  if (!r.ok) {
+    if (r.error === "invalid") return { ok: false, error: r.fields.includes("phone") ? "Numéro tunisien invalide." : "Vérifiez les champs." };
+    if ("quote" in r) return { ok: false, error: r.error === "price_changed" ? "Le total a changé : vérifiez-le et recommencez." : "Ce choix n'est plus disponible (stock ou offre).", total: r.quote.total };
+    return { ok: false, error: "La commande n'a pas pu être enregistrée." };
+  }
+  const order = await prisma.order.findUnique({ where: { ref: r.ref }, select: { id: true } });
+  if (!order) return { ok: false, error: "Commande introuvable après création." };
+  await prisma.orderEvent.create({ data: { orderId: order.id, from: "PENDING", to: "PENDING", by: admin.email, note: `Saisie dans le back-office (${d.channel})` } });
+  if (d.confirmed) await changeStatus(order.id, "CONFIRMED", admin.email, { note: "Confirmée avec le client à la prise de commande" });
+  revalidatePath("/admin/commandes");
+  return { ok: true, id: order.id };
 }

@@ -4,6 +4,7 @@ import { useSyncExternalStore } from "react";
 import { dict, type Lang } from "@/i18n";
 import { store } from "@/lib/client/storage";
 import { formatPhone, normalizePhone } from "@/lib/phone";
+import { ContactLink } from "./ContactLink";
 
 const noopSubscribe = () => () => {};
 
@@ -28,9 +29,9 @@ export function ThanksPhone({ lang, firstName, whatsapp, orderRef }: { lang: Lan
         {t.thanks.callingYou} <strong className="ltr-nums">{formatPhone(phone)}</strong>
       </p>
       {whatsapp && (
-        <a href={`https://wa.me/216${whatsapp}?text=${encodeURIComponent(orderRef)}`} target="_blank" rel="noopener" className="inline-flex min-h-11 items-center text-[15px] text-sea underline underline-offset-4">
+        <ContactLink kind="whatsapp" where="thanks_wrong_number" href={`https://wa.me/216${whatsapp}?text=${encodeURIComponent(orderRef)}`} className="inline-flex min-h-11 items-center text-[15px] text-sea underline underline-offset-4">
           {t.thanks.notYours}
-        </a>
+        </ContactLink>
       )}
     </div>
   );

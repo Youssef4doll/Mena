@@ -44,7 +44,12 @@ export default async function OrdersPage({ searchParams }: PageProps<"/admin/com
       <PageTitle
         title="Commandes"
         sub={status === "PENDING" ? "À appeler, de la plus ancienne à la plus récente. Les commandes à risque sont en tête." : undefined}
-        actions={<a href={`/admin/commandes/export?statut=${status}&q=${encodeURIComponent(q)}`} className={btn.ghost}>Exporter CSV</a>}
+        actions={
+          <div className="flex gap-2">
+            <Link href="/admin/commandes/nouvelle" className={btn.primary}>Nouvelle commande</Link>
+            <a href={`/admin/commandes/export?statut=${status}&q=${encodeURIComponent(q)}`} className={btn.ghost}>Exporter CSV</a>
+          </div>
+        }
       />
       <Tabs
         current={status}

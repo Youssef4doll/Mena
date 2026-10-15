@@ -14,6 +14,8 @@ export function SettingsForm({ initial, secretsSet }: { initial: Settings; secre
   const [sec, setSec] = useState<Partial<Secrets>>({});
   const [fee, setFee] = useState(toInputTND(initial.delivery.fee));
   const [threshold, setThreshold] = useState(toInputTND(initial.delivery.freeThreshold));
+  const [carrierCost, setCarrierCost] = useState(toInputTND(initial.costs?.carrierPerParcel ?? null));
+  const [returnCost, setReturnCost] = useState(toInputTND(initial.costs?.returnPerParcel ?? null));
   const [bulk, setBulk] = useState({ min: "", max: "" });
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
   const [pending, start] = useTransition();
@@ -44,8 +46,11 @@ export function SettingsForm({ initial, secretsSet }: { initial: Settings; secre
     if (deliveryFee == null) return setMsg({ ok: false, text: "Frais de livraison invalides." });
     const ft = threshold.trim() ? parseTND(threshold) : null;
     if (threshold.trim() && ft == null) return setMsg({ ok: false, text: "Seuil de livraison offerte invalide." });
+    const cc = carrierCost.trim() ? parseTND(carrierCost) : null;
+    const rc = returnCost.trim() ? parseTND(returnCost) : null;
+    if ((carrierCost.trim() && cc == null) || (returnCost.trim() && rc == null)) return setMsg({ ok: false, text: "Coût de transport invalide." });
     start(async () => {
-      const r = await saveAll({ ...s, delivery: { ...s.delivery, fee: deliveryFee, freeThreshold: ft } }, sec);
+      const r = await saveAll({ ...s, delivery: { ...s.delivery, fee: deliveryFee, freeThreshold: ft }, costs: { carrierPerParcel: cc, returnPerParcel: rc } }, sec);
       setMsg(r.ok ? { ok: true, text: "Paramètres enregistrés." } : { ok: false, text: r.error });
       if (r.ok) {
         setSec({});
@@ -62,9 +67,16 @@ export function SettingsForm({ initial, secretsSet }: { initial: Settings; secre
           <label className={label}>Téléphone affiché<input {...text("shop", "phone")} /></label>
           <label className={`${label} col-span-2`}>Phrase d&apos;accroche<input {...text("shop", "tagline")} /></label>
           <label className={`${label} col-span-2`}>Phrase d&apos;accroche (arabe)<input dir="rtl" {...text("shop", "taglineAr")} /></label>
+          {/* A cautious buyer checks who sells before a cash-on-delivery order: say it while it is missing. */}
+          {(!s.shop.address.trim() || !s.shop.legalId.trim()) && (
+            <p className="col-span-2 rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-900">
+              Adresse (ou au moins la ville) et matricule fiscal manquent : ils s&apos;affichent en bas du site et sur la page Contact, et rassurent les clients qui hésitent.
+            </p>
+          )}
+          <label className={`${label} col-span-2`}>Vendeur (nom de la société ou de la personne)<input {...text("shop", "legalName")} placeholder="Par défaut : le nom de la boutique" /></label>
           <label className={label}>E-mail<input {...text("shop", "email")} /></label>
           <label className={label}>Matricule fiscal / RNE<input {...text("shop", "legalId")} /></label>
-          <label className={`${label} col-span-2`}>Adresse<input {...text("shop", "address")} /></label>
+          <label className={`${label} col-span-2`}>Adresse ou ville<input {...text("shop", "address")} /></label>
           <label className={label}>Instagram (lien)<input {...text("shop", "instagram")} /></label>
           <label className={label}>Facebook (lien)<input {...text("shop", "facebook")} /></label>
           <label className={label}>TikTok (lien)<input {...text("shop", "tiktok")} /></label>
@@ -100,7 +112,7 @@ export function SettingsForm({ initial, secretsSet }: { initial: Settings; secre
             <button type="button" className={btn.ghost} onClick={() => heroFile.current?.click()}>Photo d&apos;accueil</button>
             {s.hero.imageId && <button type="button" className="text-sm text-clay underline" onClick={() => up("hero", { imageId: null })}>Retirer</button>}
           </div>
-          <p className="text-xs text-muted">Sans photo, l&apos;accueil montre le premier produit de « Notre sélection ».</p>
+          <p className="text-xs text-muted">Sans photo, l&apos;accueil commence par la phrase de bienvenue puis les catégories.</p>
         </div>
       </Card>
 
@@ -126,6 +138,11 @@ export function SettingsForm({ initial, secretsSet }: { initial: Settings; secre
           <label className={label}>Nom affiché<input {...text("delivery", "carrierName")} /></label>
           <label className={label}>Livraison offerte dès (DT, vide = jamais)<input value={threshold} onChange={(e) => setThreshold(e.target.value)} inputMode="decimal" className={input} /></label>
           <label className="flex items-center gap-2 pt-5 text-sm"><input {...check("delivery", "openBeforePaying")} />Le client peut ouvrir le colis avant de payer</label>
+        </div>
+        {/* Private: only the analytics read them, to compute what the shop really keeps. */}
+        <div className="mt-3 grid gap-2 sm:grid-cols-2">
+          <label className={label}>Ce que le transporteur vous facture par colis (DT, jamais affiché)<input value={carrierCost} onChange={(e) => setCarrierCost(e.target.value)} inputMode="decimal" className={input} placeholder="vide = inconnu" /></label>
+          <label className={label}>Coût en plus d&apos;un colis refusé ou retourné (DT, jamais affiché)<input value={returnCost} onChange={(e) => setReturnCost(e.target.value)} inputMode="decimal" className={input} placeholder="vide = inconnu" /></label>
         </div>
         <div className="mt-3 flex flex-wrap items-end gap-2 rounded-xl bg-cream p-3">
           <span className="text-xs text-muted">Délais pour tous :</span>
@@ -177,12 +194,13 @@ export function SettingsForm({ initial, secretsSet }: { initial: Settings; secre
         </div>
         <label className={`${label} mt-3`}>
           Signaler l&apos;achat aux publicités
-          <select value={s.tracking.purchaseAt} onChange={(e) => up("tracking", { purchaseAt: e.target.value as "placed" | "confirmed" })} className={input}>
+          <select value={s.tracking.purchaseAt} onChange={(e) => up("tracking", { purchaseAt: e.target.value as "placed" | "confirmed" | "delivered" })} className={input}>
             <option value="placed">Dès que la commande est passée</option>
             <option value="confirmed">Quand la commande est confirmée par téléphone</option>
+            <option value="delivered">Quand la commande est livrée et payée</option>
           </select>
         </label>
-        <p className="mt-1 text-xs text-muted">« Confirmée » : les publicités apprennent sur de vraies commandes, sans les faux numéros. Les achats arrivent plus tard dans le gestionnaire de publicités.</p>
+        <p className="mt-1 text-xs text-muted">« Confirmée » : les publicités apprennent sur de vraies commandes, sans les faux numéros. « Livrée » : seulement sur les clients qui ont payé, ce qui compte en paiement à la livraison, mais il faut assez de livraisons par semaine pour que la publicité apprenne. Les achats arrivent plus tard dans le gestionnaire de publicités. Il faut le jeton API Conversions (Meta) ou Events API (TikTok) : le navigateur n&apos;est plus ouvert à ce moment-là.</p>
       </Card>
 
       <Card title="SMS et e-mails" hint="N'importe quelle passerelle SMS HTTP. Dans l'adresse et le corps : {to} (21622123456), {text}, {sender}, {key}. Sans passerelle, les messages sont gardés dans la commande pour un envoi manuel.">

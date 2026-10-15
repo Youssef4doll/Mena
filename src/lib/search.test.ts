@@ -70,3 +70,18 @@ test("completions start with what is typed, like Google's", () => {
   assert.deepEqual(complete("maq", phrases), ["Miroir LED de maquillage"]);
   assert.deepEqual(complete("m", phrases), []);
 });
+
+test("the shorter word decides the mistakes forgiven, so a long typo does not land on a short word", () => {
+  // "kess" (Tunisian for a glass) is "kes" with one letter more.
+  assert.ok(matchWord("kess", "kes", false) > 0);
+  assert.equal(matchWord("makina", "main", false), 0);
+  // A short start with a mistake no longer matches half the catalogue; five letters still do.
+  assert.equal(matchWord("lemp", "lampadaire", true), 0);
+  assert.ok(matchWord("difus", "diffuseur", true) > 0);
+});
+
+test("a plural or feminine ending is the same word, not a 'did you mean'", () => {
+  const cat = [doc("lampe", "Lampe de chevet noir")];
+  assert.equal(rank("lampe noire", cat)[0].corrected.size, 0);
+  assert.equal(rank("lampes", cat)[0].corrected.size, 0);
+});

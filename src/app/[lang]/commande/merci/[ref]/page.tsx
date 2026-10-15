@@ -8,6 +8,7 @@ import { getSettings } from "@/lib/settings";
 import { formatTND } from "@/lib/money";
 import { PurchasePixel } from "@/components/shop/PurchasePixel";
 import { IconCheck, IconWhatsApp } from "@/components/shop/Icons";
+import { ContactLink } from "@/components/shop/ContactLink";
 import { ThanksPhone } from "@/components/shop/ThanksPhone";
 
 export const metadata: Metadata = { robots: { index: false } };
@@ -44,15 +45,15 @@ export default async function ThanksRoute({ params }: PageProps<"/[lang]/command
             enabled={settings.tracking.purchaseAt === "placed"}
           />
           {settings.contact.whatsapp && o.status === "PENDING" && (
-            <a
+            <ContactLink
+              kind="whatsapp"
+              where="thanks"
               href={`https://wa.me/216${settings.contact.whatsapp}?text=${encodeURIComponent(t.thanks.confirmText(o.ref))}`}
-              target="_blank"
-              rel="noopener"
               className="flex min-h-14 items-center justify-center gap-2 rounded-full bg-wa px-6 text-[17px] font-bold text-white"
             >
               <IconWhatsApp className="h-6 w-6 shrink-0" />
               {t.thanks.confirmNow}
-            </a>
+            </ContactLink>
           )}
           <div className="rounded-2xl border border-line bg-white p-5">
             <ul className="flex flex-col gap-2 text-[16px]">

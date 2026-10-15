@@ -23,6 +23,11 @@ export const CLIENT_EVENTS = [
   "delivery_estimate_checked",
   "gallery_swiped",
   "tracking_viewed",
+  "sticky_clicked",
+  "list_item_clicked",
+  "consent_granted",
+  "consent_denied",
+  "not_found",
 ] as const;
 
 export const SERVER_EVENTS = [
@@ -59,6 +64,11 @@ export const EVENT_LABELS: Record<string, string> = {
   video_played: "Vidéos lancées",
   gallery_zoomed: "Photos en plein écran",
   tracking_viewed: "Suivis consultés",
+  sticky_clicked: "Barre « Acheter » du bas touchée",
+  list_item_clicked: "Produits ouverts depuis une liste",
+  consent_granted: "Cookies acceptés",
+  consent_denied: "Cookies refusés",
+  not_found: "Pages introuvables",
   order_placed: "Commandes passées",
   order_confirmed: "Commandes confirmées",
   order_shipped: "Commandes expédiées",

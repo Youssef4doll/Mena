@@ -1,8 +1,9 @@
 "use client";
 
 import Image from "next/image";
+import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { dict, pick, type Lang } from "@/i18n";
+import { dict, href, pick, type Lang } from "@/i18n";
 import type { ProductPage } from "@/lib/catalog";
 import type { PublicSettings } from "@/lib/settings-schema";
 import { track } from "@/lib/client/track";
@@ -10,10 +11,11 @@ import { pixelViewContent } from "@/lib/client/pixels";
 import { formatTND } from "@/lib/money";
 import { governorateLabel } from "@/lib/governorates";
 import { discountPct, leadOffer } from "@/lib/offer-display";
+import { deliveryRangeLabel, deliverySpan } from "@/lib/delivery";
 import { Stars } from "./Stars";
 import { Gallery, slidesOf } from "./Gallery";
 import { BuyBox, useBuyChoice, type BuyChoice } from "./BuyBox";
-import { IconCheck, IconTruck } from "./Icons";
+import { IconCheck, IconChevronDown, IconTruck } from "./Icons";
 
 type P = Omit<ProductPage, "related">;
 
@@ -30,7 +32,7 @@ export function ProductView({ p, lang, settings, url }: { p: P; lang: Lang; sett
   const summary = pick(lang, p.summary, p.summaryAr);
   const out = p.stock.kind === "out";
   const buyRef = useRef<HTMLDivElement>(null);
-  const galleryRef = useRef<HTMLDivElement>(null);
+  const priceRef = useRef<HTMLParagraphElement>(null);
   const [sticky, setSticky] = useState(false);
   const choice = useBuyChoice(p);
   const shown = shownPrice(p, choice, lang);
@@ -45,8 +47,10 @@ export function ProductView({ p, lang, settings, url }: { p: P; lang: Lang; sett
     pixelViewContent({ id: p.id, name: p.name, price: viewPrice, qty: 1 });
   }, [p.id, p.name, viewPrice]);
 
-  // The bottom bar shows whenever the order form is out of sight (and the pictures are not under it):
-  // the price and the button are always one look away.
+  // The bottom bar shows whenever the order form is out of sight, from the first screen on: on a short
+  // phone (an ad opened in the Facebook app) the price and the button are there before any scrolling.
+  // It hides once a good part of the form is on screen, and waits while the page's own price line,
+  // fully visible, sits where the bar would cover it (a price cut by the screen's edge is in the bar).
   useEffect(() => {
     let raf = 0;
     const check = () => {
@@ -54,9 +58,10 @@ export function ProductView({ p, lang, settings, url }: { p: P; lang: Lang; sett
       const el = buyRef.current;
       if (!el) return;
       const r = el.getBoundingClientRect();
-      // Before the form: once the pictures and their thumbnails are above the bar, so it never covers them.
-      const g = galleryRef.current?.getBoundingClientRect();
-      setSticky((r.top > innerHeight - 40 && g != null && g.bottom < innerHeight - 84) || r.bottom < 140);
+      const formInView = r.top < innerHeight - 160 && r.bottom > 140;
+      const pr = priceRef.current?.getBoundingClientRect();
+      const priceUnderBar = pr != null && pr.bottom <= innerHeight && pr.bottom > innerHeight - 84;
+      setSticky(!formInView && !priceUnderBar);
     };
     const onScroll = () => {
       if (!raf) raf = requestAnimationFrame(check);
@@ -71,11 +76,35 @@ export function ProductView({ p, lang, settings, url }: { p: P; lang: Lang; sett
     };
   }, []);
 
+  // To the first thing still missing: the option, then the first empty field, else the button itself
+  // (a customer who filled the form and went on reading is not sent back to the top of it).
+  // Tells what else floats at the bottom (the cookie question) to stay above the bar.
+  useEffect(() => {
+    const root = document.documentElement;
+    root.toggleAttribute("data-sticky", sticky && !out);
+    return () => root.removeAttribute("data-sticky");
+  }, [sticky, out]);
+
   function goToForm() {
-    document.getElementById("commander")?.scrollIntoView({ behavior: "smooth", block: "start" });
-    // An option to choose comes first; otherwise straight to the name.
-    const target = p.variants.length > 0 && !choice.variant ? document.querySelector<HTMLButtonElement>("#bb-variants button:not(:disabled)") : (document.getElementById("bb-name") as HTMLInputElement | null);
-    setTimeout(() => target?.focus({ preventScroll: true }), 450);
+    track("sticky_clicked", { productId: p.id });
+    if (p.variants.length > 0 && !choice.variant) {
+      document.getElementById("commander")?.scrollIntoView({ behavior: "smooth", block: "start" });
+      const b = document.querySelector<HTMLButtonElement>("#bb-variants button:not(:disabled)");
+      setTimeout(() => b?.focus({ preventScroll: true }), 450);
+      return;
+    }
+    const empty = ["bb-name", "bb-phone", "bb-governorate", "bb-address"]
+      .map((k) => document.getElementById(k) as HTMLInputElement | HTMLSelectElement | null)
+      .find((el) => el && !el.value.trim());
+    if (empty) {
+      if (empty.id === "bb-name") document.getElementById("commander")?.scrollIntoView({ behavior: "smooth", block: "start" });
+      else empty.scrollIntoView({ behavior: "smooth", block: "center" });
+      setTimeout(() => empty.focus({ preventScroll: true }), 450);
+      return;
+    }
+    const submit = document.querySelector<HTMLButtonElement>("#commander [data-testid=place-order]");
+    submit?.scrollIntoView({ behavior: "smooth", block: "center" });
+    setTimeout(() => submit?.focus({ preventScroll: true }), 450);
   }
 
   const description = pick(lang, p.description, p.descriptionAr);
@@ -86,7 +115,7 @@ export function ProductView({ p, lang, settings, url }: { p: P; lang: Lang; sett
       {/* One copy of everything. Phone: pictures → name and price → offers and form → details.
           Computer: the pictures on the left (they stay in view), the rest on the right. */}
       <div className="grid gap-4 pt-1 md:grid-cols-[minmax(0,1.1fr)_minmax(0,1fr)] md:grid-rows-[auto_1fr] md:gap-x-10 md:gap-y-5 md:pt-4">
-        <div ref={galleryRef} className="min-w-0 md:sticky md:top-36 md:col-start-1 md:row-span-2 md:row-start-1 md:self-start">
+        <div className="min-w-0 md:sticky md:top-36 md:col-start-1 md:row-span-2 md:row-start-1 md:self-start">
           <Gallery slides={slides} name={name} productId={p.id} lang={lang} badge={0} />
         </div>
 
@@ -115,7 +144,7 @@ export function ProductView({ p, lang, settings, url }: { p: P; lang: Lang; sett
           )}
           {/* The price on one line: the price, the real price it replaces, the saving. It stays put
               while an offer is picked below (each offer shows its own price), so nothing moves under the finger. */}
-          <p className="flex flex-wrap items-center gap-x-2.5 gap-y-1 pt-1" data-testid="price">
+          <p ref={priceRef} className="flex flex-wrap items-center gap-x-2.5 gap-y-1 pt-1" data-testid="price">
             {shown.note && <span className="text-[15px] text-muted">{shown.note}</span>}
             <span className="whitespace-nowrap text-[28px] font-bold leading-none text-ink price-nums ltr-nums">{formatTND(shown.price, lang)}</span>
             {struck != null && (
@@ -131,12 +160,15 @@ export function ProductView({ p, lang, settings, url }: { p: P; lang: Lang; sett
             )}
           </p>
           <StockLine lang={lang} p={p} variant={choice.variant} />
+          {!out && <DeliveryLine lang={lang} settings={settings} free={Boolean(choice.offer?.freeDelivery)} price={pay.price} />}
         </div>
 
         <div ref={buyRef} className="min-w-0 pt-1 md:col-start-2 md:row-start-2">
           <BuyBox p={p} lang={lang} settings={settings} url={url} choice={choice} />
         </div>
       </div>
+
+      <Questions lang={lang} settings={settings} />
 
       {/* The description as the shop wrote it, then its long pictures one under the other, edge to edge on a phone. */}
       {(description || p.detailImages.length > 0) && (
@@ -281,6 +313,71 @@ function payNow(p: P, c: BuyChoice): { price: number; from: boolean } {
   const prices = p.variants.map((v) => v.price);
   const min = prices.length ? Math.min(...prices) : p.price;
   return { price: min * c.qty, from: prices.some((x) => x !== min) };
+}
+
+/** How and when it comes, under the price: the shop's one fee (or free) and the delays it set. */
+function DeliveryLine({ lang, settings, free, price }: { lang: Lang; settings: PublicSettings; free: boolean; price: number }) {
+  const t = dict(lang);
+  const span = deliverySpan(settings.delivery.zones);
+  if (!span) return null;
+  const { fee, freeThreshold } = settings.delivery;
+  const isFree = free || fee === 0 || (freeThreshold != null && price >= freeThreshold);
+  return (
+    <p className="flex items-start gap-2 text-[16px] text-ink-2" data-testid="delivery-line">
+      <IconTruck className="mt-0.5 h-5 w-5 shrink-0 text-sea" />
+      <span>
+        {isFree ? <strong className="text-olive">{t.buy.freeDelivery}</strong> : <>{t.buy.delivery} <span className="price-nums ltr-nums">{formatTND(fee, lang)}</span></>}
+        {" · "}
+        {deliveryRangeLabel(span.minDays, span.maxDays, lang)}
+      </span>
+    </p>
+  );
+}
+
+/**
+ * The questions a cash-on-delivery buyer asks before ordering, answered from
+ * the shop's own settings only: no promise the settings do not make. Closed
+ * until tapped, so the page stays short.
+ */
+function Questions({ lang, settings }: { lang: Lang; settings: PublicSettings }) {
+  const t = dict(lang);
+  const q = t.product.faq;
+  const span = deliverySpan(settings.delivery.zones);
+  const { fee, freeThreshold, openBeforePaying } = settings.delivery;
+  const items: { q: string; a: React.ReactNode }[] = [
+    ...(span
+      ? [{ q: q.whenQ, a: q.whenA(deliveryRangeLabel(span.minDays, span.maxDays, lang), fee === 0 ? t.buy.freeDelivery : `${t.buy.delivery} ${formatTND(fee, lang)}`, freeThreshold != null && fee > 0 ? formatTND(freeThreshold, lang) : null) }]
+      : []),
+    { q: q.payQ, a: openBeforePaying ? `${q.payA} ${q.openA}` : q.payA },
+    { q: q.callQ, a: q.callA },
+    {
+      q: q.returnQ,
+      a: (
+        <>
+          {q.returnA(settings.returns.days)}{" "}
+          <Link href={href(lang, "/livraison-retours")} className="text-sea underline underline-offset-2" prefetch={false}>
+            {q.more}
+          </Link>
+        </>
+      ),
+    },
+  ];
+  return (
+    <section className="mx-auto mt-10 max-w-3xl border-t border-line pt-8" aria-labelledby="faq-title">
+      <TabTitle id="faq-title">{q.title}</TabTitle>
+      <div className="mt-2 divide-y divide-line">
+        {items.map((it) => (
+          <details key={it.q} className="group">
+            <summary className="flex min-h-[56px] cursor-pointer list-none items-center justify-between gap-3 py-3 text-[17px] font-bold text-ink [&::-webkit-details-marker]:hidden">
+              {it.q}
+              <IconChevronDown className="h-5 w-5 shrink-0 text-ink-2 transition group-open:rotate-180" />
+            </summary>
+            <p className="pb-4 text-[17px] leading-relaxed text-ink-2">{it.a}</p>
+          </details>
+        ))}
+      </div>
+    </section>
+  );
 }
 
 /** Said only when it matters: a few left, or none. */

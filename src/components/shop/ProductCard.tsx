@@ -5,6 +5,7 @@ import { discountPct } from "@/lib/offer-display";
 import { formatTND } from "@/lib/money";
 import { Img } from "./Img";
 import { QuickBuy } from "./QuickBuy";
+import { ListClicks } from "./ListClicks";
 import { IconGift, IconStar, IconTruck } from "./Icons";
 
 /**
@@ -15,7 +16,7 @@ import { IconGift, IconStar, IconTruck } from "./Icons";
  * spot. The picture, name and price open the product page. Cards of a row
  * share their rows (subgrid), so prices line up without empty space.
  */
-export function ProductCard({ p, lang, priority = false, className = "", compact = false }: { p: Card; lang: Lang; priority?: boolean; className?: string; compact?: boolean }) {
+export function ProductCard({ p, lang, priority = false, className = "", compact = false, pos = 0 }: { p: Card; lang: Lang; priority?: boolean; className?: string; compact?: boolean; pos?: number }) {
   const t = dict(lang);
   const name = pick(lang, p.name, p.nameAr);
   const out = p.stock.kind === "out";
@@ -34,14 +35,10 @@ export function ProductCard({ p, lang, priority = false, className = "", compact
   const sold = compact ? null : p.sold;
   return (
     <div className={`group row-span-4 grid grid-rows-subgrid content-start gap-y-0 ${className}`}>
-      <Link href={href(lang, `/produit/${p.slug}`)} className="row-span-3 grid grid-rows-subgrid gap-y-0 rounded-2xl" prefetch={false}>
+      <Link href={href(lang, `/produit/${p.slug}`)} className="row-span-3 grid grid-rows-subgrid gap-y-0 rounded-2xl" prefetch={false} data-slug={p.slug} data-pos={pos}>
         <div className="relative aspect-square overflow-hidden rounded-2xl border border-line bg-white">
           <Img image={p.images[0] ?? null} alt={p.images[0]?.alt ?? name} sizes="(min-width: 1024px) 25vw, (min-width: 640px) 33vw, 50vw" priority={priority} className={`transition duration-500 group-hover:scale-[1.03] ${out ? "opacity-60 grayscale" : ""}`} />
-          {(out || pct > 0) && (
-            <span className={`absolute start-2.5 top-2.5 rounded-full px-2.5 text-[14px] font-bold leading-7 text-white ${out ? "bg-ink/85" : "bg-deal"}`}>
-              {out ? t.product.out : <span className="ltr-nums">−{pct}%</span>}
-            </span>
-          )}
+          {(out || pct > 0) && <span className={`absolute start-2.5 top-2.5 rounded-full px-2.5 text-[14px] font-bold leading-7 text-white ${out ? "bg-ink/85" : "bg-deal"}`}>{out ? t.product.out : <span className="ltr-nums">−{pct}%</span>}</span>}
         </div>
         <h3 className="mt-2.5 line-clamp-2 text-[16px] font-normal leading-snug text-ink underline-offset-2 group-hover:underline">{name}</h3>
         <div className="mt-1 flex flex-col items-start gap-1">
@@ -51,7 +48,9 @@ export function ProductCard({ p, lang, priority = false, className = "", compact
             {struck != null && (
               <>
                 <span className="sr-only">{t.buy.instead(formatTND(struck, lang))}</span>
-                <s aria-hidden className="whitespace-nowrap text-[15px] text-muted price-nums ltr-nums">{formatTND(struck, lang)}</s>
+                <s aria-hidden className="whitespace-nowrap text-[15px] text-muted price-nums ltr-nums">
+                  {formatTND(struck, lang)}
+                </s>
               </>
             )}
           </span>
@@ -92,13 +91,16 @@ export function ProductCard({ p, lang, priority = false, className = "", compact
   );
 }
 
-export function ProductGrid({ products, lang, priorityFirst = 0 }: { products: Card[]; lang: Lang; priorityFirst?: number }) {
+/** `list` names the list in the analytics (which product was opened from where, at which place). */
+export function ProductGrid({ products, lang, priorityFirst = 0, list = "grid", q }: { products: Card[]; lang: Lang; priorityFirst?: number; list?: string; q?: string }) {
   return (
-    <div className="grid grid-cols-2 gap-x-3 gap-y-8 sm:grid-cols-3 lg:grid-cols-4 lg:gap-x-5 lg:gap-y-10">
-      {products.map((p, i) => (
-        <ProductCard key={p.id} p={p} lang={lang} priority={i < priorityFirst} />
-      ))}
-    </div>
+    <ListClicks list={list} q={q}>
+      <div className="grid grid-cols-2 gap-x-3 gap-y-8 sm:grid-cols-3 lg:grid-cols-4 lg:gap-x-5 lg:gap-y-10">
+        {products.map((p, i) => (
+          <ProductCard key={p.id} p={p} lang={lang} priority={i < priorityFirst} pos={i} />
+        ))}
+      </div>
+    </ListClicks>
   );
 }
 
@@ -107,14 +109,16 @@ export function ProductGrid({ products, lang, priorityFirst = 0 }: { products: C
  * a mouse wheel cannot scroll sideways. `compact`: pictures, names and prices
  * only, for the suggestions under a product page.
  */
-export function ProductRow({ products, lang, compact = false }: { products: Card[]; lang: Lang; compact?: boolean }) {
+export function ProductRow({ products, lang, compact = false, list = "row" }: { products: Card[]; lang: Lang; compact?: boolean; list?: string }) {
   // On a computer, only full rows of four; a phone still swipes through all of them.
   const keep = products.length >= 8 ? 8 : products.length >= 4 ? 4 : products.length;
   return (
-    <div className="-mx-4 grid auto-cols-[46%] grid-flow-col grid-rows-[repeat(4,auto)] gap-x-3 overflow-x-auto scroll-px-4 px-4 pb-2 snap-x no-scrollbar sm:auto-cols-[30%] md:mx-0 md:auto-cols-auto md:grid-flow-row md:grid-cols-4 md:grid-rows-none md:gap-x-5 md:gap-y-10 md:overflow-visible md:px-0 md:pb-0">
-      {products.map((p, i) => (
-        <ProductCard key={p.id} p={p} lang={lang} compact={compact} className={`snap-start ${i >= keep ? "md:hidden" : ""}`} />
-      ))}
-    </div>
+    <ListClicks list={list}>
+      <div className="-mx-4 grid auto-cols-[46%] grid-flow-col grid-rows-[repeat(4,auto)] gap-x-3 overflow-x-auto scroll-px-4 px-4 pb-2 snap-x no-scrollbar sm:auto-cols-[30%] md:mx-0 md:auto-cols-auto md:grid-flow-row md:grid-cols-4 md:grid-rows-none md:gap-x-5 md:gap-y-10 md:overflow-visible md:px-0 md:pb-0">
+        {products.map((p, i) => (
+          <ProductCard key={p.id} p={p} lang={lang} compact={compact} pos={i} className={`snap-start ${i >= keep ? "md:hidden" : ""}`} />
+        ))}
+      </div>
+    </ListClicks>
   );
 }

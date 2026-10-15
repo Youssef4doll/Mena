@@ -7,12 +7,12 @@ import type { ProductPage } from "@/lib/catalog";
 import type { PublicSettings } from "@/lib/settings-schema";
 import type { PublicQuote } from "@/lib/client/quote";
 import { track } from "@/lib/client/track";
-import { pixelAddToCart } from "@/lib/client/pixels";
+import { pixelAddToCart, pixelContact } from "@/lib/client/pixels";
 import { addToCart, type CartItem } from "@/lib/client/cart";
 import { formatTND } from "@/lib/money";
 import { discountPct, formatDay } from "@/lib/offer-display";
 import { OrderForm } from "./OrderForm";
-import { IconMinus, IconPlus, IconTruck } from "./Icons";
+import { IconMinus, IconPlus, IconTruck, IconWhatsApp } from "./Icons";
 
 type P = Omit<ProductPage, "related">;
 type Offer = P["offers"][number];
@@ -99,10 +99,10 @@ export function addChoiceToCart(p: P, c: BuyChoice, where: string): boolean {
   const unit = c.offer ? Math.round(c.offer.price / c.offer.quantity) : (c.variant?.price ?? p.price);
   const units = c.offer ? c.offer.quantity : c.qty;
   const result = addToCart(item);
-  if (result === "added" || result === "more") {
-    track("add_to_cart", { productId: p.id, value: unit * units, props: { where, offer: Boolean(c.offer) } });
+  if (result === "added" || result === "more" || result === "replaced") {
+    track("add_to_cart", { productId: p.id, value: unit * units, props: { where, offer: Boolean(c.offer), result } });
     pixelAddToCart({ id: p.id, name: p.name, price: unit, qty: units });
-  }
+  } else track("add_to_cart", { productId: p.id, props: { where, offer: Boolean(c.offer), result } });
   return true;
 }
 
@@ -164,7 +164,7 @@ export function BuyBox({ p, lang, settings, url, choice, idp = "bb", onAdded }: 
     // The whole box is the place "Acheter maintenant" brings the reader back to.
     <div id={idp === "bb" ? "commander" : id("box")} className="flex scroll-mt-4 flex-col gap-4">
       {/* ------------------------------------------------------ 1. choose */}
-      {p.offers.length > 0 && (
+      {p.offers.length > 0 && !out && (
         <fieldset className="flex min-w-0 flex-col gap-2.5">
           <legend className="sr-only">{t.buy.step1}</legend>
           {p.offers.map((o) => (
@@ -192,6 +192,8 @@ export function BuyBox({ p, lang, settings, url, choice, idp = "bb", onAdded }: 
             {variantError && needsVariant ? t.buy.variantError : t.product.choose}
             {variant && <span className="font-bold text-ink">{lang === "ar" ? ": " : " : "}{pick(lang, variant.name, variant.nameAr)}</span>}
           </p>
+          {/* A pack takes one option for all its pieces: said before the call, not at the door. */}
+          {offer && offer.quantity > 1 && <p className="-mt-1 ps-1 text-[15px] text-muted">{t.buy.sameOption(offer.quantity)}</p>}
           {/* Tiles like the shops customers know: the name, its price when it differs, and whether it is there. */}
           <div className="grid grid-cols-[repeat(auto-fill,minmax(104px,1fr))] gap-2">
             {p.variants.map((v) => (
@@ -242,7 +244,30 @@ export function BuyBox({ p, lang, settings, url, choice, idp = "bb", onAdded }: 
       )}
 
       {out ? (
-        <p className="rounded-2xl bg-sand px-4 py-4 text-[16px] text-ink-2">{t.product.outSub}</p>
+        // Not a dead end: ask when it comes back, or look at the others (they follow the page).
+        <div className="flex flex-col gap-3 rounded-2xl bg-sand px-4 py-4">
+          <p className="text-[16px] text-ink-2">{t.product.outSub}</p>
+          <div className="flex flex-wrap gap-2">
+            {settings.contact.whatsapp && (
+              <a
+                href={`https://wa.me/216${settings.contact.whatsapp}?text=${encodeURIComponent(`${t.product.outAsk}: ${pick(lang, p.name, p.nameAr)} ${url}`)}`}
+                target="_blank"
+                rel="noopener"
+                onClick={() => {
+                  track("whatsapp_clicked", { productId: p.id, props: { where: "out_of_stock" } });
+                  pixelContact();
+                }}
+                className="inline-flex min-h-12 items-center gap-2 rounded-full bg-wa px-5 text-[16px] font-bold text-white"
+              >
+                <IconWhatsApp className="h-5 w-5" />
+                {t.product.outAsk}
+              </a>
+            )}
+            <a href="#related-title" className="inline-flex min-h-12 items-center rounded-full border border-ink/60 bg-white px-5 text-[16px] font-bold text-ink hover:bg-sand">
+              {t.product.outOthers}
+            </a>
+          </div>
+        </div>
       ) : (
         <OrderForm
           lang={lang}

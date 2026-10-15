@@ -22,7 +22,7 @@ export default async function TermsRoute({ params }: PageProps<"/[lang]/conditio
   return (
     <Prose title="Conditions générales de vente" french={lang === "ar"}>
       <p>
-        Le site est édité par {shop.name}
+        Le site est édité par {shop.legalName || shop.name}
         {shop.legalId && <>, matricule fiscal {shop.legalId}</>}
         {shop.address && <>, {shop.address}</>}.{shop.phone && <> Téléphone : {formatPhone(normalizePhone(shop.phone) || shop.phone)}.</>}
         {shop.email && <> E-mail : {shop.email}.</>}

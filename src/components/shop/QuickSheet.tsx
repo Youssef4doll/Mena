@@ -11,13 +11,16 @@ import { SITE_URL } from "@/lib/site";
 import { BuyBox, useBuyChoice } from "./BuyBox";
 import { IconClose } from "./Icons";
 import { useFocusTrap } from "@/lib/client/focus-trap";
+import { useBackToClose } from "@/lib/client/back-to-close";
 
 /**
  * The quick order form: a sheet from the bottom on a phone, a window on a
- * computer. Escape or the backdrop closes it; the page behind does not scroll.
+ * computer. Escape, the backdrop or the phone's Back button closes it; the
+ * page behind does not scroll.
  */
 export function QuickSheet({ slug, lang, onClose }: { slug: string; lang: Lang; onClose: () => void }) {
   const t = dict(lang);
+  const { close, dismiss } = useBackToClose(true, onClose, "commande");
   // undefined: loading; null: could not load.
   const [data, setData] = useState<QuickData | null | undefined>(undefined);
   const closeBtn = useRef<HTMLButtonElement>(null);
@@ -40,7 +43,7 @@ export function QuickSheet({ slug, lang, onClose }: { slug: string; lang: Lang; 
     document.body.style.overflow = "hidden";
     closeBtn.current?.focus();
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
+      if (e.key === "Escape") close();
     };
     addEventListener("keydown", onKey);
     return () => {
@@ -48,13 +51,13 @@ export function QuickSheet({ slug, lang, onClose }: { slug: string; lang: Lang; 
       removeEventListener("keydown", onKey);
       opener?.focus();
     };
-  }, [onClose]);
+  }, [close]);
 
   const p = data?.product;
   const image = p?.images[0]?.id ?? null;
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-center md:items-center md:p-6" role="dialog" aria-modal="true" aria-labelledby="qb-title">
-      <button type="button" className="absolute inset-0 animate-fade bg-ink/50" onClick={onClose} aria-label={t.nav.close} tabIndex={-1} />
+      <button type="button" className="absolute inset-0 animate-fade bg-ink/50" onClick={close} aria-label={t.nav.close} tabIndex={-1} />
       <div ref={panel} className="relative flex max-h-[94dvh] w-full animate-sheet-up flex-col overflow-hidden rounded-t-3xl bg-white shadow-lift md:max-w-xl md:rounded-3xl">
         <div className="flex items-center gap-3 border-b border-line bg-white px-4 py-3">
           <span className="relative h-14 w-14 shrink-0 overflow-hidden rounded-xl border border-line bg-sand">
@@ -68,7 +71,7 @@ export function QuickSheet({ slug, lang, onClose }: { slug: string; lang: Lang; 
               {p ? pick(lang, p.name, p.nameAr) : t.product.quickLoading}
             </span>
           </span>
-          <button ref={closeBtn} type="button" onClick={onClose} className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-ink hover:bg-sand" aria-label={t.nav.close}>
+          <button ref={closeBtn} type="button" onClick={close} className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-ink hover:bg-sand" aria-label={t.nav.close}>
             <IconClose className="h-6 w-6" />
           </button>
         </div>
@@ -83,12 +86,12 @@ export function QuickSheet({ slug, lang, onClose }: { slug: string; lang: Lang; 
           ) : data === null ? (
             <div className="flex flex-col items-center gap-4 py-6 text-center">
               <p className="text-[17px] text-ink-2">{t.product.quickError}</p>
-              <Link href={href(lang, `/produit/${slug}`)} className="flex min-h-12 items-center rounded-full border border-ink/60 bg-white px-6 text-[16px] font-bold text-ink hover:bg-sand">
+              <Link href={href(lang, `/produit/${slug}`)} replace className="flex min-h-12 items-center rounded-full border border-ink/60 bg-white px-6 text-[16px] font-bold text-ink hover:bg-sand">
                 {t.product.quickSee}
               </Link>
             </div>
           ) : (
-            <QuickForm data={data} slug={slug} lang={lang} onClose={onClose} />
+            <QuickForm data={data} slug={slug} lang={lang} onAdded={dismiss} />
           )}
         </div>
       </div>
@@ -96,7 +99,7 @@ export function QuickSheet({ slug, lang, onClose }: { slug: string; lang: Lang; 
   );
 }
 
-function QuickForm({ data, slug, lang, onClose }: { data: QuickData; slug: string; lang: Lang; onClose: () => void }) {
+function QuickForm({ data, slug, lang, onAdded }: { data: QuickData; slug: string; lang: Lang; onAdded: () => void }) {
   const t = dict(lang);
   const p = data.product;
   const choice = useBuyChoice(p);
@@ -111,9 +114,10 @@ function QuickForm({ data, slug, lang, onClose }: { data: QuickData; slug: strin
 
   return (
     <div className="flex flex-col gap-4">
-      {/* "Ajouter au panier" closes the sheet: the confirmation takes its place. */}
-      <BuyBox p={p} lang={lang} settings={data.settings} url={`${SITE_URL}${path}`} choice={choice} idp="qb" onAdded={onClose} />
-      <Link href={path} className="flex min-h-11 items-center justify-center text-[16px] text-sea underline underline-offset-4">
+      {/* "Ajouter au panier" closes the sheet: the confirmation takes its place (and its history entry). */}
+      <BuyBox p={p} lang={lang} settings={data.settings} url={`${SITE_URL}${path}`} choice={choice} idp="qb" onAdded={onAdded} />
+      {/* Replaces the sheet's entry: Back from the product page returns to the list, not to a closed sheet. */}
+      <Link href={path} replace className="flex min-h-11 items-center justify-center text-[16px] text-sea underline underline-offset-4">
         {t.product.quickSee}
       </Link>
     </div>

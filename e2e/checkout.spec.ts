@@ -173,7 +173,13 @@ test("Acheter maintenant on a card orders without leaving the list", async ({ pa
   await card.getByRole("button", { name: "Acheter maintenant" }).click();
   const sheet = page.getByRole("dialog");
   await expect(sheet.locator("#qb-title")).toHaveText("Diffuseur d'huiles essentielles");
+  // Still the list: the sheet only marks the address, so the phone's Back button closes it.
+  await expect(page).toHaveURL(/\/fr\/categorie\/maison#commande$/);
+  await page.goBack();
+  await expect(sheet).toHaveCount(0);
   await expect(page).toHaveURL(/\/fr\/categorie\/maison$/);
+  await card.getByRole("button", { name: "Acheter maintenant" }).click();
+  await expect(sheet.locator("#qb-title")).toHaveText("Diffuseur d'huiles essentielles");
   await sheet.getByTestId("offer-3").check();
   await sheet.getByTestId("name").fill("Amira Ben Salah");
   await sheet.getByTestId("phone").fill("22 123 456");
@@ -183,6 +189,34 @@ test("Acheter maintenant on a card orders without leaving the list", async ({ pa
   await expect(sheet.getByTestId("total")).toHaveText("138,000 DT");
   await sheet.getByTestId("place-order").click();
   await expect(page).toHaveURL(/\/commande\/merci\/MN-/);
+});
+
+test("a lost answer, then a second tap, still make one order; the ordered product leaves the basket", async ({ page }) => {
+  await page.goto(`${FR}/produit/diffuseur-huiles-essentielles`);
+  await page.getByTestId("offer-3").check();
+  // In the basket too, then ordered from its page: it must not stay there, inviting a second order.
+  await page.locator("#commander").getByTestId("add-to-cart").click();
+  await page.getByRole("dialog").getByRole("button", { name: "Continuer mes achats" }).click();
+  await expect(page.getByTestId("cart-count")).toHaveText("1");
+  await fillDetails(page, "Sfax");
+  await expect(page.getByTestId("total")).toHaveText("138,000 DT");
+
+  // The order reaches the server, but its answer is lost on the way back (a weak signal).
+  let first: string | null = null;
+  await page.route("**/api/orders", async (route) => {
+    const res = await route.fetch();
+    first = (await res.json()).ref;
+    await route.abort("failed");
+  });
+  await page.getByTestId("place-order").click();
+  await expect(page.getByText(/ne sera pas enregistrée deux fois/)).toBeVisible();
+  expect(first).toMatch(/^MN-/);
+
+  // Tapping again sends the same attempt: the server answers with the order it already made.
+  await page.unroute("**/api/orders");
+  await page.getByTestId("place-order").click();
+  await expect(page).toHaveURL(new RegExp(`/commande/merci/${first}$`));
+  await expect(page.getByTestId("cart-count")).toHaveCount(0);
 });
 
 test("search finds the product despite a typing mistake, and completes like Google", async ({ page }) => {

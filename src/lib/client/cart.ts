@@ -107,18 +107,28 @@ export const cartCount = (items: CartItem[]) => items.reduce((n, i) => n + i.qty
 
 export const itemKey = (i: Pick<CartItem, "productId" | "variantId" | "offerId">) => `${i.productId}|${i.variantId ?? ""}|${i.offerId ?? ""}`;
 
-export type AddResult = "added" | "more" | "already" | "full";
+export type AddResult = "added" | "more" | "already" | "replaced" | "full";
+
+const sameChoice = (a: Pick<CartItem, "productId" | "variantId">, b: Pick<CartItem, "productId" | "variantId">) => a.productId === b.productId && (a.variantId ?? null) === (b.variantId ?? null);
 
 /**
  * Same product, option and offer twice: a plain line gets more units (10 at
  * most), an offer stays once — the server takes an offer once per order.
+ * Another offer of a product already in the basket takes the old one's place:
+ * "1 unité" then "2 + 1 offerte" is one pack of three, not two lines that
+ * cost more than the pack.
  */
 export function addToCart(item: CartItem): AddResult {
   const items = read();
   const key = itemKey(item);
   const existing = items.find((i) => itemKey(i) === key);
+  const otherOffer = existing ? null : items.find((i) => sameChoice(i, item) && (i.offerId || item.offerId));
   let result: AddResult;
-  if (existing) {
+  if (otherOffer) {
+    const next = { ...item, qty: item.offerId ? 1 : Math.min(MAX_QTY, Math.max(1, item.qty)) };
+    write(items.map((i) => (i === otherOffer ? next : i)));
+    result = "replaced";
+  } else if (existing) {
     if (item.offerId || existing.qty >= MAX_QTY) result = "already";
     else {
       write(items.map((i) => (itemKey(i) === key ? { ...i, qty: Math.min(MAX_QTY, i.qty + item.qty) } : i)));
@@ -147,6 +157,13 @@ export function replaceCart(items: CartItem[]) {
 
 export function clearCart() {
   write([]);
+}
+
+/** After an order from a product page or the quick form: the same product and option leave the basket. */
+export function removeOrdered(lines: Pick<CartItem, "productId" | "variantId">[]) {
+  const items = read();
+  const left = items.filter((i) => !lines.some((l) => sameChoice(i, l)));
+  if (left.length !== items.length) write(left);
 }
 
 /** Tells the "added to your basket" sheet what was just added, wherever the button was. */

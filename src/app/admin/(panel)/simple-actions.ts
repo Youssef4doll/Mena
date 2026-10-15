@@ -151,3 +151,37 @@ export async function updateReturn(_: unknown, f: FormData): Promise<Result> {
   revalidatePath("/admin/retours");
   return { ok: true, message: "Enregistré." };
 }
+
+// ---------------------------------------------------------------- ad spend
+
+const spendSchema = z.object({
+  from: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  to: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  source: z.string().trim().toLowerCase().min(2).max(40),
+  campaign: z.string().trim().max(120),
+  note: z.string().trim().max(200),
+});
+
+/** A total from the ads manager, for one day or a period (both days included). */
+export async function saveAdSpend(_: unknown, f: FormData): Promise<Result> {
+  await requireAdmin();
+  const parsed = spendSchema.safeParse({ from: str(f, "from"), to: str(f, "to") || str(f, "from"), source: str(f, "source"), campaign: str(f, "campaign"), note: str(f, "note") });
+  if (!parsed.success) return { ok: false, error: "Vérifiez les dates et la source." };
+  const amount = parseTND(str(f, "amount"));
+  if (amount == null || amount <= 0) return { ok: false, error: "Montant invalide (en DT, par ex. 120,500)." };
+  const { from, to, source, campaign, note } = parsed.data;
+  const days = Math.round((Date.parse(`${to}T00:00:00Z`) - Date.parse(`${from}T00:00:00Z`)) / 86_400_000) + 1;
+  if (days < 1 || days > 92) return { ok: false, error: "La période va du premier au dernier jour, 92 jours au plus." };
+  await prisma.adSpend.create({ data: { day: new Date(`${from}T00:00:00Z`), days, source, campaign: campaign || null, note: note || null, amount } });
+  revalidatePath("/admin/depenses");
+  revalidatePath("/admin/analytics");
+  return { ok: true, message: "Dépense enregistrée." };
+}
+
+export async function deleteAdSpend(id: string): Promise<Result> {
+  await requireAdmin();
+  await prisma.adSpend.delete({ where: { id } });
+  revalidatePath("/admin/depenses");
+  revalidatePath("/admin/analytics");
+  return { ok: true };
+}

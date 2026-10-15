@@ -74,6 +74,8 @@ export default async function AnalyticsPage({ searchParams }: PageProps<"/admin/
         </p>
       )}
 
+      <ProfitCard m={a.profit} />
+
       {insights.length > 0 && (
         <Card title="À retenir" hint="Ce que les chiffres de la période disent de faire.">
           <ul className="flex flex-col gap-2 text-sm">
@@ -440,3 +442,67 @@ function buildInsights(a: import("@/lib/analytics").Analytics): string[] {
   return out;
 }
 
+const MISSING: Record<string, { text: string; href: string }> = {
+  productCost: { text: "le coût fournisseur de certains produits livrés", href: "/admin/produits" },
+  carrierCost: { text: "ce que le transporteur vous facture par colis", href: "/admin/parametres" },
+  returnCost: { text: "ce que coûte un colis refusé ou retourné", href: "/admin/parametres" },
+  adSpend: { text: "les dépenses publicitaires de la période", href: "/admin/depenses" },
+};
+
+/**
+ * What the period leaves: the delivered orders' money minus every cost the
+ * owner gave. A cost not given is named, never guessed.
+ */
+function ProfitCard({ m }: { m: Awaited<ReturnType<typeof getAnalytics>>["profit"] }) {
+  const rows: [string, string, string?][] = [
+    ["CA livré (encaissé)", fmt(m.revenue, "tnd"), `${m.delivered} commande(s) livrée(s)`],
+    ["− Coût des produits", m.costUnknown ? "?" : fmt(m.productCost, "tnd"), m.costUnknown ? `${m.costUnknown} livrée(s) sans coût fournisseur` : undefined],
+    ["− Transport", m.carrierCost == null ? "?" : fmt(m.carrierCost, "tnd"), `${m.parcels} colis envoyé(s)`],
+    ["− Colis revenus", m.returnCost == null ? "?" : fmt(m.returnCost, "tnd"), `${m.backParcels} refusé(s) ou retourné(s)`],
+    ["= Avant publicité", m.beforeAds == null ? "?" : fmt(m.beforeAds, "tnd")],
+    ["− Publicité", m.adSpend == null ? "?" : fmt(m.adSpend, "tnd")],
+  ];
+  return (
+    <Card title="Rentabilité" hint="Commandes passées sur la période. Le transport et les refus coûtent même quand la commande ne rapporte rien : c'est pourquoi on compte en commandes livrées.">
+      <div className="grid gap-4 lg:grid-cols-[1fr_1fr]">
+        <dl className="flex flex-col divide-y divide-line text-sm">
+          {rows.map(([k, v, sub]) => (
+            <div key={k} className="flex items-baseline justify-between gap-3 py-2">
+              <dt>
+                {k}
+                {sub && <span className="block text-xs text-muted">{sub}</span>}
+              </dt>
+              <dd className="shrink-0 font-medium tabular-nums">{v}</dd>
+            </div>
+          ))}
+          <div className="flex items-baseline justify-between gap-3 py-2 text-base">
+            <dt className="font-semibold">Bénéfice après publicité</dt>
+            <dd className={`shrink-0 font-semibold tabular-nums ${m.contribution != null && m.contribution < 0 ? "text-danger" : ""}`}>{m.contribution == null ? "?" : fmt(m.contribution, "tnd")}</dd>
+          </div>
+        </dl>
+        <div className="flex flex-col gap-3 text-sm">
+          <p>
+            Coût publicitaire par commande livrée : <strong className="tabular-nums">{m.costPerDelivered == null ? "?" : fmt(m.costPerDelivered, "tnd")}</strong>
+          </p>
+          {m.sources.length > 0 && (
+            <TableView head={["Source", "Dépense", "Livrées", "Coût par livrée"]} rows={m.sources.map((x) => [x.source, fmt(x.spend, "tnd"), x.delivered, x.costPerDelivered == null ? "—" : fmt(x.costPerDelivered, "tnd")])} />
+          )}
+          {m.missing.length > 0 && (
+            <div className="rounded-xl bg-cream p-3">
+              <p className="font-medium">Pour un bénéfice exact, il manque :</p>
+              <ul className="mt-1 list-disc ps-5">
+                {m.missing.map((k) => (
+                  <li key={k}>
+                    <Link href={MISSING[k].href} className="underline underline-offset-2">
+                      {MISSING[k].text}
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+        </div>
+      </div>
+    </Card>
+  );
+}

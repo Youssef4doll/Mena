@@ -3,7 +3,7 @@
 import Link from "next/link";
 import Script from "next/script";
 import { usePathname } from "next/navigation";
-import { useEffect, useRef, useSyncExternalStore } from "react";
+import { useEffect, useLayoutEffect, useRef, useSyncExternalStore } from "react";
 import { dict, href, type Lang } from "@/i18n";
 import { getConsent, onConsent, setConsent, type Consent as C } from "@/lib/client/consent";
 
@@ -12,6 +12,7 @@ import { track } from "@/lib/client/track";
 import { store } from "@/lib/client/storage";
 
 type Ids = { metaPixelId: string; ga4Id: string; tiktokPixelId: string };
+const FBCLID = "mena_fbclid";
 
 /**
  * The cookie choice, and the pixels that depend on it. Nothing from Meta,
@@ -25,10 +26,35 @@ export function ConsentAndPixels({ lang, ids }: { lang: Lang; ids: Ids }) {
   const pathname = usePathname();
   const anyPixel = Boolean(ids.metaPixelId || ids.ga4Id || ids.tiktokPixelId);
 
+  // The ad click ids of the landing URL, kept for the order: the visitor may accept or order several pages later.
   useEffect(() => {
-    const ttclid = new URLSearchParams(location.search).get("ttclid");
+    const params = new URLSearchParams(location.search);
+    const ttclid = params.get("ttclid");
     if (ttclid) store.set("mena_ttclid", ttclid);
+    const fbclid = params.get("fbclid");
+    if (fbclid) store.set(FBCLID, JSON.stringify({ v: fbclid, at: Date.now() }));
   }, []);
+
+  // While the question is on screen, the WhatsApp button waits above it instead of under it.
+  const box = useRef<HTMLDivElement>(null);
+  const asking = anyPixel && consent === null;
+  useLayoutEffect(() => {
+    const root = document.documentElement;
+    if (!asking || !box.current) return;
+    const el = box.current;
+    const ro = new ResizeObserver(() => root.style.setProperty("--consent-h", `${el.offsetHeight}px`));
+    ro.observe(el);
+    root.dataset.consent = "ask";
+    return () => {
+      ro.disconnect();
+      delete root.dataset.consent;
+    };
+  }, [asking]);
+
+  const choose = (v: "granted" | "denied") => {
+    setConsent(v);
+    track(v === "granted" ? "consent_granted" : "consent_denied");
+  };
 
   // Our own page view, every route change.
   useEffect(() => {
@@ -70,8 +96,9 @@ export function ConsentAndPixels({ lang, ids }: { lang: Lang; ids: Ids }) {
         </>
       )}
 
-      {anyPixel && consent === null && (
-        <div className="fixed inset-x-3 bottom-3 z-40 mx-auto max-w-lg animate-sheet-up rounded-2xl border border-line bg-white p-4 shadow-lift" role="region" aria-label={t.footer.cookies}>
+      {asking && (
+        // Above the product page's order bar when it shows (globals.css), never over its button.
+        <div ref={box} className="consent-box fixed inset-x-3 z-40 mx-auto max-w-lg animate-sheet-up rounded-2xl border border-line bg-white p-4 shadow-lift" role="region" aria-label={t.footer.cookies}>
           <p className="text-[15px] leading-relaxed text-ink-2">
             {t.consent.text}{" "}
             <Link href={href(lang, "/confidentialite")} className="underline underline-offset-2">
@@ -79,10 +106,10 @@ export function ConsentAndPixels({ lang, ids }: { lang: Lang; ids: Ids }) {
             </Link>
           </p>
           <div className="mt-3 flex gap-2">
-            <button type="button" onClick={() => setConsent("denied")} className="h-10 flex-1 rounded-full border border-line text-sm font-medium">
+            <button type="button" onClick={() => choose("denied")} className="min-h-11 flex-1 rounded-full border border-ink/60 bg-white text-[16px] font-bold text-ink">
               {t.consent.refuse}
             </button>
-            <button type="button" onClick={() => setConsent("granted")} className="h-10 flex-1 rounded-full bg-sea text-sm font-medium text-white">
+            <button type="button" onClick={() => choose("granted")} className="min-h-11 flex-1 rounded-full bg-ink text-[16px] font-bold text-white">
               {t.consent.accept}
             </button>
           </div>

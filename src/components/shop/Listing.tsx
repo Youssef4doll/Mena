@@ -44,7 +44,7 @@ export function Listing({ lang, title, path, sort, products, emptyText }: { lang
           )}
         </div>
       ) : (
-        <ProductGrid products={products} lang={lang} priorityFirst={4} />
+        <ProductGrid products={products} lang={lang} priorityFirst={4} list={path === "/boutique" ? "shop" : "category"} />
       )}
     </div>
   );

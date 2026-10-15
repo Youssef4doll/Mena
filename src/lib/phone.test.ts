@@ -3,7 +3,8 @@ import assert from "node:assert/strict";
 import { normalizePhone, isMobile, formatPhone } from "./phone";
 
 test("accepts the ways Tunisians type a number", () => {
-  for (const v of ["22123456", "22 123 456", "+216 22 123 456", "0021622123456", "21622123456", "22.123.456"]) {
+  // Arabic keyboards type ٢٢ (or ۲۲); some people put a 0 in front out of habit.
+  for (const v of ["22123456", "22 123 456", "+216 22 123 456", "0021622123456", "21622123456", "22.123.456", "٢٢١٢٣٤٥٦", "۲۲ ۱۲۳ ۴۵۶", "+٢١٦ ٢٢ ١٢٣ ٤٥٦", "022123456"]) {
     assert.equal(normalizePhone(v), "22123456", v);
   }
 });

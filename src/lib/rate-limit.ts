@@ -25,7 +25,8 @@ export function hit(key: string, limit: number, windowMs: number): RateLimitResu
 
 export const LIMITS = {
   events: { limit: 120, windowMs: 60_000 },
-  quote: { limit: 60, windowMs: 60_000 },
+  // A product page asks for a price on each choice; many customers can share one carrier address (CGNAT).
+  quote: { limit: 300, windowMs: 60_000 },
   // Loose: Tunisian mobile carriers put many customers behind one address (CGNAT).
   order: { limit: 20, windowMs: 10 * 60_000 },
   lookup: { limit: 10, windowMs: 10 * 60_000 },

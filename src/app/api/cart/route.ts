@@ -33,8 +33,13 @@ export async function POST(request: Request) {
   const tokenHash = hashToken(d.token);
   const phone = d.phone ? normalizePhone(d.phone) : null;
   const lines = d.lines.map((l) => ({ productId: l.productId, variantId: l.variantId ?? null, offerId: l.offerId ?? null, qty: l.qty }));
-  const existing = await prisma.cart.findUnique({ where: { tokenHash }, select: { status: true } });
-  if (existing?.status === "CONVERTED") return json({ ok: true });
+  const existing = await prisma.cart.findUnique({ where: { tokenHash }, select: { status: true, updatedAt: true } });
+  if (existing?.status === "CONVERTED") {
+    // A late write seconds after the order never reopens it. Much later, this browser is filling a new form
+    // (its earlier order was placed elsewhere: by phone, from a reminder): it gets a new token, so the form is seen.
+    const renew = Date.now() - existing.updatedAt.getTime() > 30 * 60_000;
+    return json({ ok: true, ...(renew ? { renew: true } : {}) });
+  }
   await prisma.cart.upsert({
     where: { tokenHash },
     create: { tokenHash, lines, phone, name: d.name || null, governorate: d.governorate && isGovernorate(d.governorate) ? d.governorate : null, visitorId: d.visitorId, source: d.source, campaign: d.campaign ?? null },

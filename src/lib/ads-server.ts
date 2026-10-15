@@ -17,7 +17,7 @@ const sha = (s: string) => createHash("sha256").update(s.trim().toLowerCase()).d
 
 type AdContext = { fbp?: string; fbc?: string; ttp?: string; ttclid?: string; gaClientId?: string; ua?: string; ip?: string; url?: string };
 
-export async function sendPurchase(orderId: string, trigger: "placed" | "confirmed") {
+export async function sendPurchase(orderId: string, trigger: "placed" | "confirmed" | "delivered") {
   const [settings, secrets] = await Promise.all([getSettings(), getSecrets()]);
   if (settings.tracking.purchaseAt !== trigger) return;
   const o = await prisma.order.findUnique({
@@ -104,8 +104,8 @@ export async function sendPurchase(orderId: string, trigger: "placed" | "confirm
   }
 
   // GA4: the browser sends the purchase itself when it happens at placement;
-  // the server only reports purchases confirmed later, when no page is open.
-  if (trigger === "confirmed" && settings.tracking.ga4Id && secrets.ga4ApiSecret && ctx.gaClientId) {
+  // the server only reports purchases confirmed or delivered later, when no page is open.
+  if (trigger !== "placed" && settings.tracking.ga4Id && secrets.ga4ApiSecret && ctx.gaClientId) {
     tasks.push(
       post(
         `https://www.google-analytics.com/mp/collect?measurement_id=${encodeURIComponent(settings.tracking.ga4Id)}&api_secret=${encodeURIComponent(secrets.ga4ApiSecret)}`,

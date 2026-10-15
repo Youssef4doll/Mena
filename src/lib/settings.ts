@@ -11,7 +11,7 @@ export const getSettings = unstable_cache(
     const row = await prisma.setting.findUnique({ where: { key: "settings" } });
     return mergeSettings(row?.value);
   },
-  ["settings-v2"],
+  ["settings-v3"],
   { tags: [SETTINGS_TAG], revalidate: 300 },
 );
 

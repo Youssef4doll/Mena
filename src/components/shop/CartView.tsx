@@ -26,7 +26,12 @@ export function CartView({ lang, settings }: { lang: Lang; settings: PublicSetti
   const items = useCart();
   const hydrated = useHydrated();
   const [quote, setQuote] = useState<PublicQuote | null>(null);
-  const [notices, setNotices] = useState<string[]>([]);
+  // What the server changed, in a sentence; with the product's page when something is to be done there.
+  const [notices, setNotices] = useState<{ text: string; slug?: string }[]>([]);
+  // Units left, as the server said ("only 2 left"): the + button stops there instead of bouncing back.
+  const [caps, setCaps] = useState<Record<string, number>>({});
+  // The reminded basket really came back into this one: only then is the order tied to the reminder.
+  const [restored, setRestored] = useState<string | null>(null);
   const search = useSyncExternalStore(noopSubscribe, readSearch, () => "");
   const relance = new URLSearchParams(search).get("relance");
   const restoredCartId = relance && /^[a-z0-9]{20,40}$/.test(relance) ? relance : null;
@@ -34,20 +39,25 @@ export function CartView({ lang, settings }: { lang: Lang; settings: PublicSetti
   const viewed = useRef(false);
   const lines = useMemo(() => items.map((i) => ({ productId: i.productId, variantId: i.variantId, offerId: i.offerId, qty: i.qty })), [items]);
 
-  // A reminder link fills an empty basket with what was left; a basket already in use is kept.
+  // A reminder link brings back what was left; what is already in the basket stays, and only missing lines are added.
   useEffect(() => {
-    if (!hydrated || !restoredCartId || tried.current || items.length > 0) return;
+    if (!hydrated || !restoredCartId || tried.current) return;
     tried.current = true;
     fetch(`/api/cart/${restoredCartId}`)
       .then((r) => (r.ok ? r.json() : null))
       .then((d: { items?: CartItem[] } | null) => {
-        if (d?.items?.length) {
-          replaceCart(d.items);
-          setNotices([t.cart.restored]);
+        if (!d?.items?.length) {
+          setNotices([{ text: t.cart.restoreGone }]);
+          return;
         }
+        const have = new Set(items.map(itemKey));
+        const missing = d.items.filter((i) => !have.has(itemKey(i)));
+        if (missing.length) replaceCart([...items, ...missing]);
+        setRestored(restoredCartId);
+        setNotices([{ text: t.cart.restored }]);
       })
       .catch(() => {});
-  }, [hydrated, restoredCartId, items.length, t.cart.restored]);
+  }, [hydrated, restoredCartId, items, t.cart.restored, t.cart.restoreGone]);
 
   useEffect(() => {
     if (!hydrated || viewed.current || items.length === 0) return;
@@ -61,31 +71,34 @@ export function CartView({ lang, settings }: { lang: Lang; settings: PublicSetti
   function onQuote(q: PublicQuote) {
     setQuote(q);
     if (q.problems.length === 0) return;
-    const said: string[] = [];
+    const said: { text: string; slug?: string }[] = [];
     for (const pr of q.problems) {
       const option = items.filter((i) => i.productId === pr.productId && (i.variantId ?? null) === (pr.variantId ?? null));
       // The server names the refused line by its offer; only that line changes.
       const lines = pr.offerId !== undefined ? option.filter((i) => (i.offerId ?? null) === (pr.offerId ?? null)) : option;
       const label = lines[0] ? name(lines[0]) : option[0] ? name(option[0]) : "";
+      const slug = (lines[0] ?? option[0])?.slug;
       if (pr.kind === "qty_reduced" && pr.available != null) {
-        for (const i of lines) if (!i.offerId) setCartQty(itemKey(i), pr.available);
-        said.push(t.cart.qtyReduced(label, pr.available));
+        const left = pr.available;
+        for (const i of lines) if (!i.offerId) setCartQty(itemKey(i), left);
+        setCaps((c) => ({ ...c, ...Object.fromEntries(lines.map((i) => [itemKey(i), left])) }));
+        said.push({ text: t.cart.qtyReduced(label, left) });
       } else if (pr.kind === "offer_unavailable" || (pr.kind === "unavailable" && lines.some((i) => i.offerId))) {
         for (const i of lines) if (i.offerId) removeFromCart(itemKey(i));
-        said.push(t.cart.offerGone(label));
+        said.push({ text: t.cart.offerGone(label), slug });
       } else if (pr.kind === "variant_required") {
         for (const i of lines) removeFromCart(itemKey(i));
-        said.push(t.cart.needsOption(label));
+        said.push({ text: t.cart.needsOption(label), slug });
       } else if (pr.kind === "unavailable") {
         // That option is sold out; the product's other options stay.
         for (const i of lines) removeFromCart(itemKey(i));
-        said.push(t.cart.gone(label));
+        said.push({ text: t.cart.gone(label) });
       } else {
         for (const i of items.filter((x) => x.productId === pr.productId)) removeFromCart(itemKey(i));
-        said.push(t.cart.gone(label));
+        said.push({ text: t.cart.gone(label) });
       }
     }
-    setNotices(said.filter(Boolean));
+    setNotices(said.filter((n) => n.text));
   }
 
   const priced = (i: CartItem) => quote?.lines.find((l) => l.productId === i.productId && (l.variantId ?? null) === (i.variantId ?? null) && (l.offerId ?? null) === (i.offerId ?? null));
@@ -98,9 +111,10 @@ export function CartView({ lang, settings }: { lang: Lang; settings: PublicSetti
     </h1>
   );
 
+  // The basket is read after the page is drawn: the page keeps its height meanwhile, so the footer never jumps.
   if (!hydrated || items.length === 0)
     return (
-      <div className="mx-auto max-w-6xl px-4 pb-16 pt-5 md:pt-8">
+      <div className="mx-auto min-h-[70vh] max-w-6xl px-4 pb-16 pt-5 md:pt-8">
         {title}
         {hydrated && (
           <div className="mt-10 flex flex-col items-center gap-5 text-center">
@@ -109,7 +123,9 @@ export function CartView({ lang, settings }: { lang: Lang; settings: PublicSetti
             </span>
             <p className="text-[20px] font-bold text-ink">{t.cart.empty}</p>
             {notices.map((n) => (
-              <p key={n} className="rounded-xl bg-clay-soft px-4 py-3 text-[16px] text-clay">{n}</p>
+              <p key={n.text} className="rounded-xl bg-clay-soft px-4 py-3 text-[16px] text-clay">
+                <Notice n={n} lang={lang} />
+              </p>
             ))}
             <Link href={href(lang, "/boutique")} className="flex min-h-14 items-center rounded-full bg-ink px-7 text-[17px] font-bold text-white hover:bg-ink-2">
               {t.home.shopNow}
@@ -120,13 +136,15 @@ export function CartView({ lang, settings }: { lang: Lang; settings: PublicSetti
     );
 
   return (
-    <div className="mx-auto grid max-w-6xl gap-5 px-4 pb-16 pt-5 md:grid-cols-[1fr_440px] md:items-start md:gap-8 md:pt-8">
+    <div className="mx-auto grid min-h-[70vh] max-w-6xl gap-5 px-4 pb-16 pt-5 md:grid-cols-[1fr_440px] md:items-start md:gap-8 md:pt-8">
       <section className="flex min-w-0 flex-col gap-3" aria-labelledby="cart-title">
         {title}
         {notices.length > 0 && (
           <div className="flex flex-col gap-1 rounded-xl bg-clay-soft px-4 py-3 text-[16px] text-clay" role="status">
             {notices.map((n) => (
-              <p key={n}>{n}</p>
+              <p key={n.text}>
+                <Notice n={n} lang={lang} />
+              </p>
             ))}
           </div>
         )}
@@ -160,7 +178,7 @@ export function CartView({ lang, settings }: { lang: Lang; settings: PublicSetti
                           <IconMinus className="h-5 w-5" />
                         </button>
                         <span className="w-7 text-center text-[17px] font-bold ltr-nums" aria-live="polite">{i.qty}</span>
-                        <button type="button" className="flex h-11 w-11 items-center justify-center disabled:opacity-30" disabled={i.qty >= 10} onClick={() => { setNotices([]); setCartQty(key, i.qty + 1); }} aria-label={t.buy.qtyMore}>
+                        <button type="button" className="flex h-11 w-11 items-center justify-center disabled:opacity-30" disabled={i.qty >= Math.min(10, caps[key] ?? 10)} onClick={() => { setNotices([]); setCartQty(key, i.qty + 1); }} aria-label={t.buy.qtyMore}>
                           <IconPlus className="h-5 w-5" />
                         </button>
                       </div>
@@ -205,12 +223,30 @@ export function CartView({ lang, settings }: { lang: Lang; settings: PublicSetti
           onQuote={onQuote}
           origin="cart"
           pixelItems={() => items.map((i) => ({ id: i.productId, name: i.name, price: priced(i)?.unitPrice ?? 0, qty: priced(i)?.qty ?? i.qty }))}
-          restoredCartId={restoredCartId}
+          restoredCartId={restored}
           onPlaced={clearCart}
           waText={lang === "ar" ? `${t.trust.waHello}: ${items.map((i) => name(i)).join("، ")}` : `${t.trust.waHello} : ${items.map((i) => name(i)).join(", ")}`}
           submitTitle={t.cart.submit}
         />
       </div>
     </div>
+  );
+}
+
+/** A sentence about a line; with a link to its product when the choice is to be made again there. */
+function Notice({ n, lang }: { n: { text: string; slug?: string }; lang: Lang }) {
+  const t = dict(lang);
+  return (
+    <>
+      {n.text}
+      {n.slug && (
+        <>
+          {" "}
+          <Link href={href(lang, `/produit/${n.slug}`)} className="font-bold underline underline-offset-2" prefetch={false}>
+            {t.cart.seeProduct}
+          </Link>
+        </>
+      )}
+    </>
   );
 }

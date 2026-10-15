@@ -8,7 +8,8 @@ export const revalidate = 3600;
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   const [products, categories] = await Promise.all([
     prisma.product.findMany({ where: { active: true }, select: { slug: true, updatedAt: true, images: { where: { kind: "GALLERY" }, orderBy: { sort: "asc" }, take: 8, select: { mediaId: true } } } }),
-    prisma.category.findMany({ where: { active: true }, select: { slug: true } }),
+    // Only categories with something to buy, as the menu shows them.
+    prisma.category.findMany({ where: { active: true, products: { some: { active: true } } }, select: { slug: true } }),
   ]);
   const both = (path: string, lastModified?: Date, images?: string[]) => ({
     url: `${SITE_URL}${path}`,

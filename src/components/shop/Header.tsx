@@ -28,8 +28,10 @@ export function Header({ lang, categories, announcement, phone }: { lang: Lang; 
   const [menuOn, setMenuOn] = useState<string | null>(null);
   const menu = menuOn === pathname;
   const onProduct = pathname.includes("/produit/");
+  // A page prerendered at build time carries the internal "/ar" prefix; the browser's address does not.
+  const bare = pathname.replace(/^\/(ar|fr)(?=\/|$)/, "") || "/";
   // The home page shows the categories with their pictures right under the header.
-  const onHome = pathname === href(lang, "/");
+  const onHome = bare === "/";
   const shopOn = pathname.endsWith("/boutique");
   // On a product page on a phone, search is an icon until tapped (closes again on the next page).
   const [searchAt, setSearchAt] = useState<string | null>(null);
@@ -115,9 +117,9 @@ export function Header({ lang, categories, announcement, phone }: { lang: Lang; 
                 <span className="text-[16px] font-bold text-ink ltr-nums">{formatPhone(phone)}</span>
               </a>
             )}
-            <Link href={switchHref(lang, pathname)} className="flex h-11 items-center rounded-full border border-line px-4 text-[16px] font-bold text-ink hover:border-field" hrefLang={lang === "fr" ? "ar" : "fr"} prefetch={false}>
+            <LangLink lang={lang} pathname={pathname} className="flex h-11 items-center rounded-full border border-line px-4 text-[16px] font-bold text-ink hover:border-field">
               {t.nav.language}
-            </Link>
+            </LangLink>
             <CartLink lang={lang} />
           </div>
         </div>
@@ -176,9 +178,18 @@ export function Header({ lang, categories, announcement, phone }: { lang: Lang; 
               <MenuLink href={href(lang, "/suivi")}>{t.nav.track}</MenuLink>
               <MenuLink href={href(lang, "/livraison-retours")}>{t.footer.deliveryReturns}</MenuLink>
               <MenuLink href={href(lang, "/contact")}>{t.footer.contact}</MenuLink>
-              <MenuLink href={switchHref(lang, pathname)}>{t.nav.language}</MenuLink>
+              <LangLink lang={lang} pathname={pathname} className="flex min-h-12 items-center rounded-xl px-3 text-[17px] text-ink hover:bg-sand">
+                {t.nav.language}
+              </LangLink>
               {phone && (
-                <a href={`tel:+216${phone}`} className="mx-3 mt-4 flex min-h-12 items-center justify-center gap-2 rounded-full border border-field text-[17px] font-bold text-ink">
+                <a
+                  href={`tel:+216${phone}`}
+                  onClick={() => {
+                    track("phone_clicked", { props: { where: "menu" } });
+                    pixelContact();
+                  }}
+                  className="mx-3 mt-4 flex min-h-12 items-center justify-center gap-2 rounded-full border border-field text-[17px] font-bold text-ink"
+                >
                   <IconPhone className="h-5 w-5" />
                   <span className="ltr-nums">{formatPhone(phone)}</span>
                 </a>
@@ -188,6 +199,37 @@ export function Header({ lang, categories, announcement, phone }: { lang: Lang; 
         </div>
       )}
     </>
+  );
+}
+
+/** The same page in the other language, keeping what was searched and the sort (the session keeps the ad's utm_*). */
+function LangLink({ lang, pathname, className, children }: { lang: Lang; pathname: string; className: string; children: React.ReactNode }) {
+  const plain = (
+    <Link href={switchHref(lang, pathname)} className={className} hrefLang={lang === "fr" ? "ar" : "fr"} prefetch={false}>
+      {children}
+    </Link>
+  );
+  return (
+    <Suspense fallback={plain}>
+      <LangLinkWithQuery lang={lang} pathname={pathname} className={className}>
+        {children}
+      </LangLinkWithQuery>
+    </Suspense>
+  );
+}
+
+function LangLinkWithQuery({ lang, pathname, className, children }: { lang: Lang; pathname: string; className: string; children: React.ReactNode }) {
+  const params = useSearchParams();
+  const keep = new URLSearchParams();
+  for (const k of ["q", "tri"]) {
+    const v = params.get(k);
+    if (v) keep.set(k, v);
+  }
+  const qs = keep.toString();
+  return (
+    <Link href={`${switchHref(lang, pathname)}${qs ? `?${qs}` : ""}`} className={className} hrefLang={lang === "fr" ? "ar" : "fr"} prefetch={false}>
+      {children}
+    </Link>
   );
 }
 

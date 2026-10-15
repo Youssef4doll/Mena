@@ -70,7 +70,8 @@ export default async function ProductPageRoute({ params }: PageProps<"/[lang]/pr
       />
       {/* The page itself on white, like the shops customers know; the suggestions under it on the shop's light grey. */}
       <div className="bg-white">
-        <nav className="mx-auto flex max-w-6xl flex-wrap items-center gap-x-1.5 px-4 py-1 text-[15px] text-muted md:pt-4" aria-label="breadcrumb">
+        {/* On a phone the picture comes first (ad visitors know where they are); the trail stays in the data for Google. */}
+        <nav className="mx-auto flex max-w-6xl flex-wrap items-center gap-x-1.5 px-4 py-1 text-[15px] text-muted max-md:hidden md:pt-4" aria-label="breadcrumb">
           <Link href={href(lang, "/")} className="flex min-h-10 items-center hover:text-ink">
             {t.nav.home}
           </Link>
@@ -87,10 +88,10 @@ export default async function ProductPageRoute({ params }: PageProps<"/[lang]/pr
         {/* Quiet suggestions: pictures, names and prices, no more buy buttons beside the order bar. */}
         {related.length >= 2 && (
           <section className="mx-auto max-w-6xl border-t border-line px-4 pb-4 pt-8" aria-labelledby="related-title">
-            <h2 id="related-title" className="mb-4 text-[20px] font-bold">
+            <h2 id="related-title" className="mb-4 scroll-mt-4 text-[20px] font-bold">
               {t.product.related}
             </h2>
-            <ProductRow products={related.slice(0, 8)} lang={lang} compact />
+            <ProductRow products={related.slice(0, 8)} lang={lang} compact list="related" />
           </section>
         )}
       </div>

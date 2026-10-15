@@ -4,6 +4,7 @@ import type { Settings } from "@/lib/settings-schema";
 import { formatPhone, normalizePhone } from "@/lib/phone";
 import { Logo } from "./Logo";
 import { IconPhone, IconWhatsApp } from "./Icons";
+import { ContactLink } from "./ContactLink";
 
 /** White and short: the shop's number one tap away, and the useful links tall enough for a thumb. */
 export function Footer({ lang, settings }: { lang: Lang; settings: Settings }) {
@@ -20,16 +21,16 @@ export function Footer({ lang, settings }: { lang: Lang; settings: Settings }) {
           {(tel || wa) && (
             <div className="flex flex-wrap gap-2">
               {tel && (
-                <a href={`tel:+216${tel}`} className="inline-flex h-12 items-center gap-2 rounded-full border border-field bg-white px-5 text-[17px] font-bold text-ink hover:bg-sand">
+                <ContactLink kind="phone" where="footer" href={`tel:+216${tel}`} className="inline-flex h-12 items-center gap-2 rounded-full border border-field bg-white px-5 text-[17px] font-bold text-ink hover:bg-sand">
                   <IconPhone className="h-5 w-5" />
                   <span className="ltr-nums">{formatPhone(tel)}</span>
-                </a>
+                </ContactLink>
               )}
               {wa && (
-                <a href={`https://wa.me/216${wa}`} target="_blank" rel="noopener" className="inline-flex h-12 items-center gap-2 rounded-full bg-wa-soft px-5 text-[17px] font-bold text-wa-ink">
+                <ContactLink kind="whatsapp" where="footer" href={`https://wa.me/216${wa}?text=${encodeURIComponent(t.trust.waHello)}`} className="inline-flex h-12 items-center gap-2 rounded-full bg-wa-soft px-5 text-[17px] font-bold text-wa-ink">
                   <IconWhatsApp className="h-5 w-5" />
                   WhatsApp
-                </a>
+                </ContactLink>
               )}
             </div>
           )}
@@ -48,7 +49,7 @@ export function Footer({ lang, settings }: { lang: Lang; settings: Settings }) {
       </div>
       <div className="border-t border-line">
         <p className="mx-auto max-w-6xl px-4 py-4 text-[15px] text-muted">
-          © {year} {s.name}
+          © {year} {s.legalName || s.name}
           {s.legalId && <span className="ltr-nums"> · MF {s.legalId}</span>}
           {s.address && ` · ${s.address}`}
         </p>
