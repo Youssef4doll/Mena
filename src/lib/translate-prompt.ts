@@ -62,3 +62,40 @@ export function readManualAnswer(reply: string): ProductTexts | null {
     return null;
   }
 }
+
+/**
+ * Several products in one request, for translating a whole import without an
+ * API key. Each product carries a short "ref" so the reply can be matched back
+ * even when the assistant changes the order.
+ */
+export function manualBatchRequest(items: { ref: string; texts: ProductTexts }[], mode: TranslateMode = "fill"): string {
+  return `${SYSTEM}
+
+${taskFor(mode)} Do it for each product of the list below.
+
+Answer with a JSON array only, one object per product, each with its "ref" unchanged and exactly the same fields as given, and nothing before or after the array.
+
+Products (JSON):
+${JSON.stringify(items.map((i) => ({ ref: i.ref, ...i.texts })), null, 1)}`;
+}
+
+/** The pasted reply to a batch: each product found in it, by ref. Products missing or unreadable are left out. */
+export function readManualBatch(reply: string): Map<string, ProductTexts> {
+  const out = new Map<string, ProductTexts>();
+  const from = reply.indexOf("[");
+  const to = reply.lastIndexOf("]");
+  if (from < 0 || to <= from) return out;
+  let list: unknown;
+  try {
+    list = JSON.parse(reply.slice(from, to + 1));
+  } catch {
+    return out;
+  }
+  if (!Array.isArray(list)) return out;
+  for (const item of list) {
+    if (!item || typeof item !== "object" || typeof (item as { ref?: unknown }).ref !== "string") continue;
+    const parsed = Answer.safeParse(item);
+    if (parsed.success) out.set((item as { ref: string }).ref, parsed.data);
+  }
+  return out;
+}

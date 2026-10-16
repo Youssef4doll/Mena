@@ -32,6 +32,8 @@ export default defineConfig({
       APP_SECRET: "e2e-only-secret-0123456789abcdefghijkl",
       NEXT_PUBLIC_SITE_URL: TEST_URL,
       NEXT_DIST_DIR: ".next-e2e",
+      // The import test serves its own pictures on this machine (refused in production).
+      MEDIA_ALLOW_LOCAL: "1",
     },
   },
 });

@@ -5,68 +5,15 @@ import { revalidatePath, updateTag } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { requireAdmin } from "@/lib/admin-auth";
 import { CATALOG_TAG } from "@/lib/catalog";
-import { importImageFromUrl, storeImage, MAX_UPLOAD } from "@/lib/media";
-import { slugify } from "@/lib/slug";
-import { parseVideo } from "@/lib/product-content";
+import { storeImage, MAX_UPLOAD } from "@/lib/media";
+import { addProductImage } from "@/lib/product-images";
+import { writeProduct, type ProductInput } from "@/lib/product-write";
 import Anthropic from "@anthropic-ai/sdk";
 import { translateProduct, translationReady, type ProductTexts, type TranslateMode } from "@/lib/translate";
 
 type Result = { ok: true; id?: string; message?: string } | { ok: false; error: string };
 
-const variant = z.object({
-  id: z.string().max(40).optional(),
-  name: z.string().trim().min(1).max(60),
-  nameAr: z.string().trim().max(60).optional(),
-  sku: z.string().trim().max(60).optional(),
-  price: z.number().int().min(0).nullable(),
-  stockQty: z.number().int().min(0).max(1_000_000),
-  available: z.boolean(),
-});
-
-const offer = z.object({
-  id: z.string().max(40).optional(),
-  label: z.string().trim().min(2).max(80),
-  labelAr: z.string().trim().max(80),
-  quantity: z.number().int().min(1).max(50),
-  price: z.number().int().min(1).max(100_000_000),
-  freeDelivery: z.boolean(),
-  /** YYYY-MM-DD, the last day the offer can be bought; empty = no end. */
-  endsOn: z.union([z.literal(""), z.string().regex(/^\d{4}-\d{2}-\d{2}$/)]),
-  active: z.boolean(),
-});
-
-const product = z.object({
-  name: z.string().trim().min(2).max(140),
-  nameAr: z.string().trim().max(140),
-  slug: z.string().trim().max(140),
-  summary: z.string().trim().max(300),
-  summaryAr: z.string().trim().max(300),
-  description: z.string().max(8000),
-  descriptionAr: z.string().max(8000),
-  specs: z.string().max(4000),
-  specsAr: z.string().max(4000),
-  videoUrl: z.string().trim().max(500),
-  keywords: z.string().max(1000),
-  seoTitle: z.string().trim().max(120),
-  seoTitleAr: z.string().trim().max(120),
-  seoDescription: z.string().trim().max(320),
-  seoDescriptionAr: z.string().trim().max(320),
-  price: z.number().int().min(0).max(100_000_000),
-  compareAt: z.number().int().min(0).nullable(),
-  cost: z.number().int().min(0).nullable(),
-  categoryId: z.string().max(40).nullable(),
-  supplierId: z.string().max(40).nullable(),
-  supplierRef: z.string().trim().max(120),
-  supplierUrl: z.union([z.literal(""), z.url().max(500)]),
-  stockMode: z.enum(["TRACKED", "SUPPLIER"]),
-  stockQty: z.number().int().min(0).max(1_000_000),
-  available: z.boolean(),
-  active: z.boolean(),
-  featured: z.boolean(),
-  variants: z.array(variant).max(60),
-  offers: z.array(offer).max(8),
-});
-export type ProductInput = z.infer<typeof product>;
+export type { ProductInput } from "@/lib/product-write";
 
 function done() {
   updateTag(CATALOG_TAG);
@@ -75,60 +22,10 @@ function done() {
 
 export async function saveProduct(id: string | null, raw: ProductInput): Promise<Result> {
   await requireAdmin();
-  const parsed = product.safeParse(raw);
-  if (!parsed.success) return { ok: false, error: `Champ invalide : ${parsed.error.issues[0]?.path.join(".")}` };
-  const d = parsed.data;
-  if (d.compareAt != null && d.compareAt <= d.price) return { ok: false, error: "L'ancien prix doit être plus élevé que le prix actuel, sinon laissez-le vide." };
-  // Offers are priced from the product price: an option with its own price would make them wrong.
-  if (d.offers.length > 0 && d.variants.some((v) => v.price != null && v.price !== d.price)) {
-    return { ok: false, error: "Les offres utilisent le prix du produit : retirez le prix propre des variantes, ou retirez les offres." };
-  }
-  if (d.videoUrl && !parseVideo(d.videoUrl)) return { ok: false, error: "Vidéo : collez un lien YouTube (youtube.com ou youtu.be) ou l'adresse https d'un fichier .mp4." };
-  const slug = slugify(d.slug || d.name);
-  if (!slug) return { ok: false, error: "Adresse (slug) invalide." };
-  const clash = await prisma.product.findFirst({ where: { slug, ...(id ? { id: { not: id } } : {}) }, select: { id: true } });
-  if (clash) return { ok: false, error: `L'adresse « ${slug} » est déjà utilisée par un autre produit.` };
-
-  const data = {
-    name: d.name, nameAr: d.nameAr || null, slug, summary: d.summary, summaryAr: d.summaryAr || null, description: d.description, descriptionAr: d.descriptionAr || null,
-    specs: d.specs.trim(), specsAr: d.specsAr.trim() || null, videoUrl: d.videoUrl || null,
-    keywords: d.keywords.trim(), seoTitle: d.seoTitle, seoTitleAr: d.seoTitleAr || null, seoDescription: d.seoDescription, seoDescriptionAr: d.seoDescriptionAr || null,
-    price: d.price, compareAt: d.compareAt, cost: d.cost, categoryId: d.categoryId, supplierId: d.supplierId,
-    supplierRef: d.supplierRef || null, supplierUrl: d.supplierUrl || null, stockMode: d.stockMode, stockQty: d.stockQty,
-    available: d.available, active: d.active, featured: d.featured,
-  };
-  // A new address keeps the old one working: links already shared and Google's result are redirected.
-  const before = id ? await prisma.product.findUnique({ where: { id }, select: { slug: true, oldSlugs: true } }) : null;
-  const oldSlugs = before && before.slug !== slug ? [...new Set([before.slug, ...before.oldSlugs])].filter((x) => x !== slug).slice(0, 20) : (before?.oldSlugs.filter((x) => x !== slug) ?? []);
-  if (oldSlugs.length) {
-    const other = await prisma.product.findFirst({ where: { slug: { in: oldSlugs }, ...(id ? { id: { not: id } } : {}) }, select: { slug: true } });
-    if (other) return { ok: false, error: `L'ancienne adresse « ${other.slug} » est déjà prise par un autre produit.` };
-  }
-  const saved = await prisma.$transaction(async (tx) => {
-    // Another product that had this address before gives it up.
-    await tx.$executeRaw`UPDATE "Product" SET "oldSlugs" = array_remove("oldSlugs", ${slug}) WHERE ${slug} = ANY("oldSlugs") AND id <> ${id ?? ""}`;
-    const p = id ? await tx.product.update({ where: { id }, data: { ...data, oldSlugs } }) : await tx.product.create({ data });
-    const keep = d.variants.filter((v) => v.id).map((v) => v.id!);
-    await tx.productVariant.deleteMany({ where: { productId: p.id, id: { notIn: keep } } });
-    for (const [i, v] of d.variants.entries()) {
-      const vd = { name: v.name, nameAr: v.nameAr || null, sku: v.sku || null, price: v.price, stockQty: v.stockQty, available: v.available, sort: i };
-      if (v.id) await tx.productVariant.updateMany({ where: { id: v.id, productId: p.id }, data: vd });
-      else await tx.productVariant.create({ data: { ...vd, productId: p.id } });
-    }
-    // Offers: past orders keep their own copy of the label and price, so removing one is safe.
-    const keepOffers = d.offers.filter((o) => o.id).map((o) => o.id!);
-    await tx.productOffer.deleteMany({ where: { productId: p.id, id: { notIn: keepOffers } } });
-    for (const [i, o] of d.offers.entries()) {
-      // The end date is the last day, in Tunis: the offer stops at midnight after it.
-      const endsAt = o.endsOn ? new Date(Date.parse(`${o.endsOn}T00:00:00Z`) + 23 * 3_600_000) : null;
-      const od = { label: o.label, labelAr: o.labelAr || null, quantity: o.quantity, price: o.price, freeDelivery: o.freeDelivery, endsAt, active: o.active, sort: i };
-      if (o.id) await tx.productOffer.updateMany({ where: { id: o.id, productId: p.id }, data: od });
-      else await tx.productOffer.create({ data: { ...od, productId: p.id } });
-    }
-    return p;
-  });
+  const r = await writeProduct(id, raw);
+  if (!r.ok) return r;
   done();
-  return { ok: true, id: saved.id, message: "Produit enregistré." };
+  return { ok: true, id: r.id, message: "Produit enregistré." };
 }
 
 type Kind = "GALLERY" | "DETAIL";
@@ -156,14 +53,15 @@ export async function uploadImages(productId: string, form: FormData): Promise<R
 
 export async function importImage(productId: string, url: string, kindRaw: Kind = "GALLERY"): Promise<Result> {
   await requireAdmin();
-  const kind = kindOf(kindRaw);
-  try {
-    const m = await importImageFromUrl(url.trim());
-    const last = await prisma.productImage.findFirst({ where: { productId, kind }, orderBy: { sort: "desc" }, select: { sort: true } });
-    await prisma.productImage.create({ data: { productId, mediaId: m.id, sort: (last?.sort ?? -1) + 1, kind } });
-  } catch (e) {
-    return { ok: false, error: e instanceof Error ? e.message : "Import impossible." };
-  }
+  const r = await addProductImage(productId, kindOf(kindRaw), { url: url.trim() });
+  if (!r.ok) return r;
+  done();
+  return r.skipped ? { ok: true, message: "Cette image est déjà dans le produit." } : { ok: true };
+}
+
+/** After pictures sent through the images route: the shop and this page show them at once. */
+export async function imagesChanged(): Promise<Result> {
+  await requireAdmin();
   done();
   return { ok: true };
 }

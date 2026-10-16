@@ -57,3 +57,33 @@ export function mergeTranslation(before: ProductTexts, answer: ProductTexts, mod
   out.summaryAr = out.summaryAr.slice(0, 300);
   return out;
 }
+
+/** The texts of a product form, and the form with translated texts put back (options and offers by position). */
+type WithTexts = Omit<ProductTexts, "variants" | "offers"> & {
+  variants: { name: string; nameAr?: string }[];
+  offers: { label: string; labelAr: string }[];
+};
+export function textsOfProduct(p: WithTexts): ProductTexts {
+  return {
+    name: p.name, nameAr: p.nameAr, summary: p.summary, summaryAr: p.summaryAr, description: p.description, descriptionAr: p.descriptionAr,
+    specs: p.specs, specsAr: p.specsAr, keywords: p.keywords,
+    variants: p.variants.map((v) => ({ name: v.name, nameAr: v.nameAr ?? "" })),
+    offers: p.offers.map((o) => ({ label: o.label, labelAr: o.labelAr })),
+  };
+}
+export function withProductTexts<P extends WithTexts>(p: P, t: ProductTexts): P {
+  return {
+    ...p, ...t,
+    variants: p.variants.map((v, i) => ({ ...v, name: t.variants[i]?.name ?? v.name, nameAr: t.variants[i]?.nameAr ?? v.nameAr })),
+    offers: p.offers.map((o, i) => ({ ...o, label: t.offers[i]?.label ?? o.label, labelAr: t.offers[i]?.labelAr ?? o.labelAr })),
+  };
+}
+/** A text written in one language only, or no keywords yet: something for a translation to do. */
+export function needsTranslation(t: ProductTexts): boolean {
+  const one = (a: string | undefined, b: string | undefined) => filled(a) !== filled(b);
+  return (
+    one(t.name, t.nameAr) || one(t.summary, t.summaryAr) || one(t.description, t.descriptionAr) || one(t.specs, t.specsAr) ||
+    (!filled(t.keywords) && (filled(t.name) || filled(t.nameAr))) ||
+    t.variants.some((v) => one(v.name, v.nameAr)) || t.offers.some((o) => one(o.label, o.labelAr))
+  );
+}

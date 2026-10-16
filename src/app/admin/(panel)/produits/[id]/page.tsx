@@ -6,6 +6,7 @@ import { getSettings } from "@/lib/settings";
 import { SITE_URL } from "@/lib/site";
 import { deliversEverywhere } from "@/lib/governorates";
 import { translationReady } from "@/lib/translate";
+import { productForForm, toInput } from "@/lib/product-write";
 
 export const metadata = { title: "Produit" };
 // A translation by Claude can take a little while.
@@ -15,7 +16,7 @@ export default async function ProductEditPage({ params }: PageProps<"/admin/prod
   const { id } = await params;
   const isNew = id === "nouveau";
   const [p, categories, suppliers, settings] = await Promise.all([
-    isNew ? null : prisma.product.findUnique({ where: { id }, include: { images: { orderBy: { sort: "asc" } }, variants: { orderBy: { sort: "asc" } }, offers: { orderBy: { sort: "asc" } } } }),
+    isNew ? null : prisma.product.findUnique({ where: { id }, select: { ...productForForm, images: { orderBy: { sort: "asc" }, select: { id: true, mediaId: true, alt: true, kind: true } } } }),
     prisma.category.findMany({ orderBy: [{ sort: "asc" }, { name: "asc" }], select: { id: true, name: true, nameAr: true } }),
     prisma.supplier.findMany({ orderBy: { name: "asc" }, select: { id: true, name: true } }),
     getSettings(),
@@ -43,24 +44,7 @@ export default async function ProductEditPage({ params }: PageProps<"/admin/prod
         oldSlugs={p?.oldSlugs ?? []}
         suppliers={suppliers}
         images={p?.images.map((i) => ({ id: i.id, mediaId: i.mediaId, alt: i.alt ?? "", kind: i.kind, width: 0, height: 0 })) ?? []}
-        initial={
-          p
-            ? {
-                name: p.name, nameAr: p.nameAr ?? "", slug: p.slug, summary: p.summary, summaryAr: p.summaryAr ?? "", description: p.description, descriptionAr: p.descriptionAr ?? "",
-                specs: p.specs, specsAr: p.specsAr ?? "", videoUrl: p.videoUrl ?? "",
-                keywords: p.keywords, seoTitle: p.seoTitle, seoTitleAr: p.seoTitleAr ?? "", seoDescription: p.seoDescription, seoDescriptionAr: p.seoDescriptionAr ?? "",
-                price: p.price, compareAt: p.compareAt, cost: p.cost, categoryId: p.categoryId, supplierId: p.supplierId,
-                supplierRef: p.supplierRef ?? "", supplierUrl: p.supplierUrl ?? "", stockMode: p.stockMode, stockQty: p.stockQty,
-                available: p.available, active: p.active, featured: p.featured,
-                variants: p.variants.map((v) => ({ id: v.id, name: v.name, nameAr: v.nameAr ?? "", sku: v.sku ?? "", price: v.price, stockQty: v.stockQty, available: v.available })),
-                offers: p.offers.map((o) => ({
-                  id: o.id, label: o.label, labelAr: o.labelAr ?? "", quantity: o.quantity, price: o.price, freeDelivery: o.freeDelivery, active: o.active,
-                  // Stored as midnight in Tunis after the last day; shown as that last day.
-                  endsOn: o.endsAt ? new Date(o.endsAt.getTime() - 23 * 3_600_000).toISOString().slice(0, 10) : "",
-                })),
-              }
-            : null
-        }
+        initial={p ? toInput(p) : null}
       />
     </div>
   );
