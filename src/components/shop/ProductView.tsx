@@ -168,8 +168,6 @@ export function ProductView({ p, lang, settings, url }: { p: P; lang: Lang; sett
         </div>
       </div>
 
-      <Questions lang={lang} settings={settings} />
-
       {/* The description as the shop wrote it, then its long pictures one under the other, edge to edge on a phone. */}
       {(description || p.detailImages.length > 0) && (
         <section className="mx-auto mt-10 flex max-w-3xl flex-col gap-4 border-t border-line pt-8" aria-labelledby="desc-title">
@@ -201,6 +199,9 @@ export function ProductView({ p, lang, settings, url }: { p: P; lang: Lang; sett
           )}
         </section>
       )}
+
+      {/* "قبل ما تطلب": the questions people ask, under the description and its pictures. */}
+      <Questions lang={lang} settings={settings} />
 
       {specs.length > 0 && (
         <section className="mx-auto mt-10 max-w-3xl border-t border-line pt-8" aria-labelledby="specs-title">

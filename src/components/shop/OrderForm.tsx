@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { dict, href, type Lang } from "@/i18n";
@@ -511,13 +510,6 @@ export function OrderForm(props: Props) {
         </div>
       )}
 
-      <p className="mx-auto max-w-md text-center text-[15px] leading-relaxed text-muted">
-        {t.buy.consentPhone} {t.buy.consentTerms}{" "}
-        <Link href={href(lang, "/conditions")} className="py-2 underline underline-offset-2" prefetch={false}>
-          {t.buy.termsLink}
-        </Link>
-        .
-      </p>
       {/* Honeypot: invisible to people, irresistible to bots. */}
       <input type="text" name="website" tabIndex={-1} autoComplete="off" className="absolute -start-[9999px] h-0 w-0 opacity-0" aria-hidden />
     </form>
