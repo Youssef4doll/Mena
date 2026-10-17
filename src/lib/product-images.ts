@@ -1,4 +1,5 @@
 import "server-only";
+import { Prisma } from "@prisma/client";
 import { prisma } from "./prisma";
 import { directImageUrl, importImageFromUrl, storeImage } from "./media";
 
@@ -39,8 +40,16 @@ export async function addProductImage(
       mediaId = known.id;
     } else if ("url" in from) mediaId = (await importImageFromUrl(from.url)).id;
     else mediaId = (await storeImage(from.buf, from.mime, from.max)).id;
-    const img = await prisma.productImage.create({ data: { productId, kind, mediaId, sort: place, source }, select: { id: true } });
-    return { ok: true, id: img.id, skipped: false };
+    try {
+      const img = await prisma.productImage.create({ data: { productId, kind, mediaId, sort: place, source }, select: { id: true } });
+      return { ok: true, id: img.id, skipped: false };
+    } catch (e) {
+      // The same picture sent at the same moment from another device: that one is kept, this copy is dropped.
+      if (!(e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2002" && source)) throw e;
+      const kept = await prisma.productImage.findFirst({ where: { productId, kind, source }, select: { id: true } });
+      if (!known) await prisma.media.delete({ where: { id: mediaId } }).catch(() => {});
+      return { ok: true, id: kept?.id ?? "", skipped: true };
+    }
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : "Image refusée." };
   }

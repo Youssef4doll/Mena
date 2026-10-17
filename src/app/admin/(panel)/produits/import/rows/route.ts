@@ -4,6 +4,7 @@ import { refuseUnlessAdmin } from "@/lib/admin-api";
 import { json, readJson } from "@/lib/http";
 import { CATALOG_TAG } from "@/lib/catalog";
 import { importRow, rowSchema } from "@/lib/product-import";
+import { COLUMNS } from "@/lib/product-csv";
 
 // With an API key, a row may wait for its translation.
 export const maxDuration = 120;
@@ -16,8 +17,10 @@ export async function POST(request: Request) {
   if (refused) return refused;
   const parsed = body.safeParse(await readJson(request, 256_000));
   if (!parsed.success) {
-    const i = parsed.error.issues[0];
-    return json({ ok: false, error: `Ligne refusée : ${i?.path.join(" ") || "contenu"} invalide.` }, 400);
+    // The column as the file names it ("prix", "photos"), not the field's internal name.
+    const key = parsed.error.issues[0]?.path.find((p) => typeof p === "string" && p !== "row");
+    const column = COLUMNS.find((c) => c.key === key || (key === "stockQty" && c.key === "stock"))?.header;
+    return json({ ok: false, error: column ? `Ligne refusée : la colonne « ${column} » a une valeur trop longue ou invalide.` : "Ligne refusée : une valeur est trop longue ou invalide." }, 400);
   }
   const r = await importRow(parsed.data.row, parsed.data);
   if (!r.ok) return json(r, 422);

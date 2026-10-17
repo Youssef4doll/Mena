@@ -1,20 +1,21 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useRef, useState, useSyncExternalStore, useTransition } from "react";
-import { deleteImage, deleteProduct, importImage, moveImage, saveProduct, setImageAlt, translateTexts, uploadImages, type ProductInput } from "../actions";
-import { mergeTranslation, type ProductTexts } from "@/lib/translate-merge";
-import { manualRequest, readManualAnswer } from "@/lib/translate-prompt";
+import { useEffect, useEffectEvent, useLayoutEffect, useRef, useState, useSyncExternalStore, useTransition } from "react";
+import { deleteImage, deleteProduct, duplicateProduct, imagesChanged, moveImage, saveProduct, setImageAlt, translateTexts, type ProductInput } from "../actions";
+import { mergeTranslation, needsTranslation, textsOfProduct, withProductTexts, type ProductTexts } from "@/lib/translate-merge";
 import { parseTND, toInputTND, formatTND } from "@/lib/money";
 import { offerCompareAt } from "@/lib/offer-display";
 import { slugify } from "@/lib/slug";
 import { parseSpecs, parseVideo } from "@/lib/product-content";
 import { shrinkForUpload } from "@/lib/client/shrink-image";
 import { SEO_DESCRIPTION_MAX, SEO_TITLE_MAX, productDescription, productTitle } from "@/lib/seo";
-import { Card, btn, input, label } from "@/components/admin/ui";
+import { Badge, Card, btn, input, label } from "@/components/admin/ui";
+import { afterSave, carriedDraft, carriedMessage, carryMessage, dropCarried, formKey, setUnsaved, type Held } from "./editor-state";
+import { linksIn, pictureName, sendPictures, type Kind, type Outgoing, type SendResult } from "./send-pictures";
 
 type Opt = { id: string; name: string; nameAr?: string | null };
-type Img = { id: string; mediaId: string; alt: string; kind: "GALLERY" | "DETAIL"; width: number; height: number };
+type Img = { id: string; mediaId: string; alt: string; kind: Kind; sort: number };
 
 const EMPTY: ProductInput = {
   name: "", nameAr: "", slug: "", summary: "", summaryAr: "", description: "", descriptionAr: "", specs: "", specsAr: "", videoUrl: "", keywords: "", seoTitle: "", seoTitleAr: "", seoDescription: "", seoDescriptionAr: "", price: 0, compareAt: null, cost: null, categoryId: null, supplierId: null,
@@ -23,30 +24,45 @@ const EMPTY: ProductInput = {
 
 type Msg = { ok: boolean; text: string };
 type Props = { id: string | null; version: string; initial: ProductInput | null; images: Img[]; categories: Opt[]; suppliers: Opt[]; shopName: string; siteUrl: string; everywhere: boolean; oldSlugs: string[]; aiReady: boolean;
+  /** The product after this one in the list, for "Enregistrer, puis suivant" (null: the last one, or a new product). */
+  nextId: string | null;
   /** The customer's delivery fee and what the carrier charges the shop (null: not given), for the margin of each offer. */
   shipping: { fee: number; carrier: number | null } };
 
-/** The texts a translation reads and writes. */
-const textsOf = (p: ProductInput): ProductTexts => ({
-  name: p.name, nameAr: p.nameAr, summary: p.summary, summaryAr: p.summaryAr, description: p.description, descriptionAr: p.descriptionAr,
-  specs: p.specs, specsAr: p.specsAr, keywords: p.keywords,
-  variants: p.variants.map((v) => ({ name: v.name, nameAr: v.nameAr ?? "" })),
-  offers: p.offers.map((o) => ({ label: o.label, labelAr: o.labelAr })),
-});
-const withTexts = (p: ProductInput, t: ProductTexts): ProductInput => ({
-  ...p, ...t,
-  variants: p.variants.map((v, i) => ({ ...v, name: t.variants[i]?.name ?? v.name, nameAr: t.variants[i]?.nameAr ?? v.nameAr })),
-  offers: p.offers.map((o, i) => ({ ...o, label: t.offers[i]?.label ?? o.label, labelAr: t.offers[i]?.labelAr ?? o.labelAr })),
-});
-/** A text written in one language only, or no keywords yet: something for the translation to do. */
-function missing(p: ProductInput): boolean {
-  const one = (a: string | undefined, b: string | undefined) => Boolean(a?.trim()) !== Boolean(b?.trim());
-  return (
-    one(p.name, p.nameAr) || one(p.summary, p.summaryAr) || one(p.description, p.descriptionAr) || one(p.specs, p.specsAr) ||
-    (!p.keywords.trim() && Boolean(p.name.trim() || p.nameAr.trim())) ||
-    p.variants.some((v) => one(v.name, v.nameAr)) || p.offers.some((o) => one(o.label, o.labelAr))
-  );
+/** A photo chosen before the product exists: shown from the device, sent after the first save. */
+type Queued = { key: string; item: Outgoing; preview: string };
+let queuedSeq = 0;
+
+/** The text field that had the cursor when a save ended, put back once the form is drawn again from the saved rows. */
+let refocus: { id: string; at: number; start: number | null; end: number | null } | null = null;
+
+/** The browser's own fetch (called as a plain function) and the photo shrinking, for the pictures sent from here. */
+const DEVICE = { fetch: (...a: Parameters<typeof fetch>) => fetch(...a), shrink: shrinkForUpload };
+const EXPIRED = "Session expirée : reconnectez-vous, puis ajoutez de nouveau les photos non envoyées.";
+
+/**
+ * The form's state for a stored product. Prices and quantities are kept as
+ * the text typed, checked on save, so a cleared field can be retyped.
+ */
+function formOf(initial: ProductInput | null) {
+  const p = initial ?? EMPTY;
+  return {
+    p,
+    money: { price: toInputTND(initial?.price || null), compareAt: toInputTND(initial?.compareAt), cost: toInputTND(initial?.cost) },
+    vPrices: p.variants.map((v) => toInputTND(v.price)),
+    oPrices: p.offers.map((o) => toInputTND(o.price)),
+    oQty: p.offers.map((o) => String(o.quantity)),
+  };
 }
+type FormState = ReturnType<typeof formOf>;
+
+/** The message once a new product's photos are sent: the ones refused, by name, with the reason. */
+function afterPictures(saved: string, sent: SendResult): Msg {
+  if (sent.expired) return { ok: false, text: `${saved}\n${EXPIRED}` };
+  if (sent.errors.length === 0) return { ok: true, text: saved };
+  return { ok: false, text: `${saved}\nPhotos non ajoutées :\n${sent.errors.join("\n")}` };
+}
+
 const AUTO = "mena_admin_autotranslate";
 const noopSubscribe = () => () => {};
 const readAuto = () => {
@@ -63,26 +79,74 @@ function offerQty(s: string | undefined): number | null {
   return /^\d+$/.test(t) && Number(t) >= 1 && Number(t) <= 50 ? Number(t) : null;
 }
 
+/** A product to open after an action; `drawn` is the pictures list this page had before the action. */
+type Leave = { to: string; drawn: Img[]; replace?: boolean };
+
 /**
  * Keeps the save message; the form is keyed on `version` (id + updatedAt), so
  * each save remounts it from the saved rows: new offers and variants get their ids.
+ * A message can also come from the product opened before ("Copie créée…").
+ *
+ * Another product opens after a save or a copy only once this page has been
+ * drawn again from the action's answer, which brings new props. Opened
+ * sooner, the router drops that answer and fetches the other product twice
+ * before showing it.
+ *
+ * A form changed while its save was on its way is not drawn again: that
+ * would drop what was typed meanwhile (see `afterSave`).
  */
 export function ProductEditor(props: Props) {
-  const [msg, setMsg] = useState<Msg | null>(null);
-  return <Form key={props.version} {...props} msg={msg} setMsg={setMsg} />;
+  const router = useRouter();
+  const [msg, setMsg] = useState<Msg | null>(() => carriedMessage(props.id));
+  useEffect(dropCarried, []);
+  const [held, setHeld] = useState<Held>(null);
+  const hold = (typed: boolean, at: string) => setHeld((h) => afterSave(h, typed, at));
+  const [leave, setLeave] = useState<Leave | null>(null);
+  const latest = useRef(props.images);
+  const opened = useRef<Leave | null>(null);
+  useEffect(() => {
+    latest.current = props.images;
+    if (!leave || leave.drawn === props.images || opened.current === leave) return;
+    opened.current = leave;
+    if (leave.replace) router.replace(leave.to);
+    else router.push(leave.to);
+  }, [leave, props.images, router]);
+  return <Form key={formKey(held, props.version)} {...props} msg={msg} setMsg={setMsg} leaving={leave !== null} drawn={() => latest.current} leave={setLeave} hold={hold} />;
 }
 
-function Form({ id, initial, images, categories, suppliers, shopName, siteUrl, everywhere, oldSlugs, aiReady, shipping, msg, setMsg }: Props & { msg: Msg | null; setMsg: (m: Msg | null) => void }) {
+type FormProps = Props & {
+  msg: Msg | null;
+  setMsg: (m: Msg | null) => void;
+  /** Told at the end of each save whether the form changed while it was on its way. */
+  hold: (typed: boolean, at: string) => void;
+  /** True from the end of a save or a copy until the other product opens. */
+  leaving: boolean;
+  /** The pictures list as last drawn, read just before an action. */
+  drawn: () => Img[];
+  leave: (l: Leave) => void;
+};
+
+function Form({ id, version, nextId, initial, images, categories, suppliers, shopName, siteUrl, everywhere, oldSlugs, aiReady, shipping, msg, setMsg, leaving, drawn, leave, hold }: FormProps) {
   const router = useRouter();
-  const [p, setP] = useState<ProductInput>(initial ?? EMPTY);
-  const [money, setMoney] = useState({ price: toInputTND(initial?.price || null), compareAt: toInputTND(initial?.compareAt), cost: toInputTND(initial?.cost) });
-  const [vPrices, setVPrices] = useState<string[]>((initial?.variants ?? []).map((v) => toInputTND(v.price)));
-  const [oPrices, setOPrices] = useState<string[]>((initial?.offers ?? []).map((o) => toInputTND(o.price)));
-  // Raw text like the prices, checked on save: a cleared field can be retyped.
-  const [oQty, setOQty] = useState<string[]>((initial?.offers ?? []).map((o) => String(o.quantity)));
+  // A new product opens with what was typed during its first save, if anything was, and the address the server gave it.
+  const [first] = useState(() => {
+    const draft = carriedDraft(id) as FormState | undefined;
+    return draft ? { ...draft, p: { ...draft.p, slug: draft.p.slug || (initial?.slug ?? "") } } : formOf(initial);
+  });
+  const [p, setP] = useState<ProductInput>(first.p);
+  const [money, setMoney] = useState(first.money);
+  const [vPrices, setVPrices] = useState<string[]>(first.vPrices);
+  const [oPrices, setOPrices] = useState<string[]>(first.oPrices);
+  const [oQty, setOQty] = useState<string[]>(first.oQty);
+  const [queued, setQueued] = useState<Queued[]>([]);
   // Read once, to tell which end dates have passed.
   const [now] = useState(() => Date.now());
   const [pending, start] = useTransition();
+  const saving = pending || leaving;
+  // Pictures on their way from a photo card: a save now would draw the cards again and lose what they report.
+  const [sending, setSending] = useState(0);
+  const busy = saving || sending > 0;
+  const [progress, setProgress] = useState<string | null>(null);
   const [translating, setTranslating] = useState(false);
   // On by default; the choice is remembered in this browser (read after hydration, so the page never disagrees).
   const stored = useSyncExternalStore(noopSubscribe, readAuto, () => "1");
@@ -90,16 +154,105 @@ function Form({ id, initial, images, categories, suppliers, shopName, siteUrl, e
   const auto = autoPick ?? stored !== "0";
   const set = <K extends keyof ProductInput>(k: K, v: ProductInput[K]) => setP((x) => ({ ...x, [k]: v }));
 
+  // The form as loaded, to tell when it holds changes not saved yet (the typed prices included).
+  const [loaded] = useState(() => JSON.stringify(formOf(initial)));
+  // What was just saved, until the form remounts from the saved rows: the marker does not flash back meanwhile.
+  const [savedAs, setSavedAs] = useState<string | null>(null);
+  const snap = JSON.stringify({ p, money, vPrices, oPrices, oQty });
+  // The form as last drawn, read when a save ends: what was typed while it was on its way.
+  const onScreen = useRef<FormState>(first);
+  useEffect(() => {
+    onScreen.current = { p, money, vPrices, oPrices, oQty };
+  });
+  const dirty = queued.length > 0 || snap !== (savedAs ?? loaded);
+  // The form as it was when the message appeared ("Traduction ajoutée…" comes with the change it describes).
+  const [msgAt, setMsgAt] = useState({ msg, snap });
+  if (msgAt.msg !== msg) setMsgAt({ msg, snap });
+
+  // Closing or reloading the tab warns while something is not saved or pictures are still on their way; the links out of the editor ask too.
+  const unsaved = dirty || sending > 0;
+  useEffect(() => {
+    setUnsaved(unsaved);
+    if (!unsaved) return;
+    const warn = (e: BeforeUnloadEvent) => {
+      e.preventDefault();
+      e.returnValue = "";
+    };
+    window.addEventListener("beforeunload", warn);
+    return () => {
+      window.removeEventListener("beforeunload", warn);
+      setUnsaved(false);
+    };
+  }, [unsaved]);
+
+  // After Ctrl+S the form is drawn again from the saved rows: the cursor goes back where it was, to keep typing.
+  const root = useRef<HTMLDivElement>(null);
+  useLayoutEffect(() => {
+    const f = refocus;
+    refocus = null;
+    const el = f && f.id === id ? root.current?.querySelectorAll<HTMLInputElement | HTMLTextAreaElement>("input, textarea")[f.at] : null;
+    if (!el) return;
+    el.focus({ preventScroll: true });
+    try {
+      el.setSelectionRange(f!.start, f!.end);
+    } catch {}
+  }, [id]);
+
+  // Ctrl+S (⌘S on a Mac) saves the product instead of the browser saving the page.
+  const onSaveKey = useEffectEvent((e: KeyboardEvent) => {
+    if (!(e.ctrlKey || e.metaKey) || e.altKey || e.key.toLowerCase() !== "s") return;
+    e.preventDefault();
+    if (!busy) save();
+  });
+  useEffect(() => {
+    const listen = (e: KeyboardEvent) => onSaveKey(e);
+    window.addEventListener("keydown", listen);
+    return () => window.removeEventListener("keydown", listen);
+  }, []);
+
+  // The previews of queued photos are the device's own files, released once removed or when the form closes.
+  const previews = useRef(new Set<string>());
+  useEffect(() => {
+    const all = previews.current;
+    return () => all.forEach((u) => URL.revokeObjectURL(u));
+  }, []);
+  function queue(add: Outgoing[]) {
+    const more = add.map((item) => {
+      const preview = "file" in item ? URL.createObjectURL(item.file) : item.url;
+      if ("file" in item) previews.current.add(preview);
+      return { key: `q${++queuedSeq}`, item, preview };
+    });
+    setQueued((q) => [...q, ...more]);
+  }
+  function unqueue(key: string) {
+    const gone = queued.find((q) => q.key === key);
+    if (gone && previews.current.delete(gone.preview)) URL.revokeObjectURL(gone.preview);
+    setQueued((q) => q.filter((x) => x.key !== key));
+  }
+  /** Swaps a queued photo with the one before or after it among the photos of its kind. */
+  function moveQueued(key: string, dir: -1 | 1) {
+    setQueued((all) => {
+      const at = all.findIndex((q) => q.key === key);
+      if (at < 0) return all;
+      let to = at + dir;
+      while (to >= 0 && to < all.length && all[to].item.kind !== all[at].item.kind) to += dir;
+      if (to < 0 || to >= all.length) return all;
+      const b = [...all];
+      [b[at], b[to]] = [b[to], b[at]];
+      return b;
+    });
+  }
+
   /** Asks the server for the translation and puts it in the form; nothing is saved here. */
   async function translate(from: ProductInput, mode: "fill" | "to-ar"): Promise<ProductInput | null> {
     setTranslating(true);
     try {
-      const r = await translateTexts(textsOf(from), mode);
+      const r = await translateTexts(textsOfProduct(from), mode);
       if (!r.ok) {
         setMsg({ ok: false, text: r.error });
         return null;
       }
-      const next = withTexts(from, r.texts);
+      const next = withProductTexts(from, r.texts);
       setP(next);
       return next;
     } finally {
@@ -135,7 +288,9 @@ function Form({ id, initial, images, categories, suppliers, shopName, siteUrl, e
     setOQty(rm(oQty));
   };
 
-  function save() {
+  /** Saves; with "next", then opens the next product of the list (at once when nothing changed). */
+  function save(then?: "next") {
+    if (then === "next" && nextId && !dirty) return router.push(`/admin/produits/${nextId}`);
     const priceM = parseTND(money.price);
     const compareM = money.compareAt.trim() ? parseTND(money.compareAt) : null;
     const costM = money.cost.trim() ? parseTND(money.cost) : null;
@@ -153,33 +308,82 @@ function Form({ id, initial, images, categories, suppliers, shopName, siteUrl, e
       // Automatic translation of what is missing, then the save.
       let texts = p;
       let translated = false;
-      if (aiReady && auto && missing(p)) {
+      if (aiReady && auto && needsTranslation(textsOfProduct(p))) {
         const t = await translate(p, "fill");
         if (t) {
           texts = t;
           translated = true;
         }
       }
-      const r = await saveProduct(id, { ...p, ...textsOf(texts), price: priceM, compareAt: compareM, cost: costM, variants: variants.map((v, i) => ({ ...v, nameAr: texts.variants[i]?.nameAr ?? v.nameAr })), offers: offers.map((o, i) => ({ ...o, labelAr: texts.offers[i]?.labelAr ?? o.labelAr, label: texts.offers[i]?.label ?? o.label })) });
+      let before = drawn();
+      // The version this form was drawn from: a change saved elsewhere since then makes the server refuse, rather than undo it.
+      const loadedAt = id ? Number(version.split(":")[1]) : undefined;
+      const r = await saveProduct(id, { ...p, ...textsOfProduct(texts), price: priceM, compareAt: compareM, cost: costM, variants: variants.map((v, i) => ({ ...v, nameAr: texts.variants[i]?.nameAr ?? v.nameAr })), offers: offers.map((o, i) => ({ ...o, labelAr: texts.offers[i]?.labelAr ?? o.labelAr, label: texts.offers[i]?.label ?? o.label })) }, loadedAt);
       if (!r.ok) return setMsg({ ok: false, text: r.error });
-      setMsg({ ok: true, text: translated ? "Produit enregistré, avec la traduction automatique : relisez les textes en arabe." : (r.message ?? "Enregistré.") });
-      if (!id && r.id) router.replace(`/admin/produits/${r.id}`);
-      else router.refresh();
+      const saved = translated ? "Produit enregistré, avec la traduction automatique : relisez les textes en arabe." : (r.message ?? "Enregistré.");
+      const sent = JSON.stringify({ p: texts, money, vPrices, oPrices, oQty });
+      // Changed while the save was on its way: kept on screen, not saved yet (the marker says so), and the next product waits.
+      const typed = JSON.stringify(onScreen.current) !== sent;
+      if (id) {
+        // The answer already holds this page drawn again from the saved rows: nothing to refresh.
+        setSavedAs(sent);
+        hold(typed, version);
+        if (then !== "next" || !nextId || typed) {
+          const el = document.activeElement;
+          const at = root.current ? [...root.current.querySelectorAll("input, textarea")].indexOf(el as Element) : -1;
+          if (!typed && at >= 0 && (el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement)) refocus = { id, at, start: el.selectionStart, end: el.selectionEnd };
+          return setMsg({ ok: true, text: saved });
+        }
+        carryMessage(nextId, { ok: true, text: `« ${texts.name.trim()} » enregistré${translated ? ", avec la traduction automatique" : ""}.` });
+        return leave({ to: `/admin/produits/${nextId}`, drawn: before });
+      }
+      if (!r.id) return setMsg({ ok: true, text: saved });
+      // A new product: its photos follow in the order chosen, then its own page opens.
+      let done: Msg = { ok: true, text: saved };
+      if (queued.length > 0) {
+        const sentPics = await sendPictures(r.id, queued.map((q) => q.item), { GALLERY: 0, DETAIL: 0 }, (n, total) => setProgress(`Envoi des photos ${n}/${total}…`), DEVICE);
+        setProgress(null);
+        // Signed out meanwhile: the page cannot be drawn again until the admin signs in, the message says so.
+        if (sentPics.added > 0 && !sentPics.expired) {
+          before = drawn();
+          await imagesChanged();
+        }
+        done = afterPictures(saved, sentPics);
+      }
+      carryMessage(r.id, done, JSON.stringify(onScreen.current) !== sent ? onScreen.current : undefined);
+      leave({ to: `/admin/produits/${r.id}`, drawn: before, replace: true });
     });
   }
 
+  /** A copy of the product as saved, offline; its page opens. */
+  function duplicate() {
+    if (!id) return;
+    if (dirty && !confirm("Les modifications non enregistrées ne seront pas dans la copie. Copier le produit tel qu'il est enregistré ?")) return;
+    start(async () => {
+      const before = drawn();
+      const r = await duplicateProduct(id);
+      if (!r.ok) return setMsg({ ok: false, text: r.error });
+      if (!r.id) return;
+      carryMessage(r.id, { ok: true, text: "Copie créée, hors ligne. Changez le nom et les photos si besoin." });
+      leave({ to: `/admin/produits/${r.id}`, drawn: before });
+    });
+  }
+
+  // A success message gives way to the marker once the form changes after it; an error stays.
+  const shown = msg && !(msg.ok && dirty && snap !== msgAt.snap) ? msg : null;
+
   return (
-    <div className="grid gap-4 lg:grid-cols-[1fr_360px]">
+    <div ref={root} className="grid gap-4 lg:grid-cols-[1fr_360px]">
       <div className="flex min-w-0 flex-col gap-4">
         <Card title="Texte" hint="La boutique s'affiche d'abord en arabe. Écrivez dans une langue : la traduction automatique écrit l'autre (en arabe tunisien), et les mots-clés de recherche. Relisez toujours ce qu'elle écrit.">
           <div className="grid gap-3">
             <div className="flex flex-wrap items-center gap-2 rounded-xl bg-sea-soft p-2.5" data-testid="translate-bar">
               {aiReady ? (
                 <>
-                  <button type="button" disabled={translating || pending} className={btn.sea} onClick={() => translate(p, "fill").then((t) => t && setMsg({ ok: true, text: "Traduction ajoutée dans les champs vides. Relisez puis enregistrez." }))}>
+                  <button type="button" disabled={translating || saving} className={btn.sea} onClick={() => translate(p, "fill").then((t) => t && setMsg({ ok: true, text: "Traduction ajoutée dans les champs vides. Relisez puis enregistrez." }))}>
                     {translating ? "Traduction…" : "Traduire ce qui manque"}
                   </button>
-                  <button type="button" disabled={translating || pending} className={btn.ghost} onClick={() => confirm("Réécrire tous les textes arabes à partir du français ?") && translate(p, "to-ar").then((t) => t && setMsg({ ok: true, text: "Textes arabes réécrits depuis le français. Relisez puis enregistrez." }))}>
+                  <button type="button" disabled={translating || saving} className={btn.ghost} onClick={() => confirm("Réécrire tous les textes arabes à partir du français ?") && translate(p, "to-ar").then((t) => t && setMsg({ ok: true, text: "Textes arabes réécrits depuis le français. Relisez puis enregistrez." }))}>
                     Retraduire l&apos;arabe depuis le français
                   </button>
                   <label className="ms-auto flex items-center gap-1.5 text-sm">
@@ -198,10 +402,10 @@ function Form({ id, initial, images, categories, suppliers, shopName, siteUrl, e
                 </>
               ) : (
                 <ManualTranslate
-                  texts={textsOf(p)}
-                  todo={missing(p)}
+                  texts={textsOfProduct(p)}
+                  todo={needsTranslation(textsOfProduct(p))}
                   onAnswer={(answer) => {
-                    setP((x) => withTexts(x, mergeTranslation(textsOf(x), answer, "fill")));
+                    setP((x) => withProductTexts(x, mergeTranslation(textsOfProduct(x), answer, "fill")));
                     setMsg({ ok: true, text: "Traduction ajoutée dans les champs vides. Relisez puis enregistrez." });
                   }}
                 />
@@ -247,13 +451,12 @@ function Form({ id, initial, images, categories, suppliers, shopName, siteUrl, e
 
         <Seo p={p} set={set} price={unitOffer ?? price ?? 0} category={categories.find((c) => c.id === p.categoryId) ?? null} shopName={shopName} siteUrl={siteUrl} everywhere={everywhere} oldSlugs={oldSlugs} />
 
-        {id ? (
-          <>
-            <Images productId={id} kind="GALLERY" images={images.filter((i) => i.kind === "GALLERY")} />
-            <Images productId={id} kind="DETAIL" images={images.filter((i) => i.kind === "DETAIL")} />
-          </>
-        ) : (
-          <Card title="Photos"><p className="text-sm text-muted">Enregistrez le produit une première fois pour ajouter des photos.</p></Card>
+        {(["GALLERY", "DETAIL"] as const).map((kind) =>
+          id ? (
+            <Images key={kind} productId={id} kind={kind} images={images.filter((i) => i.kind === kind)} saving={saving} onSending={(d) => setSending((n) => n + d)} />
+          ) : (
+            <QueuedImages key={kind} kind={kind} items={queued.filter((q) => q.item.kind === kind)} busy={busy} onAdd={queue} onMove={moveQueued} onRemove={unqueue} />
+          ),
         )}
 
         <Card title="Offres" hint="Ce que le client choisit en haut du formulaire de commande : « 1 unité », « 2 unités », « Achetez 2, la 3e offerte »… Le prix est le total pour la quantité. Sans offre, le client choisit simplement une quantité. Prix barré : sur l'offre de 1 unité, l'ancien prix du produit s'il est rempli ; sur les lots, le prix de l'offre de 1 unité multiplié par la quantité (sans offre de 1 unité active, rien n'est barré). Une date de fin n'est montrée que si vous la fixez.">
@@ -362,7 +565,8 @@ function Form({ id, initial, images, categories, suppliers, shopName, siteUrl, e
         </Card>
       </div>
 
-      <div className="flex min-w-0 flex-col gap-4">
+      {/* Placed in the second column on a computer, with the save bar in the same cell (below). */}
+      <div className="flex min-w-0 flex-col gap-4 lg:col-start-2 lg:row-start-1">
         <Card title="Publication">
           <label className="flex items-center justify-between gap-3 py-1 text-sm">En ligne<input type="checkbox" className="h-5 w-5" checked={p.active} onChange={(e) => set("active", e.target.checked)} /></label>
           <label className="flex items-center justify-between gap-3 py-1 text-sm">Dans « Notre sélection »<input type="checkbox" className="h-5 w-5" checked={p.featured} onChange={(e) => set("featured", e.target.checked)} /></label>
@@ -373,6 +577,26 @@ function Form({ id, initial, images, categories, suppliers, shopName, siteUrl, e
               {categories.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
             </select>
           </label>
+          {id && (
+            <div className="mt-3 flex flex-wrap gap-2 border-t border-line pt-3">
+              <button type="button" disabled={busy} className={btn.ghost} onClick={duplicate}>Dupliquer</button>
+              <button
+                type="button"
+                disabled={busy}
+                className={btn.danger}
+                onClick={() => {
+                  if (!confirm("Supprimer ce produit ? Les commandes passées gardent leur détail.")) return;
+                  start(async () => {
+                    await deleteProduct(id);
+                    // At once: the answer would draw this page again, without its product.
+                    router.replace("/admin/produits");
+                  });
+                }}
+              >
+                Supprimer
+              </button>
+            </div>
+          )}
         </Card>
 
         <Card title="Prix">
@@ -424,25 +648,23 @@ function Form({ id, initial, images, categories, suppliers, shopName, siteUrl, e
           <label className={`${label} mt-2`}>Lien fournisseur<input className={input} value={p.supplierUrl} onChange={(e) => set("supplierUrl", e.target.value)} placeholder="https://" /></label>
         </Card>
 
-        <div className="sticky bottom-3 flex flex-col gap-2 rounded-2xl border border-line bg-white/95 p-3 shadow-soft backdrop-blur">
-          {msg && <p className={`text-sm ${msg.ok ? "text-olive" : "text-danger"}`}>{msg.text}</p>}
-          <button type="button" disabled={pending} onClick={save} className={btn.sea}>{pending ? "Enregistrement…" : "Enregistrer"}</button>
-          {id && (
-            <button
-              type="button"
-              className="text-sm text-clay underline"
-              onClick={() => {
-                if (!confirm("Supprimer ce produit ? Les commandes passées gardent leur détail.")) return;
-                start(async () => {
-                  await deleteProduct(id);
-                  router.replace("/admin/produits");
-                });
-              }}
-            >
-              Supprimer le produit
-            </button>
-          )}
-        </div>
+      </div>
+
+      {/*
+        The save bar: a sibling of the two columns, so it stays at the bottom of the
+        screen over the whole form, on a phone too; on a computer it shares the second
+        column's cell, at its end.
+      */}
+      <div data-testid="save-bar" className="sticky bottom-3 z-10 flex flex-col gap-2 rounded-2xl border border-line bg-white/95 p-3 shadow-soft backdrop-blur lg:col-start-2 lg:row-start-1 lg:self-end">
+        {shown && <p role="status" className={`max-h-28 overflow-y-auto whitespace-pre-line text-sm ${shown.ok ? "text-olive" : "text-danger"}`}>{shown.text}</p>}
+        {dirty && !busy && <span className="self-start"><Badge tone="warn">Modifications non enregistrées</Badge></span>}
+        <button type="button" disabled={busy} onClick={() => save()} className={btn.sea}>{pending ? (progress ?? "Enregistrement…") : leaving ? "Ouverture…" : sending > 0 ? "Envoi des photos…" : "Enregistrer"}</button>
+        {nextId && (
+          <button type="button" disabled={busy} onClick={() => save("next")} className={btn.ghost}>
+            Enregistrer, puis suivant
+          </button>
+        )}
+        <p className="hidden text-center text-xs text-muted lg:block">Ctrl+S (⌘S sur Mac) enregistre aussi.</p>
       </div>
     </div>
   );
@@ -476,15 +698,16 @@ function Seo({ p, set, price, category, shopName, siteUrl, everywhere, oldSlugs 
           <Counted label="Description pour Google (français)" value={p.seoDescription} max={SEO_DESCRIPTION_MAX} onChange={(v) => set("seoDescription", v)} rows={3} placeholder={productDescription({ ...base, seoDescription: "" }, "fr", everywhere)} />
           <Counted label="Description pour Google (arabe)" value={p.seoDescriptionAr} max={SEO_DESCRIPTION_MAX} onChange={(v) => set("seoDescriptionAr", v)} rows={3} rtl placeholder={productDescription({ ...base, seoDescriptionAr: "" }, "ar", everywhere)} />
         </div>
-        <div className="grid gap-2 sm:grid-cols-2">
+        {/* min-w-0: a long address is cut by its own line, not by making the card wider than a phone. */}
+        <div className="grid min-w-0 gap-2 sm:grid-cols-2">
           {(["ar", "fr"] as const).map((lang) => {
             const g = preview(lang);
             return (
-              <div key={lang} className="rounded-xl border border-line bg-white p-3" dir={lang === "ar" ? "rtl" : "ltr"}>
+              <div key={lang} className="min-w-0 rounded-xl border border-line bg-white p-3" dir={lang === "ar" ? "rtl" : "ltr"}>
                 <p className="text-[11px] uppercase tracking-wide text-muted" dir="ltr">Aperçu Google · {lang === "ar" ? "arabe" : "français"}</p>
                 <p className="mt-1 truncate text-xs text-[#202124]" dir="ltr">{g.url}</p>
-                <p className="mt-0.5 text-[17px] leading-snug text-[#1a0dab]">{g.title}</p>
-                <p className="mt-0.5 text-[13px] leading-snug text-[#4d5156]">{g.description}</p>
+                <p className="mt-0.5 break-words text-[17px] leading-snug text-[#1a0dab]">{g.title}</p>
+                <p className="mt-0.5 break-words text-[13px] leading-snug text-[#4d5156]">{g.description}</p>
               </div>
             );
           })}
@@ -517,109 +740,211 @@ const KIND = {
     title: "Photos du produit",
     hint: "En haut de la fiche, à faire glisser, et en plein écran quand le client appuie dessus. La première est la photo principale (aussi sur les cartes). Format carré conseillé, 4 à 8 photos : le produit seul, en situation, de près, ses dimensions.",
     add: "Ajouter des photos",
+    none: "Aucune photo pour le moment.",
   },
   DETAIL: {
     title: "Images de description (longues)",
     hint: "Les grandes images verticales qui expliquent le produit (avantages, mode d'emploi, dimensions), comme sur Amazon. Elles s'affichent l'une sous l'autre, en pleine largeur, sous la description. Largeur conseillée 1080 à 1600 px, toute hauteur.",
     add: "Ajouter des images de description",
+    none: "Aucune image de description pour le moment.",
   },
 } as const;
 
-function Images({ productId, images, kind }: { productId: string; images: Img[]; kind: "GALLERY" | "DETAIL" }) {
-  const router = useRouter();
+/**
+ * The pictures of one kind, in their order: squares with the main photo
+ * first for the top of the page, tall strips for the description images.
+ * Every button is a full finger wide.
+ */
+function PictureList({ kind, items, busy, onMove, onRemove, onAlt }: {
+  kind: Kind;
+  items: { key: string; src: string; alt?: string; caption?: string; remote?: boolean }[];
+  busy: boolean;
+  onMove: (key: string, dir: -1 | 1) => void;
+  onRemove: (key: string) => void;
+  onAlt?: (key: string, alt: string) => void;
+}) {
+  const step = "flex h-10 w-10 items-center justify-center rounded-lg text-sm disabled:opacity-30";
+  if (kind === "DETAIL")
+    return (
+      <div className="flex flex-col gap-2">
+        {items.map((it, i) => (
+          <div key={it.key} className="flex items-center gap-2 rounded-xl border border-line p-2">
+            <Thumb src={it.src} remote={it.remote} className="h-24 w-16 shrink-0 rounded-lg bg-sand object-cover object-top" />
+            {onAlt ? (
+              <input defaultValue={it.alt} aria-label="Ce que dit l'image" placeholder="Ce que dit l'image (pour les malvoyants et Google)" className="h-10 min-w-0 flex-1 rounded-lg border border-line px-2 text-xs" onBlur={(e) => e.target.value !== it.alt && onAlt(it.key, e.target.value)} />
+            ) : (
+              <span className="min-w-0 flex-1 truncate text-xs text-muted">{it.caption}</span>
+            )}
+            <span className="flex shrink-0 flex-col">
+              <button type="button" disabled={busy || i === 0} onClick={() => onMove(it.key, -1)} className={step} aria-label="Monter">↑</button>
+              <button type="button" disabled={busy || i === items.length - 1} onClick={() => onMove(it.key, 1)} className={step} aria-label="Descendre">↓</button>
+            </span>
+            <button type="button" disabled={busy} onClick={() => onRemove(it.key)} className="h-10 shrink-0 px-2 text-xs text-clay disabled:opacity-30">Suppr.</button>
+          </div>
+        ))}
+      </div>
+    );
+  return (
+    <div className="grid grid-cols-3 gap-2 sm:grid-cols-4">
+      {items.map((it, i) => (
+        <div key={it.key} className="flex min-w-0 flex-col gap-1">
+          <div className="relative aspect-square overflow-hidden rounded-xl bg-sand">
+            <Thumb src={it.src} remote={it.remote} className="h-full w-full object-cover" />
+            {i === 0 && <span className="absolute start-1 top-1 rounded-full bg-ink px-1.5 text-[10px] text-white">Principale</span>}
+            <button type="button" disabled={busy} onClick={() => onRemove(it.key)} aria-label="Supprimer cette photo" className="absolute end-0 top-0 flex h-10 w-10 items-center justify-center disabled:opacity-30">
+              <span className="flex h-7 w-7 items-center justify-center rounded-full bg-white/90 text-base leading-none text-clay shadow-soft">×</span>
+            </button>
+          </div>
+          <div className="flex justify-between">
+            <button type="button" disabled={busy || i === 0} onClick={() => onMove(it.key, -1)} className={step} aria-label="Plus tôt">←</button>
+            <button type="button" disabled={busy || i === items.length - 1} onClick={() => onMove(it.key, 1)} className={step} aria-label="Plus tard">→</button>
+          </div>
+          {onAlt && <input defaultValue={it.alt} aria-label="Texte alternatif" placeholder="Texte alternatif" className="h-10 min-w-0 rounded-lg border border-line px-2 text-xs" onBlur={(e) => e.target.value !== it.alt && onAlt(it.key, e.target.value)} />}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+/**
+ * One small picture. A link pasted before the first save is shown as it is;
+ * a share link opens a page, not a picture, so it says so instead of a
+ * broken image: the server reads the picture behind it on the save.
+ */
+function Thumb({ src, remote, className }: { src: string; remote?: boolean; className: string }) {
+  const [failed, setFailed] = useState(false);
+  if (failed) return <span className={`${className} flex items-center justify-center p-1 text-center text-[10px] text-muted`}>Pas d&apos;aperçu</span>;
+  // eslint-disable-next-line @next/next/no-img-element
+  return <img src={src} alt="" referrerPolicy={remote ? "no-referrer" : undefined} className={className} onError={() => setFailed(true)} />;
+}
+
+/** The two ways to add pictures: files from the device (several at once), or links pasted. */
+function AddPictures({ text, busy, progress, onFiles, onLinks }: { text: string; busy: boolean; progress: string | null; onFiles: (files: File[]) => void; onLinks: (urls: string[], clear: () => void) => void }) {
   const file = useRef<HTMLInputElement>(null);
   const [url, setUrl] = useState("");
-  const [err, setErr] = useState<string | null>(null);
+  const [bad, setBad] = useState(false);
+  return (
+    <>
+      <input
+        ref={file}
+        type="file"
+        accept="image/jpeg,image/png,image/webp,image/avif"
+        multiple
+        className="hidden"
+        onChange={(e) => {
+          const files = Array.from(e.target.files ?? []);
+          e.target.value = "";
+          if (files.length) onFiles(files);
+        }}
+      />
+      <button type="button" disabled={busy} className={`${btn.primary} mt-3`} onClick={() => file.current?.click()}>{busy && progress ? progress : text}</button>
+      <form
+        className="mt-2 flex gap-2"
+        onSubmit={(e) => {
+          e.preventDefault();
+          const links = linksIn(url);
+          if (!links) return setBad(true);
+          onLinks(links, () => setUrl(""));
+        }}
+      >
+        <input value={url} onChange={(e) => { setUrl(e.target.value); setBad(false); }} aria-label="Lien d'une image" placeholder="Ou collez un lien" inputMode="url" className={input} />
+        <button type="submit" disabled={busy || !url.trim()} className={btn.ghost}>Importer</button>
+      </form>
+      <p className={`mt-1 text-xs ${bad ? "text-danger" : "text-muted"}`}>
+        {bad
+          ? "Collez une adresse qui commence par https://, ou plusieurs séparées par un espace."
+          : "Lien du fournisseur, de Google Drive ou de Dropbox (fichier partagé avec « tous ceux qui ont le lien »). Plusieurs liens : séparés par un espace."}
+      </p>
+    </>
+  );
+}
+
+/**
+ * The pictures of a saved product. New ones go through the images route,
+ * three at a time, then one call draws the page again with all of them;
+ * moving, describing or deleting one answers with the page drawn again.
+ * The form waits for the pictures before saving, and the card waits for the
+ * save: a save draws the form again, and this card's messages with it.
+ */
+function Images({ productId, images, kind, saving, onSending }: { productId: string; images: Img[]; kind: Kind; saving: boolean; onSending: (d: 1 | -1) => void }) {
+  const [errors, setErrors] = useState<string[]>([]);
+  const [note, setNote] = useState<string | null>(null);
   const [progress, setProgress] = useState<string | null>(null);
-  const [pending, start] = useTransition();
+  const [own, start] = useTransition();
+  const pending = own || saving;
   const k = KIND[kind];
   const run = (fn: () => Promise<{ ok: boolean; error?: string }>) =>
     start(async () => {
       const r = await fn();
-      setErr(r.ok ? null : r.error ?? "Erreur.");
-      router.refresh();
+      setErrors(r.ok ? [] : [r.error ?? "Erreur."]);
     });
+  const add = (items: Outgoing[], clear?: () => void) => {
+    // Told before the transition starts: an update made inside it would show only once the pictures are sent.
+    onSending(1);
+    start(async () => {
+      try {
+        setNote(null);
+        // After the last place used, even when a deleted picture left a gap.
+        const after = images.reduce((n, i) => Math.max(n, i.sort + 1), 0);
+        const r = await sendPictures(productId, items, { GALLERY: after, DETAIL: after }, (n, total) => setProgress(`Envoi ${n}/${total}…`), DEVICE);
+        setProgress(null);
+        if (r.added > 0 && !r.expired) await imagesChanged();
+        setErrors(r.expired ? [EXPIRED] : r.errors);
+        if (r.skipped > 0) setNote(r.skipped === 1 ? "Cette image est déjà dans le produit." : `${r.skipped} images étaient déjà dans le produit.`);
+        if (!r.expired && r.errors.length === 0) clear?.();
+      } finally {
+        onSending(-1);
+      }
+    });
+  };
   return (
     <Card title={k.title} hint={k.hint}>
-      {kind === "DETAIL" ? (
-        <div className="flex flex-col gap-2">
-          {images.length === 0 && <p className="text-sm text-muted">Aucune image de description pour le moment.</p>}
-          {images.map((img, i) => (
-            <div key={img.id} className="flex items-center gap-3 rounded-xl border border-line p-2">
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src={`/api/img/${img.mediaId}/256`} alt="" className="h-24 w-16 shrink-0 rounded-lg bg-sand object-cover object-top" />
-              <input defaultValue={img.alt} placeholder="Ce que dit l'image (pour les malvoyants et Google)" className="h-9 min-w-0 flex-1 rounded-lg border border-line px-2 text-xs" onBlur={(e) => e.target.value !== img.alt && run(() => setImageAlt(img.id, e.target.value))} />
-              <span className="flex shrink-0 flex-col gap-1 text-xs">
-                <button type="button" disabled={pending || i === 0} onClick={() => run(() => moveImage(img.id, -1))} className="px-1 disabled:opacity-30" aria-label="Monter">↑</button>
-                <button type="button" disabled={pending || i === images.length - 1} onClick={() => run(() => moveImage(img.id, 1))} className="px-1 disabled:opacity-30" aria-label="Descendre">↓</button>
-              </span>
-              <button type="button" disabled={pending} onClick={() => confirm("Supprimer cette image ?") && run(() => deleteImage(img.id))} className="text-xs text-clay">Suppr.</button>
-            </div>
-          ))}
-        </div>
-      ) : (
-        <div className="grid grid-cols-3 gap-2 sm:grid-cols-4">
-          {images.map((img, i) => (
-            <div key={img.id} className="flex flex-col gap-1">
-              <div className="relative aspect-square overflow-hidden rounded-xl bg-sand">
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src={`/api/img/${img.mediaId}/256`} alt="" className="h-full w-full object-cover" />
-                {i === 0 && <span className="absolute start-1 top-1 rounded-full bg-ink px-1.5 text-[10px] text-white">Principale</span>}
-              </div>
-              <div className="flex justify-between text-xs">
-                <button type="button" disabled={pending || i === 0} onClick={() => run(() => moveImage(img.id, -1))} className="px-1 disabled:opacity-30">←</button>
-                <button type="button" disabled={pending} onClick={() => confirm("Supprimer cette photo ?") && run(() => deleteImage(img.id))} className="text-clay">Suppr.</button>
-                <button type="button" disabled={pending || i === images.length - 1} onClick={() => run(() => moveImage(img.id, 1))} className="px-1 disabled:opacity-30">→</button>
-              </div>
-              <input defaultValue={img.alt} placeholder="Texte alternatif" className="h-8 rounded-lg border border-line px-2 text-xs" onBlur={(e) => e.target.value !== img.alt && run(() => setImageAlt(img.id, e.target.value))} />
-            </div>
-          ))}
-        </div>
+      {images.length === 0 && <p className="text-sm text-muted">{k.none}</p>}
+      <PictureList
+        kind={kind}
+        items={images.map((img) => ({ key: img.id, src: `/api/img/${img.mediaId}/256`, alt: img.alt }))}
+        busy={pending}
+        onMove={(key, dir) => run(() => moveImage(key, dir))}
+        onRemove={(key) => confirm(kind === "DETAIL" ? "Supprimer cette image ?" : "Supprimer cette photo ?") && run(() => deleteImage(key))}
+        onAlt={(key, alt) => run(() => setImageAlt(key, alt))}
+      />
+      <AddPictures text={k.add} busy={pending} progress={progress} onFiles={(files) => add(files.map((file) => ({ kind, file })))} onLinks={(urls, clear) => add(urls.map((url) => ({ kind, url })), clear)} />
+      {note && <p className="mt-2 text-sm text-muted">{note}</p>}
+      {errors.length > 0 && (
+        <ul className="mt-2 flex flex-col gap-1 text-sm text-danger">
+          {errors.map((e, i) => <li key={i}>{e}</li>)}
+        </ul>
       )}
-      <div className="mt-3 flex flex-wrap items-center gap-2">
-        <input
-          ref={file}
-          type="file"
-          accept="image/jpeg,image/png,image/webp,image/avif"
-          multiple
-          className="hidden"
-          onChange={(e) => {
-            const files = Array.from(e.target.files ?? []);
-            e.target.value = "";
-            if (!files.length) return;
-            // One picture per request, made lighter in the browser first: a phone photo
-            // of 6 MB goes up as a few hundred kB, under the host's request limit.
-            start(async () => {
-              let error: string | null = null;
-              for (const [n, f] of files.entries()) {
-                setProgress(`Envoi ${n + 1}/${files.length}…`);
-                const fd = new FormData();
-                fd.append("kind", kind);
-                fd.append("files", await shrinkForUpload(f, kind === "DETAIL" ? 16_000 : 3200));
-                const r = await uploadImages(productId, fd);
-                if (!r.ok) error = r.error;
-              }
-              setProgress(null);
-              setErr(error);
-              router.refresh();
-            });
-          }}
-        />
-        <button type="button" disabled={pending} className={btn.primary} onClick={() => file.current?.click()}>{pending ? (progress ?? "Envoi…") : k.add}</button>
-      </div>
-      <div className="mt-2 flex gap-2">
-        <input value={url} onChange={(e) => setUrl(e.target.value)} placeholder="Ou coller le lien d'une image du fournisseur" className={input} />
-        <button type="button" disabled={pending || !url} className={btn.ghost} onClick={() => run(async () => { const r = await importImage(productId, url, kind); if (r.ok) setUrl(""); return r; })}>Importer</button>
-      </div>
-      {err && <p className="mt-2 text-sm text-danger">{err}</p>}
     </Card>
   );
 }
+
+/** The photos of a product not saved yet: previews from the device, sent in this order on the first save. */
+function QueuedImages({ kind, items, busy, onAdd, onMove, onRemove }: { kind: Kind; items: Queued[]; busy: boolean; onAdd: (add: Outgoing[]) => void; onMove: (key: string, dir: -1 | 1) => void; onRemove: (key: string) => void }) {
+  const k = KIND[kind];
+  return (
+    <Card title={k.title} hint={k.hint}>
+      {items.length === 0 ? (
+        <p className="text-sm text-muted">{k.none}</p>
+      ) : (
+        <>
+          <PictureList kind={kind} items={items.map((q) => ({ key: q.key, src: q.preview, caption: pictureName(q.item), remote: "url" in q.item }))} busy={busy} onMove={onMove} onRemove={onRemove} />
+          <p className="mt-2 text-xs text-muted">Envoyées au premier enregistrement du produit.</p>
+        </>
+      )}
+      <AddPictures text={k.add} busy={busy} progress={null} onFiles={(files) => onAdd(files.map((file) => ({ kind, file })))} onLinks={(urls, clear) => { onAdd(urls.map((url) => ({ kind, url }))); clear(); }} />
+    </Card>
+  );
+}
+
+type Prompt = typeof import("@/lib/translate-prompt");
 
 /**
  * Translation without an API key: the request is copied, pasted into any chat
  * assistant (claude.ai, free), and its reply pasted back here. Only the empty
  * fields are filled, as with the automatic translation; nothing is saved.
+ * The request and the reading of the reply load when the panel opens: they
+ * are not needed to edit a product, and keep the editor lighter.
  */
 function ManualTranslate({ texts, todo, onAnswer }: { texts: ProductTexts; todo: boolean; onAnswer: (t: ProductTexts) => void }) {
   const [open, setOpen] = useState(false);
@@ -627,9 +952,25 @@ function ManualTranslate({ texts, todo, onAnswer }: { texts: ProductTexts; todo:
   const [copied, setCopied] = useState(false);
   const [reply, setReply] = useState("");
   const [bad, setBad] = useState(false);
+  const [offline, setOffline] = useState(false);
+  const prompt = useRef<Prompt | null>(null);
+
+  /** The helpers, loaded once; already there when the panel has been open a moment, so the copy stays within the tap. */
+  async function helpers(): Promise<Prompt | null> {
+    try {
+      prompt.current ??= await import("@/lib/translate-prompt");
+      setOffline(false);
+      return prompt.current;
+    } catch {
+      setOffline(true);
+      return null;
+    }
+  }
 
   async function copy() {
-    const text = manualRequest(texts, "fill");
+    const m = prompt.current ?? (await helpers());
+    if (!m) return;
+    const text = m.manualRequest(texts, "fill");
     try {
       await navigator.clipboard.writeText(text);
       setCopied(true);
@@ -644,7 +985,15 @@ function ManualTranslate({ texts, todo, onAnswer }: { texts: ProductTexts; todo:
     return (
       <>
         <p className="text-sm text-ink-2">Pas de traduction automatique (pas de clé <code>ANTHROPIC_API_KEY</code>).</p>
-        <button type="button" className={btn.sea} onClick={() => setOpen(true)} disabled={!todo}>
+        <button
+          type="button"
+          className={btn.sea}
+          onClick={() => {
+            setOpen(true);
+            void helpers();
+          }}
+          disabled={!todo}
+        >
           {todo ? "Traduire avec claude.ai (gratuit)" : "Rien à traduire"}
         </button>
       </>
@@ -670,13 +1019,16 @@ function ManualTranslate({ texts, todo, onAnswer }: { texts: ProductTexts; todo:
         }}
       />
       {bad && <p className="text-danger">{"Réponse illisible : copiez toute la réponse, du premier « { » au dernier « } »."}</p>}
+      {offline && <p className="text-danger">Chargement impossible : vérifiez la connexion, puis réessayez.</p>}
       <div className="flex gap-2">
         <button
           type="button"
           className={btn.sea}
           disabled={!reply.trim()}
-          onClick={() => {
-            const answer = readManualAnswer(reply);
+          onClick={async () => {
+            const m = prompt.current ?? (await helpers());
+            if (!m) return;
+            const answer = m.readManualAnswer(reply);
             if (!answer) return setBad(true);
             onAnswer(answer);
             setOpen(false);

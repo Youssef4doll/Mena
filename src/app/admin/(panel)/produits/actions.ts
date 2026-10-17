@@ -7,7 +7,7 @@ import { requireAdmin } from "@/lib/admin-auth";
 import { CATALOG_TAG } from "@/lib/catalog";
 import { storeImage, MAX_UPLOAD } from "@/lib/media";
 import { addProductImage } from "@/lib/product-images";
-import { writeProduct, type ProductInput } from "@/lib/product-write";
+import { productForForm, toInput, writeProduct, type ProductInput } from "@/lib/product-write";
 import Anthropic from "@anthropic-ai/sdk";
 import { translateProduct, translationReady, type ProductTexts, type TranslateMode } from "@/lib/translate";
 
@@ -20,9 +20,10 @@ function done() {
   revalidatePath("/admin/produits");
 }
 
-export async function saveProduct(id: string | null, raw: ProductInput): Promise<Result> {
+/** `loadedAt`: the product's updatedAt when the form was opened (see writeProduct). */
+export async function saveProduct(id: string | null, raw: ProductInput, loadedAt?: number): Promise<Result> {
   await requireAdmin();
-  const r = await writeProduct(id, raw);
+  const r = await writeProduct(id, raw, typeof loadedAt === "number" && Number.isFinite(loadedAt) ? loadedAt : undefined);
   if (!r.ok) return r;
   done();
   return { ok: true, id: r.id, message: "Produit enregistré." };
@@ -156,4 +157,44 @@ export async function translateTexts(raw: ProductTexts, mode: TranslateMode): Pr
     if (e instanceof Anthropic.APIError) return { ok: false, error: "Le service de traduction ne répond pas pour le moment. Réessayez plus tard." };
     return { ok: false, error: e instanceof Error ? e.message : "Traduction impossible." };
   }
+}
+
+/**
+ * A copy of a product, offline, to make a near-identical one quickly: the
+ * same texts, prices, options, offers and pictures. The pictures are shared,
+ * not stored twice: deleting a product removes a picture only when no other
+ * product uses it.
+ */
+export async function duplicateProduct(id: string): Promise<Result> {
+  await requireAdmin();
+  if (typeof id !== "string" || !/^[a-z0-9]{20,40}$/.test(id)) return { ok: false, error: "Produit introuvable." };
+  const p = await prisma.product.findUnique({
+    where: { id },
+    select: { ...productForForm, images: { orderBy: { sort: "asc" }, select: { mediaId: true, kind: true, sort: true, alt: true } } },
+  });
+  if (!p) return { ok: false, error: "Produit introuvable : il a peut-être été supprimé." };
+  // "<adresse>-copie", then "-copie-2", "-copie-3"…: the first one no product uses, as its address or a former one.
+  // Cut so that "-copie-50" still fits in the 100 characters of an address.
+  const base = `${p.slug.slice(0, 88).replace(/-+$/, "")}-copie`;
+  const tries = [base, ...Array.from({ length: 49 }, (_, i) => `${base}-${i + 2}`)];
+  const taken = await prisma.product.findMany({ where: { OR: [{ slug: { in: tries } }, { oldSlugs: { hasSome: tries } }] }, select: { slug: true, oldSlugs: true } });
+  const used = new Set(taken.flatMap((t) => [t.slug, ...t.oldSlugs]));
+  const slug = tries.find((s) => !used.has(s));
+  if (!slug) return { ok: false, error: "Trop de copies de ce produit : renommez-en une avant d'en faire une autre." };
+  const input = toInput(p);
+  const r = await writeProduct(null, {
+    ...input,
+    name: `${p.name.slice(0, 132).trimEnd()} (copie)`,
+    slug,
+    active: false,
+    featured: false,
+    variants: input.variants.map((v) => ({ ...v, id: undefined })),
+    offers: input.offers.map((o) => ({ ...o, id: undefined })),
+  });
+  if (!r.ok) return r;
+  if (p.images.length) {
+    await prisma.productImage.createMany({ data: p.images.map((i) => ({ productId: r.id, mediaId: i.mediaId, kind: i.kind, sort: i.sort, alt: i.alt, source: null })) });
+  }
+  done();
+  return { ok: true, id: r.id };
 }

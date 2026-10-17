@@ -8,7 +8,7 @@ Le code est sur [github.com/Youssef4doll/Mena](https://github.com/Youssef4doll/M
 
 ## 2. La base de données (Neon)
 
-1. Créez un compte sur [neon.tech](https://neon.tech), puis un projet en région **Europe (Frankfurt)**, la plus proche de la Tunisie.
+1. Créez un compte sur [neon.tech](https://neon.tech), puis un projet en région **Europe (Frankfurt)**, la plus proche de la Tunisie. C'est aussi la région des fonctions Vercel (`fra1`, dans `vercel.json`) : une base dans une autre région (par exemple aux États-Unis, souvent proposée par défaut) ajoute environ 0,1 s à chaque échange avec la base, et le back-office devient lent. Pour vérifier un projet existant : Neon → *Settings* → *General* → *Region*.
 2. Dans *Connect*, copiez deux adresses :
    - avec « Connection pooling » activé → ce sera `DATABASE_URL`
    - sans pooling → ce sera `DATABASE_URL_UNPOOLED`
@@ -82,6 +82,23 @@ La recherche de la boutique trouve un produit même avec une faute de frappe («
 **Ce que la boutique affiche d'elle-même, seulement quand c'est vrai** : « +20 commandes » sur les cartes et les fiches (commandes confirmées des 30 derniers jours, arrondies vers le bas, rien en dessous de 10) ; « Livraison offerte » quand le prix affiché l'inclut ; l'offre lot la plus avantageuse ; le pourcentage, calculé sur un prix réel.
 
 **Le panier** : « Acheter maintenant » commande tout de suite le produit de la fiche ; « Ajouter au panier », juste dessous, le garde pour commander plusieurs produits ensemble depuis la page *Panier* (même formulaire, mêmes contrôles). Une offre lot reste une seule fois par commande.
+
+**Beaucoup de produits d'un coup** (*Produits → Importer (CSV)*) :
+
+1. Téléchargez le *Modèle vide* ou l'*Exemple rempli* et remplissez-le dans Excel ou Google Sheets : une ligne par produit, seules les colonnes `nom` et `prix` sont obligatoires. Prix en dinars (`59,900`), `oui`/`non`, listes séparées par `;`. La liste complète des colonnes est sur la page (« Les colonnes »).
+2. **Photos** : dans la colonne `photos`, les liens des photos du fournisseur (`https://…`, liens Google Drive et Dropbox compris), ou les noms des fichiers, que vous choisissez ensuite avec « Choisir des photos » ou « Choisir un dossier ». La première est la photo principale.
+3. **Catégories et fournisseurs** : écrivez leur nom ; ceux qui n'existent pas encore sont créés.
+4. **Offres et options** : `1 = 59,900 ; 3 = 119,800 livraison offerte` dans `offres`, `Noir ; Blanc` dans `variantes`.
+5. Choisissez le fichier, ou collez les lignes copiées depuis le tableur (avec la ligne des titres). La page vérifie tout avant d'envoyer : produits nouveaux, mis à jour, lignes en erreur avec la raison.
+6. « Importer » : les produits arrivent quelques-uns à la fois, avec une barre de progression. Gardez la page ouverte. Les nouveaux produits sont créés hors ligne, sauf si vous cochez « Mettre en ligne tout de suite » ; à la fin, un bouton les met en ligne d'un coup.
+
+Un même fichier importé deux fois ne crée rien en double : une ligne dont l'adresse (faite à partir du nom) existe déjà met ce produit à jour, et une photo déjà importée n'est pas reprise. Une case vide ne change rien à un produit existant. *Exporter (CSV)* donne tout le catalogue dans le même format : modifiez-le dans Excel (prix, textes, stock) puis réimportez-le pour changer beaucoup de produits en une fois.
+
+Les photos sont gardées dans la base de données. La page d'import indique la place prise et la place estimée de l'import ; l'offre gratuite de Neon s'arrête à 0,5 Go (environ 3 000 photos de produit).
+
+**Le texte arabe de beaucoup de produits** (*Produits → Traduire en lot*) : la page liste les produits dont un texte n'existe que dans une langue. Avec une clé `ANTHROPIC_API_KEY`, un bouton les traduit tous. Sans clé, elle prépare des lots de 8 produits : « Copier la demande », collez-la dans [claude.ai](https://claude.ai) (gratuit), collez la réponse, « Mettre les traductions ». Seuls les champs vides sont remplis ; rien de ce qui est déjà écrit n'est remplacé.
+
+**Travailler vite dans la liste** : prix, stock, « Dispo », « En ligne », « Sélection » et catégorie se changent directement dans la ligne (Entrée enregistre, Échap annule). Cochez plusieurs produits pour les mettre en ligne ou hors ligne, les changer de catégorie ou les supprimer d'un coup. Dans un produit : Ctrl+S enregistre, « Précédent » / « Suivant » passent au produit voisin, « Enregistrer, puis suivant » enchaîne, « Dupliquer » crée une copie hors ligne d'un produit proche. Si le produit a été modifié ailleurs pendant qu'il était ouvert (liste, import, traduction, autre onglet), l'enregistrement est refusé avec un message, au lieu d'effacer ce changement.
 
 Une boutique en ligne ne contient pas de produits de démonstration. Pour voir à quoi elle ressemble pleine, lancez `npm run db:seed:demo` en local ; *Produits → Supprimer la démo* les retire.
 

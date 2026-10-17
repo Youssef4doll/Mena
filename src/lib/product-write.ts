@@ -1,6 +1,6 @@
 import "server-only";
 import { z } from "zod";
-import type { Prisma } from "@prisma/client";
+import { Prisma } from "@prisma/client";
 import { prisma } from "./prisma";
 import { slugify } from "./slug";
 import { parseVideo } from "./product-content";
@@ -79,7 +79,11 @@ function issueText(issue: z.core.$ZodIssue): string {
   return path || "produit";
 }
 
-export type WriteResult = { ok: true; id: string; slug: string; created: boolean } | { ok: false; error: string };
+export type WriteResult = { ok: true; id: string; slug: string; created: boolean } | { ok: false; error: string; conflict?: true };
+
+/** What a stale form is told: someone else saved the product since it was opened. */
+export const CHANGED_ELSEWHERE =
+  "Ce produit a été modifié ailleurs depuis que vous l'avez ouvert (liste, import, traduction ou un autre onglet). Rien n'a été enregistré : notez vos changements, rechargez la page, puis refaites-les.";
 
 /** Endpoint of a Tunisian day: an offer "until 2026-10-20" stops at midnight in Tunis after that day. */
 const endsAtOf = (endsOn: string) => (endsOn ? new Date(Date.parse(`${endsOn}T00:00:00Z`) + 23 * 3_600_000) : null);
@@ -88,8 +92,14 @@ const endsAtOf = (endsOn: string) => (endsOn ? new Date(Date.parse(`${endsOn}T00
  * Creates (id null) or updates a product with its options and offers. Only
  * what changed is written: an edit of the price is one statement, not one per
  * option and offer, which is what a distant database makes slow.
+ *
+ * `loadedAt` is the product's updatedAt when the form was opened: the editor
+ * sends the whole form, so a save from a tab opened before a change made in
+ * the list, an import or the batch translation would silently undo it. Such a
+ * save is refused instead. The import, which reads the product fresh, does
+ * not send it.
  */
-export async function writeProduct(id: string | null, raw: unknown): Promise<WriteResult> {
+export async function writeProduct(id: string | null, raw: unknown, loadedAt?: number): Promise<WriteResult> {
   const parsed = productSchema.safeParse(raw);
   if (!parsed.success) return { ok: false, error: `Champ invalide : ${issueText(parsed.error.issues[0]!)}` };
   const d = parsed.data;
@@ -110,7 +120,7 @@ export async function writeProduct(id: string | null, raw: unknown): Promise<Wri
       ? prisma.product.findUnique({
           where: { id },
           select: {
-            slug: true, oldSlugs: true,
+            slug: true, oldSlugs: true, updatedAt: true,
             variants: { select: { id: true, name: true, nameAr: true, sku: true, price: true, stockQty: true, available: true, sort: true } },
             offers: { select: { id: true, label: true, labelAr: true, quantity: true, price: true, freeDelivery: true, endsAt: true, active: true, sort: true } },
           },
@@ -119,6 +129,7 @@ export async function writeProduct(id: string | null, raw: unknown): Promise<Wri
   ]);
   if (clash) return { ok: false, error: `L'adresse « ${slug} » est déjà utilisée par un autre produit.` };
   if (id && !before) return { ok: false, error: "Produit introuvable : il a peut-être été supprimé." };
+  if (before && loadedAt != null && before.updatedAt.getTime() !== loadedAt) return { ok: false, error: CHANGED_ELSEWHERE, conflict: true };
 
   // A new address keeps the old one working: links already shared and Google's result are redirected.
   const moved = before != null && before.slug !== slug;
@@ -156,7 +167,8 @@ export async function writeProduct(id: string | null, raw: unknown): Promise<Wri
 
   const ops: Prisma.PrismaPromise<unknown>[] = [];
   if (moved) ops.push(freeSlug);
-  ops.push(prisma.product.update({ where: { id: id! }, data: { ...data, oldSlugs }, select: { id: true } }));
+  // Written only if nobody saved it since it was read: a save in between makes this one fail as a whole.
+  ops.push(prisma.product.update({ where: { id: id!, updatedAt: before.updatedAt }, data: { ...data, oldSlugs }, select: { id: true } }));
 
   // Options: deleted, changed or new; the untouched ones are not written.
   const oldV = new Map(before.variants.map((v) => [v.id, v]));
@@ -182,8 +194,13 @@ export async function writeProduct(id: string | null, raw: unknown): Promise<Wri
     else if (!same(was, row)) ops.push(prisma.productOffer.update({ where: { id: was.id }, data: row }));
   }
 
-  if (ops.length === 1) await ops[0];
-  else await prisma.$transaction(ops);
+  try {
+    if (ops.length === 1) await ops[0];
+    else await prisma.$transaction(ops);
+  } catch (e) {
+    if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2025") return { ok: false, error: CHANGED_ELSEWHERE, conflict: true };
+    throw e;
+  }
   return { ok: true, id: id!, slug, created: false };
 }
 

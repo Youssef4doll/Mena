@@ -4,12 +4,16 @@ import { prisma } from "@/lib/prisma";
 import { Shell } from "@/components/admin/Shell";
 
 export default async function PanelLayout({ children }: { children: React.ReactNode }) {
-  const admin = await requireAdmin();
-  const [pending, reviews, returns] = await Promise.all([
+  // The menu's counts are asked at the same time as the session, one wait instead of two;
+  // they are only used, and sent, once the session is confirmed.
+  const counts = Promise.all([
     prisma.order.count({ where: { status: "PENDING" } }),
     prisma.review.count({ where: { status: "PENDING" } }),
     prisma.returnRequest.count({ where: { status: "REQUESTED" } }),
   ]);
+  counts.catch(() => {});
+  const admin = await requireAdmin();
+  const [pending, reviews, returns] = await counts;
   async function logout() {
     "use server";
     await destroyAdminSession();

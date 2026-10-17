@@ -129,11 +129,12 @@ model ProductImage {
   /// GALLERY: the pictures at the top. DETAIL: the long pictures under the description.
   kind      ImageKind @default(GALLERY)
   /// Where the picture came from: its web address, or "file:<name>:<size>" for a file from the computer.
-  /// A CSV import run twice never adds the same picture twice.
+  /// A CSV import run twice, or from two devices at once, never adds the same picture twice
+  /// (several pictures without a source are allowed: NULLs are distinct).
   source    String?
 
   @@index([productId, sort])
-  @@index([productId, source])
+  @@unique([productId, kind, source])
 }
 
 enum ImageKind {
