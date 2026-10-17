@@ -25,6 +25,7 @@ export const ar: Dict = {
     deliveryFee: (a) => `التوصيل ${a} لكل الولايات`,
     waBubble: "اسألنا على واتساب",
     waHello: "السلام، عندي سؤال",
+    waGreeting: "مرحبا، عندك سؤال؟ احكي معانا على واتساب",
   },
   home: {
     shopNow: "اكتشف المتجر",

@@ -9,15 +9,31 @@ export function parseSort(v: unknown): SortKey {
   return SORTS.includes(v as SortKey) ? (v as SortKey) : "new";
 }
 
-export function Listing({ lang, title, path, sort, products, emptyText }: { lang: Lang; title: string; path: string; sort: SortKey; products: ProductCard[]; emptyText: string }) {
+/** `banner`: a category's picture, shown blurred behind its title, like its card on the home page. */
+export function Listing({ lang, title, path, sort, products, emptyText, banner }: { lang: Lang; title: string; path: string; sort: SortKey; products: ProductCard[]; emptyText: string; banner?: { image: string | null; line: string | null } }) {
   const t = dict(lang);
   return (
     <div className="mx-auto max-w-6xl px-4 pb-6 pt-6 md:pt-8">
       <div className="mb-6 flex flex-col gap-3 md:flex-row md:items-end md:justify-between md:gap-6">
-        <div className="flex items-baseline justify-between gap-3 md:justify-start">
-          <h1 className="text-[26px] font-bold leading-tight md:text-[32px]">{title}</h1>
-          {products.length > 0 && <p className="shrink-0 text-[15px] text-muted">{t.category.count(products.length)}</p>}
-        </div>
+        {banner ? (
+          <div className="relative -mx-4 overflow-hidden px-4 py-7 md:mx-0 md:flex-1 md:rounded-2xl md:px-7 md:py-9">
+            {banner.image && (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={`/api/img/${banner.image}/640`} alt="" aria-hidden className="absolute inset-0 h-full w-full scale-110 object-cover opacity-70 blur-2xl" />
+            )}
+            <div className="absolute inset-0 bg-white/45" aria-hidden />
+            <div className="relative">
+              <h1 className="text-[28px] font-extrabold leading-tight md:text-[36px]">{title}</h1>
+              {banner.line && banner.line !== title && <p className="mt-1 text-[17px] text-ink-2">{banner.line}</p>}
+              {products.length > 0 && <p className="mt-1 text-[15px] text-ink-2">{t.category.count(products.length)}</p>}
+            </div>
+          </div>
+        ) : (
+          <div className="flex items-baseline justify-between gap-3 md:justify-start">
+            <h1 className="text-[26px] font-bold leading-tight md:text-[32px]">{title}</h1>
+            {products.length > 0 && <p className="shrink-0 text-[15px] text-muted">{t.category.count(products.length)}</p>}
+          </div>
+        )}
         {products.length > 1 && (
           <nav className="-mx-4 flex scroll-px-4 gap-2 overflow-x-auto px-4 no-scrollbar md:mx-0 md:px-0" aria-label={t.category.sort}>
             {SORTS.map((s) => (

@@ -36,7 +36,7 @@ export default async function CategoryRoute({ params, searchParams }: PageProps<
     <>
       <TrackView name="category_viewed" props={{ slug }} />
       <JsonLd data={itemListLd(page.products, lang)} />
-      <Listing lang={lang} title={pick(lang, page.category.name, page.category.nameAr)} path={`/categorie/${slug}`} sort={sort} products={page.products} emptyText={dict(lang).category.empty} />
+      <Listing lang={lang} title={pick(lang, page.category.name, page.category.nameAr)} path={`/categorie/${slug}`} sort={sort} products={page.products} emptyText={dict(lang).category.empty} banner={{ image: page.category.imageId ?? page.products[0]?.images[0]?.id ?? null, line: pick(lang, page.category.headline ?? "", page.category.headlineAr ?? "") || null }} />
       {others.length >= 2 && (
         <section className="mx-auto max-w-6xl border-t border-line px-4 pt-8" aria-labelledby="others-title">
           <h2 id="others-title" className="mb-4 text-[20px] font-bold">

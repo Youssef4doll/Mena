@@ -246,12 +246,12 @@ export type SortKey = "new" | "price_asc" | "price_desc" | "popular";
 
 export const getCategoryPage = unstable_cache(
   async (slug: string, sort: SortKey) => {
-    const category = await prisma.category.findFirst({ where: { slug, active: true }, select: { id: true, slug: true, name: true, nameAr: true } });
+    const category = await prisma.category.findFirst({ where: { slug, active: true }, select: { id: true, slug: true, name: true, nameAr: true, headline: true, headlineAr: true, imageId: true } });
     if (!category) return null;
     const products = await sorted({ categoryId: category.id }, sort, 60);
     return { category, products };
   },
-  ["category-page-v4"],
+  ["category-page-v5"],
   { tags: [CATALOG_TAG], revalidate: TTL },
 );
 

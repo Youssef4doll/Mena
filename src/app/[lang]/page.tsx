@@ -53,19 +53,23 @@ export default async function Home({ params }: PageProps<"/[lang]">) {
 
       {empty && <p className="mx-auto max-w-6xl px-4 py-16 text-center text-[18px] text-muted">{t.home.empty}</p>}
 
-      {/* ---------------- the categories: a picture and the same short name as in the menu */}
+      {/* ---------------- the categories: tall cards like Amazon's, the title on a blurred band over the picture */}
       {shown.length > 0 && (
         <section className="mx-auto max-w-6xl px-4" aria-label={t.home.categories}>
-          <ul className={`grid grid-cols-3 gap-x-3 gap-y-5 ${["md:grid-cols-4", "md:grid-cols-5", "md:grid-cols-6"][Math.max(0, Math.min(shown.length, 6) - 4)]}`}>
+          <ul className="-mx-4 flex snap-x scroll-px-4 gap-3 overflow-x-auto px-4 pb-2 no-scrollbar md:mx-0 md:scroll-px-0 md:px-0">
             {shown.map((c, i) => {
               const image = c.imageId ?? c.products[0]?.images[0]?.id ?? null;
+              const title = pick(lang, c.headline || c.name, c.headlineAr || c.nameAr || c.headline || c.name);
               return (
-                <li key={c.slug}>
-                  <Link href={href(lang, `/categorie/${c.slug}`)} className="group flex flex-col items-center gap-2 rounded-2xl text-center">
-                    <span className="relative aspect-square w-full overflow-hidden rounded-2xl border border-line bg-sand">
-                      {image ? <Img image={{ id: image, blur: null, width: 600, height: 600 }} alt="" sizes="(min-width: 768px) 18vw, 31vw" className="transition duration-500 group-hover:scale-[1.03]" priority={i < 3} /> : <Placeholder />}
+                <li key={c.slug} className="w-[44%] shrink-0 snap-start sm:w-[30%] md:w-[calc((100%-3rem)/5)]">
+                  <Link href={href(lang, `/categorie/${c.slug}`)} className="group relative block aspect-[3/4.6] overflow-hidden rounded-2xl bg-sand">
+                    {image ? <Img image={{ id: image, blur: null, width: 600, height: 600 }} alt="" sizes="(min-width: 768px) 20vw, 45vw" className="object-cover transition duration-500 group-hover:scale-[1.03]" priority={i < 3} /> : <Placeholder />}
+                    <span
+                      className="absolute inset-x-0 top-0 bg-white/55 px-3.5 pb-10 pt-3.5 backdrop-blur-md"
+                      style={{ maskImage: "linear-gradient(to bottom, #000 62%, transparent)", WebkitMaskImage: "linear-gradient(to bottom, #000 62%, transparent)" }}
+                    >
+                      <span className="line-clamp-3 block text-[20px] font-extrabold leading-[1.15] text-ink md:text-[23px]">{title}</span>
                     </span>
-                    <span className="text-[16px] font-bold leading-snug text-ink">{pick(lang, c.name, c.nameAr)}</span>
                   </Link>
                 </li>
               );

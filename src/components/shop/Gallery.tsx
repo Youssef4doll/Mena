@@ -1,6 +1,7 @@
 "use client";
 
 import dynamic from "next/dynamic";
+import { createPortal } from "react-dom";
 import Image from "next/image";
 import { useRef, useState } from "react";
 import { dict, type Lang } from "@/i18n";
@@ -159,7 +160,8 @@ export function Gallery({ slides, name, productId, badge, lang }: { slides: Slid
         </div>
       )}
 
-      {viewer != null && <Viewer images={photos} start={viewer} name={name} lang={lang} onClose={() => setViewer(null)} />}
+      {/* On the page's body, not inside the gallery: a sticky or transformed parent would otherwise hold the full-screen view and let the page show over it. */}
+      {viewer != null && createPortal(<Viewer images={photos} start={viewer} name={name} lang={lang} onClose={() => setViewer(null)} />, document.body)}
     </div>
   );
 }

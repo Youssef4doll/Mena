@@ -23,6 +23,7 @@ export const fr = {
     deliveryFee: (a: string) => `Livraison ${a} partout`,
     waBubble: "Nous écrire sur WhatsApp",
     waHello: "Bonjour, j'ai une question",
+    waGreeting: "Bonjour, une question ? Écrivez-nous sur WhatsApp",
   },
   home: {
     shopNow: "Voir la boutique",
