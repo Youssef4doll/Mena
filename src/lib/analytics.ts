@@ -216,6 +216,17 @@ async function searches(from: Date, to: Date) {
   return { top: all.filter((r) => r.results > 0).slice(0, 15), none: all.filter((r) => r.results === 0).slice(0, 30), total: all.reduce((s, r) => s + r.count, 0) };
 }
 
+/** Categories opened (from the home cards, the menu or a link): visits and distinct visitors, most opened first. */
+async function categories(from: Date, to: Date) {
+  const rows = await prisma.$queryRaw<{ slug: string; name: string | null; views: bigint; visitors: bigint }[]>`
+    SELECT ev.slug, c.name, COUNT(*) AS views, COUNT(DISTINCT ev."visitorId") AS visitors
+    FROM (SELECT props->>'slug' AS slug, "visitorId" FROM "AnalyticsEvent"
+          WHERE name = 'category_viewed' AND "createdAt" >= ${from} AND "createdAt" < ${to} AND props ? 'slug') ev
+    LEFT JOIN "Category" c ON c.slug = ev.slug
+    GROUP BY 1, 2 ORDER BY 3 DESC LIMIT 30`;
+  return rows.map((r) => ({ slug: r.slug, name: r.name ?? r.slug, views: n(r.views), visitors: n(r.visitors) }));
+}
+
 export type GovRow = { governorate: string; orders: number; delivered: number; refused: number; revenue: number };
 
 async function byGovernorate(from: Date, to: Date): Promise<GovRow[]> {
@@ -403,7 +414,7 @@ async function profitability(from: Date, to: Date) {
 
 export async function getAnalytics(r: Range) {
   const [k, prev] = await Promise.all([kpis(r.from, r.to), kpis(r.prevFrom, r.prevTo)]);
-  const [days, steps, sources, campaigns, devices, prods, search, govs, reasons, cust, cohortRows, hours, conf, contact, carts, bask, money] = await Promise.all([
+  const [days, steps, sources, campaigns, devices, prods, search, cats, govs, reasons, cust, cohortRows, hours, conf, contact, carts, bask, money] = await Promise.all([
     daily(r),
     funnel(r.from, r.to, k),
     bySource(r.from, r.to, false),
@@ -411,6 +422,7 @@ export async function getAnalytics(r: Range) {
     byDevice(r.from, r.to),
     products(r.from, r.to),
     searches(r.from, r.to),
+    categories(r.from, r.to),
     byGovernorate(r.from, r.to),
     refusalReasons(r.from, r.to),
     customers(r.from, r.to),
@@ -435,6 +447,7 @@ export async function getAnalytics(r: Range) {
     devices,
     products: prods,
     searches: search,
+    categories: cats,
     governorates: govs,
     refusalReasons: reasons,
     customers: cust,

@@ -7,7 +7,7 @@ import { getSettings } from "@/lib/settings";
 import { governorateLabel } from "@/lib/governorates";
 import { ProductRow } from "@/components/shop/ProductCard";
 import { Stars } from "@/components/shop/Stars";
-import { Img, Placeholder } from "@/components/shop/Img";
+import { Img, WarmBlur } from "@/components/shop/Img";
 import { IconChevron, IconReturn, IconShield } from "@/components/shop/Icons";
 import { JsonLd, organizationLd, websiteLd } from "@/lib/seo";
 
@@ -63,7 +63,7 @@ export default async function Home({ params }: PageProps<"/[lang]">) {
               return (
                 <li key={c.slug} className="w-[44%] shrink-0 snap-start sm:w-[30%] md:w-[calc((100%-3rem)/5)]">
                   <Link href={href(lang, `/categorie/${c.slug}`)} className="group relative block aspect-[3/4.6] overflow-hidden rounded-2xl bg-sand">
-                    {image ? <Img image={{ id: image, blur: null, width: 600, height: 600 }} alt="" sizes="(min-width: 768px) 20vw, 45vw" className="object-cover transition duration-500 group-hover:scale-[1.03]" priority={i < 3} /> : <Placeholder />}
+                    {image ? <Img image={{ id: image, blur: null, width: 600, height: 600 }} alt="" sizes="(min-width: 768px) 20vw, 45vw" className="object-cover transition duration-500 group-hover:scale-[1.03]" priority={i < 3} /> : <WarmBlur />}
                     <span
                       className="absolute inset-x-0 top-0 bg-white/55 px-3.5 pb-10 pt-3.5 backdrop-blur-md"
                       style={{ maskImage: "linear-gradient(to bottom, #000 62%, transparent)", WebkitMaskImage: "linear-gradient(to bottom, #000 62%, transparent)" }}

@@ -412,7 +412,7 @@ function Form({ id, version, nextId, initial, images, categories, suppliers, sho
               )}
             </div>
             <div className="grid gap-3 sm:grid-cols-2">
-              <label className={label}>Nom (français)<input className={input} value={p.name} onChange={(e) => set("name", e.target.value)} onBlur={() => !p.slug && set("slug", slugify(p.name))} /></label>
+              <label className={label}><Required empty={p.name.trim().length < 2}>Nom (français)</Required><input className={`${input} ${p.name.trim().length < 2 ? MISSING : ""}`} value={p.name} onChange={(e) => set("name", e.target.value)} onBlur={() => !p.slug && set("slug", slugify(p.name))} /></label>
               <label className={label}>Nom (arabe)<input className={input} dir="rtl" value={p.nameAr} onChange={(e) => set("nameAr", e.target.value)} /></label>
             </div>
             <p className="-mt-1 text-xs text-muted">Comme sur Amazon, mettez dans le nom les mots que les clients tapent sur Google : « Lampe de chevet tactile LED rechargeable, 3 intensités » plutôt que « Lampe ». C&apos;est le titre de la page et le début du résultat Google.</p>
@@ -601,7 +601,7 @@ function Form({ id, version, nextId, initial, images, categories, suppliers, sho
 
         <Card title="Prix">
           <div className="grid grid-cols-2 gap-2">
-            <label className={label}>Prix de vente (DT)<input className={input} inputMode="decimal" placeholder="59,900" value={money.price} onChange={(e) => setMoney({ ...money, price: e.target.value })} /></label>
+            <label className={label}><Required empty={!((parseTND(money.price) ?? 0) > 0)}>Prix de vente (DT)</Required><input className={`${input} ${(parseTND(money.price) ?? 0) > 0 ? "" : MISSING}`} inputMode="decimal" placeholder="59,900" value={money.price} onChange={(e) => setMoney({ ...money, price: e.target.value })} /></label>
             <label className={label}>Ancien prix (DT)<input className={input} inputMode="decimal" placeholder="facultatif" value={money.compareAt} onChange={(e) => setMoney({ ...money, compareAt: e.target.value })} /></label>
           </div>
           <p className="mt-1.5 text-xs text-muted">L&apos;ancien prix doit être un prix réellement pratiqué avant. Il est affiché barré.</p>
@@ -1041,5 +1041,16 @@ function ManualTranslate({ texts, todo, onAnswer }: { texts: ProductTexts; todo:
         <button type="button" className={btn.ghost} onClick={() => setOpen(false)}>Fermer</button>
       </div>
     </div>
+  );
+}
+
+/** A required field still empty: tinted red, with "obligatoire", so it is seen before saving. */
+const MISSING = "!border-danger/60 !bg-[#fdf0ee]";
+function Required({ empty, children }: { empty: boolean; children: React.ReactNode }) {
+  return (
+    <span className="flex items-baseline justify-between gap-2">
+      {children}
+      {empty && <span className="text-xs font-normal text-danger">obligatoire</span>}
+    </span>
   );
 }

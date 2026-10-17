@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { WarmBlur } from "./Img";
 import { dict, href, type Lang } from "@/i18n";
 import type { ProductCard, SortKey } from "@/lib/catalog";
 import { ProductGrid } from "./ProductCard";
@@ -17,9 +18,11 @@ export function Listing({ lang, title, path, sort, products, emptyText, banner }
       <div className="mb-6 flex flex-col gap-3 md:flex-row md:items-end md:justify-between md:gap-6">
         {banner ? (
           <div className="relative -mx-4 overflow-hidden px-4 py-7 md:mx-0 md:flex-1 md:rounded-2xl md:px-7 md:py-9">
-            {banner.image && (
+            {banner.image ? (
               // eslint-disable-next-line @next/next/no-img-element
               <img src={`/api/img/${banner.image}/640`} alt="" aria-hidden className="absolute inset-0 h-full w-full scale-110 object-cover opacity-70 blur-2xl" />
+            ) : (
+              <WarmBlur />
             )}
             <div className="absolute inset-0 bg-white/45" aria-hidden />
             <div className="relative">

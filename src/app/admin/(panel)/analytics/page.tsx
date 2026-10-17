@@ -133,6 +133,9 @@ export default async function AnalyticsPage({ searchParams }: PageProps<"/admin/
         <Card title="Recherches sans résultat" hint="Ce que les clients cherchent et que la boutique n'a pas : des produits à ajouter.">
           {a.searches.none.length === 0 ? <p className="text-sm text-muted">Aucune.</p> : <BarList rows={a.searches.none.map((s) => ({ label: s.q, value: s.count }))} unit="int" />}
         </Card>
+        <Card title="Catégories les plus ouvertes" hint="Ouvertures d'une catégorie (cartes de l'accueil, menu, liens) sur la période, et visiteurs différents.">
+          {a.categories.length === 0 ? <p className="text-sm text-muted">Aucune.</p> : <BarList rows={a.categories.map((c) => ({ label: c.name, value: c.views, sub: `${c.visitors} visiteur(s)` }))} unit="int" />}
+        </Card>
         <Card title="Recherches les plus fréquentes" hint={`${a.searches.total} recherche(s) sur la période.`}>
           {a.searches.top.length === 0 ? <p className="text-sm text-muted">Aucune.</p> : <BarList rows={a.searches.top.map((s) => ({ label: s.q, value: s.count, sub: `${s.results} résultat(s)` }))} unit="int" />}
         </Card>

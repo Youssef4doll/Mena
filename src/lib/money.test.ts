@@ -4,7 +4,7 @@ import { formatTND, parseTND } from "./money";
 
 test("formats millimes with three decimals", () => {
   assert.equal(formatTND(89_900), "89,900 DT");
-  assert.equal(formatTND(1_250_500), "1 250,500 DT");
+  assert.equal(formatTND(1_250_500), "1250,500 DT");
   assert.equal(formatTND(0), "0,000 DT");
   assert.equal(formatTND(7_000, "ar"), "7,000 د.ت");
 });

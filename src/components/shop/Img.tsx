@@ -38,3 +38,14 @@ export function Placeholder({ className = "" }: { className?: string }) {
     </div>
   );
 }
+
+/** A category without a picture: warm, blurred browns instead of an empty grey box. */
+export function WarmBlur({ className = "" }: { className?: string }) {
+  return (
+    <div className={`absolute inset-0 overflow-hidden bg-[#e9d9c7] ${className}`} aria-hidden>
+      <div className="absolute -start-1/4 top-1/4 h-3/4 w-3/4 rounded-full bg-[#c49a74] opacity-70 blur-3xl" />
+      <div className="absolute -end-1/4 bottom-0 h-2/3 w-2/3 rounded-full bg-[#9c6b4a] opacity-50 blur-3xl" />
+      <div className="absolute end-1/4 top-0 h-1/2 w-1/2 rounded-full bg-[#f3e7da] opacity-80 blur-2xl" />
+    </div>
+  );
+}
