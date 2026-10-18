@@ -43,6 +43,7 @@ export async function setStatus(orderId: string, to: OrderStatus, form: { note?:
     refusalReason: form.refusalReason?.slice(0, 200),
   });
   revalidatePath(`/admin/commandes/${orderId}`);
+  revalidatePath("/admin/commandes");
   return r.ok ? { ok: true } : { ok: false, error: ERRORS[r.error] ?? r.error };
 }
 

@@ -5,7 +5,8 @@ import { formatPhone } from "@/lib/phone";
 import { STATUS_LABELS, flagLabel } from "@/lib/order-status";
 import { orderWhere, STATUS_TABS, statusCounts } from "@/lib/admin-orders";
 import { isRisky } from "@/lib/fraud";
-import { Badge, Empty, PageTitle, StatusBadge, Tabs, btn, input } from "@/components/admin/ui";
+import { Badge, Empty, PageTitle, Tabs, btn, input } from "@/components/admin/ui";
+import { StatusSelect } from "./StatusSelect";
 
 export const metadata = { title: "Commandes" };
 const PER_PAGE = 50;
@@ -67,8 +68,8 @@ export default async function OrdersPage({ searchParams }: PageProps<"/admin/com
         <div className="overflow-hidden rounded-2xl border border-line bg-white">
           <ul className="divide-y divide-line">
             {sorted.map((o) => (
-              <li key={o.id}>
-                <Link href={`/admin/commandes/${o.id}`} className="grid gap-x-4 gap-y-1 px-4 py-3 hover:bg-cream sm:grid-cols-[130px_1fr_140px_120px] sm:items-center">
+              <li key={o.id} className="flex items-center gap-2 pe-3 hover:bg-cream">
+                <Link href={`/admin/commandes/${o.id}`} className="grid min-w-0 flex-1 gap-x-4 gap-y-1 py-3 ps-4 sm:grid-cols-[130px_1fr_110px] sm:items-center">
                   <span className="flex items-center justify-between gap-2 sm:block">
                     <span className="font-mono text-[13px] font-semibold">{o.ref}</span>
                     <span className="block text-xs text-muted">
@@ -93,10 +94,8 @@ export default async function OrdersPage({ searchParams }: PageProps<"/admin/com
                     )}
                   </span>
                   <span className="text-sm font-semibold tabular-nums sm:text-end">{formatTND(o.total)}</span>
-                  <span className="sm:text-end">
-                    <StatusBadge status={o.status} />
-                  </span>
                 </Link>
+                <StatusSelect id={o.id} status={o.status} />
               </li>
             ))}
           </ul>

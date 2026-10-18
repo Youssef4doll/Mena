@@ -50,7 +50,7 @@ export const ar: Dict = {
     choose: "اختار",
     chooseFirst: "اختار خيار",
     low: (n) => `باقي ${n} برك`,
-    out: "نفد",
+    out: "موش متوفّر توّا",
     outSub: "المنتوج هذا موش متوفّر توّا.",
     outAsk: "اسألنا وقتاش يرجع",
     outOthers: "شوف منتوجات أخرى",
