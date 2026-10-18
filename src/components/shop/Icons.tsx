@@ -42,6 +42,12 @@ export const IconPhone = ({ className = base }: P) => (
 export const IconStar = ({ className = "h-4 w-4" }: P) => (
   <svg viewBox="0 0 20 20" fill="currentColor" className={className} aria-hidden><path d="M10 1.5l2.6 5.6 6 .7-4.5 4.1 1.2 6-5.3-3-5.3 3 1.2-6L1.4 7.8l6-.7L10 1.5z" /></svg>
 );
+export const IconUser = ({ className = base }: P) => (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" className={className} aria-hidden><circle cx="12" cy="8" r="3.6" /><path d="M5 20c.8-3.6 3.6-5.6 7-5.6s6.2 2 7 5.6" strokeLinecap="round" /></svg>
+);
+export const IconHome = ({ className = base }: P) => (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" className={className} aria-hidden><path d="M4 10.5 12 4l8 6.5V20h-5.5v-5.5h-5V20H4v-9.5Z" strokeLinejoin="round" /></svg>
+);
 export const IconCheck = ({ className = "h-4 w-4" }: P) => (
   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className={className} aria-hidden><path d="m5 12.5 4.5 4.5L19 7.5" strokeLinecap="round" strokeLinejoin="round" /></svg>
 );
