@@ -31,7 +31,7 @@ export function Card({ title, hint, aside, children, className = "" }: { title?:
   );
 }
 
-const STATUS_TONE: Record<OrderStatus, string> = {
+export const STATUS_TONE: Record<OrderStatus, string> = {
   PENDING: "bg-[#fff3d6] text-[#8a5a00]",
   CONFIRMED: "bg-sea-soft text-sea-2",
   SUPPLIER_ORDERED: "bg-[#ece7f1] text-[#5b4a7a]",

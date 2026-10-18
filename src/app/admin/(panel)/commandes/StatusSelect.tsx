@@ -4,6 +4,7 @@ import { useState, useTransition } from "react";
 import type { OrderStatus } from "@prisma/client";
 import { STATUS_LABELS, TRANSITIONS } from "@/lib/order-status";
 import { setStatus } from "./actions";
+import { STATUS_TONE } from "@/components/admin/ui";
 
 /**
  * The order's status, changed from the list like a cell of a spreadsheet:
@@ -33,11 +34,11 @@ export function StatusSelect({ id, status }: { id: string; status: OrderStatus }
             if (!r.ok) setError(r.error);
           });
         }}
-        className="h-9 max-w-[170px] rounded-full border border-line bg-white px-3 text-[13px] font-medium disabled:opacity-60"
+        className={`h-8 max-w-[170px] cursor-pointer rounded-full border-0 px-3 text-[12px] font-medium disabled:cursor-default disabled:opacity-100 ${STATUS_TONE[status]}`}
       >
-        <option value={status}>{STATUS_LABELS[status]}</option>
+        <option value={status} className="bg-white text-ink">{STATUS_LABELS[status]}</option>
         {next.map((s) => (
-          <option key={s} value={s}>→ {STATUS_LABELS[s]}</option>
+          <option key={s} value={s} className="bg-white text-ink">→ {STATUS_LABELS[s]}</option>
         ))}
       </select>
       {pending && <span className="text-[11px] text-muted">Enregistrement…</span>}
