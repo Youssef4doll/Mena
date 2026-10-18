@@ -36,9 +36,9 @@ export function StatusSelect({ id, status }: { id: string; status: OrderStatus }
         }}
         className={`h-8 max-w-[170px] cursor-pointer rounded-full border-0 px-3 text-[12px] font-medium disabled:cursor-default disabled:opacity-100 ${STATUS_TONE[status]}`}
       >
-        <option value={status} className="bg-white text-ink">{STATUS_LABELS[status]}</option>
+        <option value={status} className={STATUS_TONE[status]}>{STATUS_LABELS[status]}</option>
         {next.map((s) => (
-          <option key={s} value={s} className="bg-white text-ink">→ {STATUS_LABELS[s]}</option>
+          <option key={s} value={s} className={STATUS_TONE[s]}>→ {STATUS_LABELS[s]}</option>
         ))}
       </select>
       {pending && <span className="text-[11px] text-muted">Enregistrement…</span>}
