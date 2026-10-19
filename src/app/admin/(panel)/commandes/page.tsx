@@ -65,7 +65,7 @@ export default async function OrdersPage({ searchParams }: PageProps<"/admin/com
       {sorted.length === 0 ? (
         <Empty>{status === "PENDING" ? "Aucune commande à confirmer." : "Aucune commande."}</Empty>
       ) : (
-        <div className="overflow-hidden rounded-2xl border border-line bg-white">
+        <div className="rounded-2xl border border-line bg-white [&>ul>li:first-child]:rounded-t-2xl [&>ul>li:last-child]:rounded-b-2xl">
           <ul className="divide-y divide-line">
             {sorted.map((o) => (
               <li key={o.id} className="flex items-center gap-2 pe-3 hover:bg-cream">
