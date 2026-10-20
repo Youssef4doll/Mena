@@ -38,6 +38,12 @@ export type Funnel = {
    * were cancelled later.
    */
   pending?: number;
+  /**
+   * Of those pending orders, the ones placed more than STALE_PENDING_HOURS
+   * before the figures were read, still never confirmed: far fewer of them
+   * end delivered. Optional: without it every pending order counts as fresh.
+   */
+  pendingStale?: number;
   /** Totals (delivery fee included) of the orders not cancelled. */
   revenuePlaced: number;
   /** Totals of the delivered orders. */
@@ -97,7 +103,23 @@ export type Baseline = {
    * when a cost is unknown. Gives young rows a margin to be judged against.
    */
   marginPerDelivered?: number | null;
+  /**
+   * Of the shop's final orders that were still pending STALE_PENDING_HOURS
+   * after being placed, the share that ended delivered. Measured, never
+   * assumed: null or absent when too few orders were in that case.
+   */
+  staleDeliveredRate?: number | null;
 };
+
+/** Hours after which an order nobody has confirmed yet counts as stale. */
+export const STALE_PENDING_HOURS = 48;
+
+/**
+ * Confirmation by how long the first call took after the order was placed,
+ * over orders that are no longer pending. "never": decided without a logged
+ * call. Labels are French ("moins d'1 h", "1 à 4 h", "4 à 24 h", "plus de 24 h").
+ */
+export type CallDelayRow = { bucket: "1h" | "4h" | "24h" | "later" | "never"; label: string; orders: number; confirmed: number };
 
 /** One day of a row, for trends (fatigue, pacing). */
 export type DayPoint = { day: string; spend: number | null; impressions: number | null; clicks: number | null; sessions: number; orders: number; delivered: number };
@@ -124,7 +146,7 @@ export type Insight = {
  * cost), the ad link builder, the creative brief, the order forms started
  * and not finished (their phone numbers, to call back).
  */
-export type Fix = "costs" | "tracking" | "spend" | "import" | "productCost" | "links" | "brief" | "carts";
+export type Fix = "costs" | "tracking" | "spend" | "import" | "productCost" | "links" | "brief" | "carts" | "orders";
 
 /** What to do with a row now. "wait": not enough data to judge; "tracking": the measure itself is broken. */
 export type Verdict = "scale" | "keep" | "fix" | "cut" | "wait" | "tracking";

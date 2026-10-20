@@ -126,6 +126,7 @@ export const FIX_LINKS: Record<Fix, { href: string; label: string }> = {
   links: { href: "/admin/publicites/idees#liens", label: "Créer le bon lien" },
   brief: { href: "/admin/publicites/idees", label: "Préparer des créatives" },
   carts: { href: "/admin/paniers", label: "Rappeler les formulaires abandonnés" },
+  orders: { href: "/admin/commandes?statut=PENDING", label: "Appeler les commandes en attente" },
 };
 
 /** A fix link; the period follows when it stays in the ads section. */
