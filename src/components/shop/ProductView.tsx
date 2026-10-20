@@ -168,12 +168,13 @@ export function ProductView({ p, lang, settings, url }: { p: P; lang: Lang; sett
         </div>
       </div>
 
-      {/* The description as the shop wrote it, then its long pictures one under the other, edge to edge on a phone. */}
+      {/* The description as the shop wrote it, then its long pictures one under the other: edge to edge on a phone,
+          wide on a computer (the pictures sell, as on the owner's reference shop), while the text keeps a readable line. */}
       {(description || p.detailImages.length > 0) && (
-        <section className="mx-auto mt-10 flex max-w-3xl flex-col gap-4 border-t border-line pt-8" aria-labelledby="desc-title">
+        <section className="mx-auto mt-10 flex max-w-5xl flex-col gap-4 border-t border-line pt-8" aria-labelledby="desc-title">
           <TabTitle id="desc-title">{t.product.description}</TabTitle>
           {description && (
-            <div className="flex flex-col gap-3 text-[17px] leading-relaxed text-ink-2">
+            <div className="flex max-w-3xl flex-col gap-3 text-[17px] leading-relaxed text-ink-2">
               {description.split(/\n{2,}/).map((para, i) => (
                 <p key={i} className="whitespace-pre-line" dir="auto">
                   {para}
@@ -190,7 +191,7 @@ export function ProductView({ p, lang, settings, url }: { p: P; lang: Lang; sett
                   alt={img.alt ?? ""}
                   width={img.width}
                   height={img.height}
-                  sizes="(min-width: 768px) 768px, 100vw"
+                  sizes="(min-width: 1088px) 1088px, 100vw"
                   className="block h-auto w-full"
                   {...(img.blur ? { placeholder: "blur" as const, blurDataURL: img.blur } : {})}
                 />
@@ -316,11 +317,11 @@ function payNow(p: P, c: BuyChoice): { price: number; from: boolean } {
   return { price: min * c.qty, from: prices.some((x) => x !== min) };
 }
 
-/** How and when it comes, under the price: the shop's one fee (or free) and the delays it set. */
+/** What delivery costs, under the price: the shop's one fee, or free. The delay is answered in the questions below. */
 function DeliveryLine({ lang, settings, free, price }: { lang: Lang; settings: PublicSettings; free: boolean; price: number }) {
   const t = dict(lang);
-  const span = deliverySpan(settings.delivery.zones);
-  if (!span) return null;
+  // A shop that delivers nowhere says nothing here.
+  if (!deliverySpan(settings.delivery.zones)) return null;
   const { fee, freeThreshold } = settings.delivery;
   const isFree = free || fee === 0 || (freeThreshold != null && price >= freeThreshold);
   return (
@@ -328,8 +329,6 @@ function DeliveryLine({ lang, settings, free, price }: { lang: Lang; settings: P
       <IconTruck className="mt-0.5 h-5 w-5 shrink-0 text-sea" />
       <span>
         {isFree ? <strong className="text-olive">{t.buy.freeDelivery}</strong> : <>{t.buy.delivery} <span className="price-nums ltr-nums">{formatTND(fee, lang)}</span></>}
-        {" · "}
-        {deliveryRangeLabel(span.minDays, span.maxDays, lang)}
       </span>
     </p>
   );

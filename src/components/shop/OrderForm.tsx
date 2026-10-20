@@ -14,8 +14,7 @@ import { formatTND } from "@/lib/money";
 import { formatPhone, normalizePhone } from "@/lib/phone";
 import { removeOrdered } from "@/lib/client/cart";
 import { GOVERNORATES, governorateLabel } from "@/lib/governorates";
-import { deliveryRangeLabel, deliverySpan } from "@/lib/delivery";
-import { IconCartPlus, IconCash, IconCheck, IconChevronDown, IconHome, IconPhone, IconPin, IconShield, IconTruck, IconUser, IconWhatsApp } from "./Icons";
+import { IconCartPlus, IconChevronDown, IconPhone, IconShield, IconTruck, IconWhatsApp } from "./Icons";
 
 export type OrderLine = { productId: string; variantId: string | null; offerId: string | null; qty: number };
 type Form = { name: string; phone: string; governorate: string; address: string };
@@ -230,7 +229,7 @@ export function OrderForm(props: Props) {
     address: f.address.trim().length < 4,
   };
   const show = (k: keyof typeof problems) => Boolean((touched[k] && problems[k]) || serverBad.includes(k));
-  /** Rightly filled, once left (or kept from the last order): the field says so with a green tick. */
+  /** Rightly filled, once left (or kept from the last order): the field says so with a green border. */
   const good = (k: keyof typeof problems) => Boolean(f[k].trim() && !problems[k] && !serverBad.includes(k) && (touched[k] || edits[k] === undefined));
   const missing = (Object.keys(problems) as (keyof typeof problems)[]).filter((k) => problems[k] || serverBad.includes(k));
   const labels = { name: t.buy.name, phone: t.buy.phone, governorate: t.buy.governorate, address: t.buy.address };
@@ -253,7 +252,8 @@ export function OrderForm(props: Props) {
     }
     const bad = (Object.keys(problems) as (keyof typeof problems)[]).filter((k) => problems[k]);
     if (bad.length) {
-      setTouched(Object.fromEntries(bad.map((k) => [k, true])));
+      // Added to what was already left: the fields filled before keep their green.
+      setTouched((x) => ({ ...x, ...Object.fromEntries(bad.map((k) => [k, true])) }));
       setTried(true);
       reveal(id(bad[0]));
       return;
@@ -335,8 +335,6 @@ export function OrderForm(props: Props) {
   const price = priced ? quote.subtotal : (pagePrice ?? 0);
   // The basket has no price of its own: "Un instant…" until the server answers.
   const waiting = !priced && pagePrice == null;
-  // The governorate's own delay once it is chosen; before that, the shortest to the longest the shop set.
-  const delivery = (priced ? quote.delivery : null) ?? deliverySpan(settings.delivery.zones);
   const discount = priced ? quote.discount : 0;
   // Free delivery is often known before the governorate: an offer, a promo code, or the shop's threshold.
   const promoFree = Boolean(priced && quote.promo?.result.ok && quote.promo.result.freeDelivery);
@@ -351,37 +349,31 @@ export function OrderForm(props: Props) {
   const shopPhone = normalizePhone(settings.shop.phone);
 
   return (
-    // A container: the fields go two by two only when the form itself is very wide; one column reads and fills faster.
+    // A container: the fields go two by two as soon as two fit (a short form to the eye, as on the owner's reference shop); one column on the narrowest phones.
     <form id={props.formId} onSubmit={submit} noValidate className="@container flex flex-col gap-4">
-      {/* The four fields in one card: its title, the promise that nothing is paid now, then each field with its name, a star when it is needed and an icon.
+      {/* The four fields in one card: its title, then each field with its name and a star when it is needed.
           Where the form already sits in a sheet (quick buy) or a framed panel (the basket from tablet width), the card does not draw a second frame. */}
       <section className={origin === "quick" ? "border-t border-line pt-5" : origin === "cart" ? `${CARD} md:rounded-none md:border-0 md:p-0 md:shadow-none` : `${CARD} @md:p-5`} aria-labelledby={id("info-title")}>
-        <h3 id={id("info-title")} className="text-[20px] font-bold leading-tight text-ink">{t.buy.deliveryInfo}</h3>
-        <p className="mt-1.5 flex items-start gap-1.5 text-[15px] leading-snug text-olive">
-          <IconCash className="mt-px h-5 w-5 shrink-0" />
-          {t.buy.payLater}
-        </p>
-        <fieldset className="mt-4 grid min-w-0 items-start gap-x-3 gap-y-4 @2xl:grid-cols-2" onClick={start} onKeyDown={start}>
+        <h3 id={id("info-title")} className="text-[17px] font-bold leading-tight text-ink">{t.buy.deliveryInfo}</h3>
+        {/* The second column (phone, address) a little wider: the eight digits after +216 fit on a 360 px phone. */}
+        <fieldset className="mt-3 grid min-w-0 items-start gap-x-2.5 gap-y-3 @2xs:grid-cols-[minmax(0,1fr)_minmax(0,1.15fr)]" onClick={start} onKeyDown={start}>
           <legend className="sr-only">{t.buy.step2}</legend>
           <Field id={id("name")} label={t.buy.name} required={t.buy.required} error={show("name") ? t.buy.nameError : null}>
-            <Boxed icon={<IconUser />} bad={show("name")} good={good("name")}>
-              <input id={id("name")} value={f.name} onChange={(e) => update("name", e.target.value)} onBlur={blur("name")} onKeyDown={next(id("phone"))} enterKeyHint="next" autoComplete="name" autoCapitalize="words" autoCorrect="off" spellCheck={false} className={`${inputCls(show("name"))} ${good("name") ? "pe-11" : "pe-4"}`} aria-required="true" aria-invalid={show("name")} aria-describedby={show("name") ? id("name-msg") : undefined} data-testid="name" />
+            <Boxed>
+              <input id={id("name")} value={f.name} onChange={(e) => update("name", e.target.value)} onBlur={blur("name")} onKeyDown={next(id("phone"))} enterKeyHint="next" autoComplete="name" autoCapitalize="words" autoCorrect="off" spellCheck={false} className={`${inputCls(show("name"), good("name"))} pe-3.5`} aria-required="true" aria-invalid={show("name")} aria-describedby={show("name") ? id("name-msg") : undefined} data-testid="name" />
             </Boxed>
           </Field>
           <Field id={id("phone")} label={t.buy.phone} required={t.buy.required} error={show("phone") ? (f.phone.trim() ? t.checkout.phoneInvalid : t.buy.phoneRequired) : null}>
-            {/* Left to right like the number itself: the icon, +216, then the digits. */}
-            <div className={`${FIELD_BOX} flex items-stretch overflow-hidden transition focus-within:bg-white focus-within:ring-2 ${show("phone") ? `${BAD_BOX} focus-within:ring-danger/20` : `${OK_BOX} focus-within:border-sea focus-within:ring-sea/20`}`} dir="ltr">
-              <span className={`flex items-center gap-2 border-e border-line ps-4 pe-3 text-[17px] ${show("phone") ? "text-danger" : "text-muted"}`}>
-                <IconPhone className="h-5 w-5" />
-                +216
-              </span>
-              <input id={id("phone")} type="tel" value={f.phone} onChange={(e) => update("phone", e.target.value)} onBlur={blur("phone")} onKeyDown={next(id("governorate"))} enterKeyHint="next" inputMode="tel" autoComplete="tel-national" placeholder="22 123 456" maxLength={16} className="min-w-0 flex-1 bg-transparent px-3 text-[18px] tracking-wide outline-none placeholder:text-muted" aria-required="true" aria-invalid={show("phone")} aria-describedby={show("phone") ? id("phone-msg") : undefined} data-testid="phone" />
-              {good("phone") && <IconCheck className="me-4 h-5 w-5 shrink-0 self-center text-olive" />}
+            {/* Left to right like the number itself: +216, then the digits. */}
+            <div className={`${FIELD_BOX} flex items-stretch overflow-hidden transition focus-within:bg-white focus-within:ring-2 ${show("phone") ? `${BAD_BOX} focus-within:ring-danger/20` : `${OK_BOX} ${good("phone") ? GOOD_BORDER : ""} focus-within:border-sea focus-within:ring-sea/20`}`} dir="ltr">
+              {/* Narrow, so the eight digits still fit when two fields share a line on a 360 px phone. */}
+              <span className={`flex items-center border-e border-line ps-2.5 pe-2 text-[14px] ${show("phone") ? "text-danger" : "text-muted"}`}>+216</span>
+              <input id={id("phone")} type="tel" value={f.phone} onChange={(e) => update("phone", e.target.value)} onBlur={blur("phone")} onKeyDown={next(id("governorate"))} enterKeyHint="next" inputMode="tel" autoComplete="tel-national" placeholder="22 123 456" maxLength={16} className="min-w-0 flex-1 bg-transparent ps-2 pe-1 text-[16px] outline-none placeholder:text-muted" aria-required="true" aria-invalid={show("phone")} aria-describedby={show("phone") ? id("phone-msg") : undefined} data-testid="phone" />
             </div>
           </Field>
           <Field id={id("governorate")} label={t.buy.governorate} required={t.buy.required} error={show("governorate") ? t.buy.govError : null}>
-            <Boxed icon={<IconPin />} bad={show("governorate")} good={good("governorate")} select>
-              <select id={id("governorate")} value={f.governorate} onChange={(e) => update("governorate", e.target.value)} onBlur={blur("governorate")} autoComplete="address-level1" className={`${inputCls(show("governorate"))} appearance-none ${good("governorate") ? "pe-20" : "pe-11"} ${f.governorate ? "" : "text-muted"}`} aria-required="true" aria-invalid={show("governorate")} aria-describedby={show("governorate") ? id("governorate-msg") : undefined} data-testid="governorate">
+            <Boxed select>
+              <select id={id("governorate")} value={f.governorate} onChange={(e) => update("governorate", e.target.value)} onBlur={blur("governorate")} autoComplete="address-level1" className={`${inputCls(show("governorate"), good("governorate"))} appearance-none pe-9 ${f.governorate ? "" : "text-muted"}`} aria-required="true" aria-invalid={show("governorate")} aria-describedby={show("governorate") ? id("governorate-msg") : undefined} data-testid="governorate">
                 <option value="">{t.buy.chooseGov}</option>
                 {GOVERNORATES.map((g) => (
                   <option key={g.id} value={g.id} disabled={settings.delivery.zones[g.id]?.enabled === false} className="text-ink">
@@ -393,8 +385,8 @@ export function OrderForm(props: Props) {
           </Field>
           <Field id={id("address")} label={t.buy.address} required={t.buy.required} error={show("address") ? t.buy.addressError : null}>
             {/* One line like the others, growing with what is typed so the whole address can be read again. Block, so no gap is left under it. */}
-            <Boxed icon={<IconHome />} bad={show("address")} good={good("address")} top>
-              <textarea id={id("address")} value={f.address} onChange={(e) => update("address", e.target.value)} onBlur={blur("address")} onKeyDown={next(id("submit"))} enterKeyHint="done" autoComplete="street-address" spellCheck={false} rows={1} maxLength={ADDRESS_MAX} placeholder={t.buy.addressPh} className={`${inputCls(show("address"))} ${good("address") ? "pe-11" : "pe-4"} block h-auto max-h-40 min-h-[56px] resize-none py-[15px] leading-snug [field-sizing:content]`} aria-required="true" aria-invalid={show("address")} aria-describedby={show("address") ? id("address-msg") : undefined} data-testid="address" />
+            <Boxed>
+              <textarea id={id("address")} value={f.address} onChange={(e) => update("address", e.target.value)} onBlur={blur("address")} onKeyDown={next(id("submit"))} enterKeyHint="done" autoComplete="street-address" spellCheck={false} rows={1} maxLength={ADDRESS_MAX} placeholder={t.buy.addressPh} className={`${inputCls(show("address"), good("address"))} pe-3.5 block h-auto max-h-40 min-h-[48px] resize-none py-[11px] leading-snug [field-sizing:content]`} aria-required="true" aria-invalid={show("address")} aria-describedby={show("address") ? id("address-msg") : undefined} data-testid="address" />
             </Boxed>
           </Field>
         </fieldset>
@@ -428,7 +420,7 @@ export function OrderForm(props: Props) {
             aria-label={t.checkout.promo}
             // Asked for with the link just tapped: the keyboard comes up at once.
             autoFocus
-            className="h-12 min-w-0 flex-1 rounded-2xl border border-field bg-cream px-4 text-[17px] uppercase outline-none transition placeholder:text-muted focus:border-sea focus:bg-white focus:ring-2 focus:ring-sea/20"
+            className="h-12 min-w-0 flex-1 rounded-2xl border border-field bg-white px-3.5 text-[16px] uppercase outline-none transition placeholder:text-muted focus:border-sea focus:bg-white focus:ring-2 focus:ring-sea/20"
             dir="ltr"
             autoCapitalize="characters"
             autoComplete="off"
@@ -443,7 +435,7 @@ export function OrderForm(props: Props) {
       {promo && promoError && <p className="-mt-2 text-[15px] text-danger">{promoError}</p>}
 
       {/* ------------------------------------------------ summary: its own soft card, the total in the shop's blue */}
-      <dl className="flex flex-col gap-2 rounded-[24px] bg-sand/70 p-4 text-[16px] @md:px-5">
+      <dl className="flex flex-col gap-2 rounded-[24px] bg-sand/70 p-4 text-[15px] @md:px-5">
         <div className="flex justify-between gap-3 text-ink-2">
           <dt>{props.priceLabel}</dt>
           <dd className="shrink-0 whitespace-nowrap price-nums ltr-nums">{waiting ? <span className="text-muted">{t.cart.loading}</span> : formatTND(price, lang)}</dd>
@@ -455,16 +447,12 @@ export function OrderForm(props: Props) {
           </div>
         )}
         <div className="flex justify-between gap-3 text-ink-2">
-          {/* The delay on its own line under the word, rather than its last word alone on a second line. */}
-          <dt>
-            {t.buy.delivery}
-            {delivery && <span className="block text-[15px] text-muted">{deliveryRangeLabel(delivery.minDays, delivery.maxDays, lang)}</span>}
-          </dt>
+          <dt>{t.buy.delivery}</dt>
           <dd className="shrink-0 whitespace-nowrap price-nums ltr-nums">{freeKnown ? <span className="font-bold text-olive">{t.product.free}</span> : formatTND(deliveryShown, lang)}</dd>
         </div>
         <div className="flex items-baseline justify-between gap-3 border-t border-line pt-3">
-          <dt className="text-[19px] font-bold text-ink">{t.buy.total}</dt>
-          <dd className="shrink-0 whitespace-nowrap text-end text-[24px] font-extrabold text-sea" data-testid="total">
+          <dt className="text-[17px] font-bold text-ink">{t.buy.total}</dt>
+          <dd className="shrink-0 whitespace-nowrap text-end text-[21px] font-extrabold text-sea" data-testid="total">
             {waiting ? (
               <span className="text-[17px] font-normal text-muted">{t.cart.loading}</span>
             ) : (
@@ -485,7 +473,7 @@ export function OrderForm(props: Props) {
         </p>
       )}
 
-      {/* The other promise, read just before the button (paying on delivery is said at the top of the card). */}
+      {/* The promise read just before the button. */}
       {settings.delivery.openBeforePaying && (
         <p className="flex items-center justify-center gap-1.5 text-[15px] text-ink-2">
           <IconShield className="h-5 w-5 shrink-0 text-sea" />
@@ -557,8 +545,8 @@ export function OrderForm(props: Props) {
 /** A field's name, with a red star when it must be filled (its word for screen readers), then the field and its error. */
 export function Field({ id, label, required, error, children }: { id: string; label: string; required?: string; error?: string | null; children: React.ReactNode }) {
   return (
-    <div className="flex min-w-0 flex-col gap-1.5">
-      <label htmlFor={id} className="ps-1 text-[16px] font-bold text-ink">
+    <div className="flex min-w-0 flex-col gap-1">
+      <label htmlFor={id} className="ps-1 text-[14px] font-semibold text-ink">
         {label}
         {required && (
           <>
@@ -569,7 +557,7 @@ export function Field({ id, label, required, error, children }: { id: string; la
       </label>
       {children}
       {error && (
-        <p id={`${id}-msg`} className="ps-1 text-[15px] font-bold text-danger">
+        <p id={`${id}-msg`} className="ps-1 text-[14px] font-semibold leading-snug text-danger">
           {error}
         </p>
       )}
@@ -579,27 +567,26 @@ export function Field({ id, label, required, error, children }: { id: string; la
 
 /** The white card around the fields, as in the owner's example. */
 const CARD = "rounded-[24px] border border-line bg-white p-4 shadow-[0_10px_30px_-22px_rgb(15_23_42/.45)]";
-/** The soft grey field of the order form; white with a blue ring while typing in it, pink with a red border when it is wrong.
- *  The grey alone hardly shows on white: the border keeps the 3:1 of everything to fill in, so the box reads as a box. */
-const FIELD_BOX = "h-[56px] w-full min-w-0 rounded-2xl border";
-const OK_BOX = "border-field bg-cream";
+/** The white field of the order form, as on the owner's reference shop; a blue ring while typing in it, pink with a red border when it is wrong.
+ *  The border keeps the 3:1 of everything to fill in, so the box reads as a box on white. */
+const FIELD_BOX = "h-12 w-full min-w-0 rounded-2xl border";
+const OK_BOX = "border-field bg-white";
+/** Rightly filled: a green border and a faint green tint rather than a tick, which would take room from the text. */
+const GOOD_BORDER = "!border-olive !bg-[#f3f9f5]";
 /** Wrong: pink with a red border, and its focus ring red too rather than the shop's blue around the red. */
 const BAD_BOX = "border-danger bg-[#fff6f5] [--focus-ring:var(--color-danger)]";
 
-/** Without its end padding: each field leaves room for what sits at its end (tick, arrow). Placeholders in muted: 4.5:1 on the grey. */
-export function inputCls(invalid: boolean) {
-  return `${FIELD_BOX} ps-12 text-[17px] text-ink outline-none transition placeholder:text-muted focus:bg-white focus:ring-2 ${invalid ? `${BAD_BOX} focus:ring-danger/20` : `${OK_BOX} focus:border-sea focus:ring-sea/20`}`;
+/** Without its end padding: a list leaves room for its arrow. Placeholders in muted: 4.5:1 on white. */
+export function inputCls(invalid: boolean, good = false) {
+  return `${FIELD_BOX} ps-3.5 text-[16px] text-ink outline-none transition placeholder:text-muted focus:bg-white focus:ring-2 ${invalid ? `${BAD_BOX} focus:ring-danger/20` : `${OK_BOX} ${good ? GOOD_BORDER : ""} focus:border-sea focus:ring-sea/20`}`;
 }
 
-/** A field with its icon at the start, and a green tick at the end once it is rightly filled (before the arrow of a list). */
-function Boxed({ icon, bad, good, top, select, children }: { icon: React.ReactElement<{ className?: string }>; bad: boolean; good?: boolean; top?: boolean; select?: boolean; children: React.ReactNode }) {
-  const at = top ? "top-[18px]" : "top-1/2 -translate-y-1/2";
+/** A field, with the arrow at the end of a list. No icon at the start: two fields share a line. */
+function Boxed({ select, children }: { select?: boolean; children: React.ReactNode }) {
   return (
     <div className="relative">
       {children}
-      <span className={`pointer-events-none absolute start-4 [&>svg]:h-5 [&>svg]:w-5 ${at} ${bad ? "text-danger" : "text-muted"}`}>{icon}</span>
-      {good && <IconCheck className={`pointer-events-none absolute h-5 w-5 text-olive ${select ? "end-11" : "end-4"} ${at}`} />}
-      {select && <IconChevronDown className="pointer-events-none absolute end-4 top-1/2 h-5 w-5 -translate-y-1/2 text-ink-2" />}
+      {select && <IconChevronDown className="pointer-events-none absolute end-3 top-1/2 h-5 w-5 -translate-y-1/2 text-ink-2" />}
     </div>
   );
 }

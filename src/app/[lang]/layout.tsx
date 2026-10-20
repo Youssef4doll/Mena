@@ -1,6 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import { notFound } from "next/navigation";
-import { Atkinson_Hyperlegible_Next, IBM_Plex_Sans_Arabic } from "next/font/google";
+import { Cairo } from "next/font/google";
 import "../globals.css";
 import { dict, isLang, LOCALES, type Lang } from "@/i18n";
 import { getSettings } from "@/lib/settings";
@@ -15,10 +15,9 @@ import { normalizePhone } from "@/lib/phone";
 import { deliversEverywhere } from "@/lib/governorates";
 import { formatTND } from "@/lib/money";
 
-// Atkinson Hyperlegible: letters that cannot be mistaken for one another (I/l/1, O/0), for readers with low vision.
-const body = Atkinson_Hyperlegible_Next({ subsets: ["latin"], variable: "--font-body", display: "swap" });
-// Preloaded: Arabic is the shop's main language, and the name and price are the first things drawn.
-const plexAr = IBM_Plex_Sans_Arabic({ subsets: ["arabic"], weight: ["400", "700"], variable: "--font-plex-ar", display: "swap" });
+// Cairo for both scripts, as on the owner's reference shop: compact, round Arabic and Latin letters
+// that fit two fields on a line. One variable font file per script; Arabic, the main language, preloaded.
+const body = Cairo({ subsets: ["arabic", "latin"], variable: "--font-body", display: "swap" });
 
 export function generateStaticParams() {
   return LOCALES.map((lang) => ({ lang }));
@@ -57,7 +56,7 @@ export default async function ShopLayout({ children, params }: LayoutProps<"/[la
   ];
 
   return (
-    <html lang={lang === "ar" ? "ar-TN" : "fr-TN"} dir={t.dir} className={`shop-root ${body.variable} ${plexAr.variable}`}>
+    <html lang={lang === "ar" ? "ar-TN" : "fr-TN"} dir={t.dir} className={`shop-root ${body.variable}`}>
       <body className="min-h-dvh">
         <Header lang={lang} categories={cats} announcement={announcement} phone={normalizePhone(settings.shop.phone)} />
         <main>{children}</main>

@@ -50,10 +50,10 @@
   --color-tint-5: #eeeaf7;
   --color-tint-6: #e4f3f0;
 
-  /* Atkinson Hyperlegible: drawn for readers with low vision. Headings use it too. */
-  --font-display: var(--font-body), var(--font-plex-ar), ui-sans-serif, system-ui, sans-serif;
-  --font-sans: var(--font-body), var(--font-plex-ar), ui-sans-serif, system-ui, sans-serif;
-  --font-arabic: var(--font-plex-ar), var(--font-body), ui-sans-serif, system-ui, sans-serif;
+  /* --font-body: Cairo in the shop, Atkinson Hyperlegible in the back office. Headings use it too. */
+  --font-display: var(--font-body), ui-sans-serif, system-ui, sans-serif;
+  --font-sans: var(--font-body), ui-sans-serif, system-ui, sans-serif;
+  --font-arabic: var(--font-body), ui-sans-serif, system-ui, sans-serif;
 
   --radius-card: 1rem;
   --shadow-soft: 0 1px 2px rgb(23 24 28 / 0.04), 0 8px 24px -12px rgb(23 24 28 / 0.12);
@@ -121,16 +121,18 @@ body {
   font-variant-numeric: tabular-nums;
 }
 
-/* Prices without Atkinson's slashed zero ("69,000", not "69,ØØØ"). Phone
-   numbers and order refs keep it: there, 0 must not be read as O. */
+/* Prices without the back office's Atkinson slashed zero ("69,000", not "69,ØØØ").
+   Phone numbers and order refs keep it: there, 0 must not be read as O. */
 .price-nums {
   font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
 }
-/* In Arabic, Plex draws both the digits (no slashed zero) and the "د.ت", and an
-   amount is laid out right to left like the text around it: the number first,
-   then "د.ت", the way a range ("من 7,000 د.ت إلى 8,000 د.ت") already reads. */
+/* The shop's Cairo has a plain zero: prices are drawn in it like the text around them. */
+.shop-root .price-nums {
+  font-family: var(--font-body), ui-sans-serif, system-ui, sans-serif;
+}
+/* In Arabic, an amount is laid out right to left like the text around it: the
+   number first, then "د.ت", the way a range ("من 7,000 د.ت إلى 8,000 د.ت") already reads. */
 [dir="rtl"] .price-nums {
-  font-family: var(--font-plex-ar), ui-sans-serif, system-ui, sans-serif;
   direction: rtl;
   unicode-bidi: isolate;
 }
