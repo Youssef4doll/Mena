@@ -23,6 +23,7 @@ export default async function PanelLayout({ children }: { children: React.ReactN
     { href: "/admin", label: "Tableau de bord" },
     { href: "/admin/commandes", label: "Commandes", badge: pending },
     { href: "/admin/analytics", label: "Analytics" },
+    { href: "/admin/publicites", label: "Publicités" },
     { href: "/admin/depenses", label: "Dépenses pub" },
     { href: "/admin/paniers", label: "Non terminées" },
     { href: "/admin/produits", label: "Produits" },
