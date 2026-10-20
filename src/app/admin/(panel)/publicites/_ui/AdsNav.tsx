@@ -34,6 +34,8 @@ export const AD_TABS = [
 export const NO_PERIOD: string[] = ["importer"];
 
 const PERIOD_KEYS = ["p", "from", "to"];
+/** The kit's input at a date's width (its own w-full would stretch it to the row). */
+const DATE = input.replace("w-full", "w-[150px]");
 
 function tabOf(pathname: string): string {
   const rest = pathname.startsWith(BASE) ? pathname.slice(BASE.length).replace(/^\//, "") : "";
@@ -93,8 +95,9 @@ export function AdsNav() {
               <span className="hidden sm:inline" aria-hidden>{x.label}</span>
             </Link>
           ))}
-          <details className="group" open={active === "custom" || undefined}>
-            <summary className={`flex min-h-10 cursor-pointer list-none items-center rounded-full border px-3 text-[13px] ${active === "custom" ? "border-sea bg-sea-soft font-medium text-sea-2" : "border-line bg-white text-ink-2"}`}>
+          {/* Open, the dates take a line of their own: inside the row of presets they would stretch it. */}
+          <details className="group open:basis-full" open={active === "custom" || undefined}>
+            <summary className={`inline-flex min-h-10 cursor-pointer list-none items-center rounded-full border px-3 text-[13px] [&::-webkit-details-marker]:hidden ${active === "custom" ? "border-sea bg-sea-soft font-medium text-sea-2" : "border-line bg-white text-ink-2"}`}>
               <span className="sm:hidden">Dates</span>
               <span className="hidden sm:inline">Autres dates</span>
             </summary>
@@ -103,8 +106,14 @@ export function AdsNav() {
                 <input key={k} type="hidden" name={k} value={v} />
               ))}
               <input type="hidden" name="p" value="custom" />
-              <input type="date" name="from" defaultValue={sp.get("from") ?? ""} className={`${input} w-[150px]`} aria-label="Du" required />
-              <input type="date" name="to" defaultValue={sp.get("to") ?? ""} className={`${input} w-[150px]`} aria-label="Au (inclus)" required />
+              <label className="flex items-center gap-1.5 text-xs text-muted">
+                du
+                <input type="date" name="from" defaultValue={sp.get("from") ?? ""} className={DATE} required />
+              </label>
+              <label className="flex items-center gap-1.5 text-xs text-muted">
+                au
+                <input type="date" name="to" defaultValue={sp.get("to") ?? ""} className={DATE} required />
+              </label>
               <button className={btn.ghost}>Voir</button>
             </form>
           </details>

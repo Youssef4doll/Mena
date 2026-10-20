@@ -700,7 +700,7 @@ function tests(input: BriefInput, list: Angle[], c: Ceilings, hero: BriefOffer |
   const pack = hero ? c.rows.find((r) => r.key === hero.id) : null;
   const out: string[] = [];
   if (control) out.push(`Témoin : « ${adLabel(control)} » (${control.orders} commandes pour ${control.visits} visites de la fiche). Chaque nouvelle publicité se compare à elle.`);
-  out.push("3 à 5 publicités dans le même ensemble, même budget, une seule différence chacune. L'accroche d'abord : ce sont les 3 premières secondes qui décident.");
+  out.push("3 à 5 publicités dans un même ensemble de test, une seule différence chacune. L'accroche d'abord : ce sont les 3 premières secondes qui décident. La plateforme donne plus de budget à celle qu'elle préfère : jugez chacune sur son coût par livrée, pas sur sa part du budget.");
   out.push(`Nommez chaque publicité comme son angle (${list.slice(0, 3).map((a) => a.adName).join(", ")}) et utilisez le lien avec le code du nom de la publicité : l'onglet Créatives les compare tout seul.`);
   if (unit?.maxCostPerDelivered != null && unit.maxCpa != null) {
     out.push(`À l'unité, une commande livrée peut coûter au plus ${tnd(unit.maxCostPerDelivered)} en publicité, une commande passée ${tnd(unit.maxCpa)} (estimation d'après la confirmation et la livraison de ce produit, rapprochées de celles de la boutique).`);
@@ -717,7 +717,7 @@ function tests(input: BriefInput, list: Angle[], c: Ceilings, hero: BriefOffer |
     );
   }
   out.push("Dans Ads Manager, lisez le taux d'accroche (lectures de 3 secondes ÷ impressions) et le CTR lien. Ici, lisez les commandes par visite, la confirmation, la livraison et le coût par commande livrée.");
-  out.push("Une publicité qui fait commander mais dont les commandes ne sont pas confirmées attire des curieux : coupez-la, même si son coût par commande est bas.");
+  out.push("Une publicité qui fait commander mais dont les commandes ne sont pas confirmées attire des curieux : son coût par commande bas ne compte pas, seul son coût par commande livrée décide.");
   return out;
 }
 

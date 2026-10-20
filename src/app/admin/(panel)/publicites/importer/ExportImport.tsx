@@ -25,6 +25,8 @@ const PLATFORM_LABEL = { meta: "Meta", tiktok: "TikTok" } as const;
 type Known = { range: string; campaigns: Set<string>; ads: Set<string> } | { range: string; error: string };
 
 const int = (v: number | null) => (v == null ? "—" : v.toLocaleString("fr-FR"));
+/** "2026-09-03" → "3/9/2026", the way the rest of the back office writes a day. */
+const dayText = (d: string | null) => (d ? d.split("-").reverse().map((x, i) => (i < 2 ? String(Number(x)) : x)).join("/") : "—");
 const plural = (n: number, one: string, many: string) => `${n.toLocaleString("fr-FR")} ${n > 1 ? many : one}`;
 
 export function ExportImport() {
@@ -117,8 +119,11 @@ export function ExportImport() {
             </button>
           </div>
         </div>
-        <details className="mt-3 rounded-xl border border-line" open={exp?.needs != null}>
-          <summary className="flex min-h-10 cursor-pointer items-center px-3 text-sm font-medium text-ink">Source et devise</summary>
+        <details className="group mt-3 rounded-xl border border-line" open={exp?.needs != null}>
+          <summary className="flex min-h-10 cursor-pointer list-none items-center justify-between gap-2 px-3 text-sm font-medium text-ink [&::-webkit-details-marker]:hidden">
+            Source et devise
+            <span aria-hidden className="text-muted transition-transform group-open:rotate-180">▾</span>
+          </summary>
           <div className="grid gap-3 px-3 pb-3 sm:grid-cols-3">
             <label className={label}>
               Source des lignes
@@ -220,7 +225,7 @@ function Preview({ exp, known, loadingKnown, saved }: { exp: PlatformExport; kno
         <div><dt className="text-xs text-muted">Plateforme</dt><dd className="font-semibold text-ink">{exp.platform ? PLATFORM_LABEL[exp.platform] : "non reconnue"}</dd></div>
         <div><dt className="text-xs text-muted">Source enregistrée</dt><dd className="font-semibold text-ink">{exp.source}</dd></div>
         <div><dt className="text-xs text-muted">Dépense</dt><dd className="font-semibold tabular-nums text-ink">{formatTND(exp.total.amount)}</dd><dd className="text-xs text-muted">{exp.currency !== "TND" ? `converti de ${exp.currency}` : "TND"}</dd></div>
-        <div><dt className="text-xs text-muted">Jours couverts</dt><dd className="font-semibold tabular-nums text-ink">{exp.total.from === exp.total.to ? exp.total.from : `${exp.total.from} → ${exp.total.to}`}</dd><dd className="text-xs text-muted">{plural(exp.rows.length, "ligne", "lignes")}</dd></div>
+        <div><dt className="text-xs text-muted">Jours couverts</dt><dd className="font-semibold tabular-nums text-ink">{exp.total.from === exp.total.to ? dayText(exp.total.from) : `${dayText(exp.total.from)} → ${dayText(exp.total.to)}`}</dd><dd className="text-xs text-muted">{plural(exp.rows.length, "ligne", "lignes")}</dd></div>
       </dl>
 
       {exp.warnings.length > 0 && (
@@ -231,8 +236,8 @@ function Preview({ exp, known, loadingKnown, saved }: { exp: PlatformExport; kno
         </ul>
       )}
 
-      <details className="mt-3 text-sm">
-        <summary className="cursor-pointer text-xs text-muted">Colonnes lues</summary>
+      <details className="mt-1 text-sm">
+        <summary className="cursor-pointer py-3 text-xs text-muted">Colonnes lues</summary>
         <ul className="mt-1 grid gap-x-4 text-xs text-ink-2 sm:grid-cols-2">
           {Object.entries(exp.columns).map(([field, col]) => (
             <li key={field}><span className="text-muted">{FIELD_LABEL[field] ?? field} :</span> {col}</li>
@@ -240,8 +245,8 @@ function Preview({ exp, known, loadingKnown, saved }: { exp: PlatformExport; kno
         </ul>
       </details>
       {exp.skipped.length > 0 && (
-        <details className="mt-2 text-sm">
-          <summary className="cursor-pointer text-xs text-muted">{plural(exp.skipped.length, "ligne ignorée", "lignes ignorées")}</summary>
+        <details className="text-sm">
+          <summary className="cursor-pointer py-3 text-xs text-muted">{plural(exp.skipped.length, "ligne ignorée", "lignes ignorées")}</summary>
           <ul className="mt-1 max-h-48 overflow-auto text-xs text-ink-2">
             {exp.skipped.map((s) => (
               <li key={s.line}>Ligne {s.line} : {s.reason}</li>
@@ -290,7 +295,7 @@ function Preview({ exp, known, loadingKnown, saved }: { exp: PlatformExport; kno
           <tbody className="divide-y divide-line tabular-nums">
             {exp.rows.slice(0, PREVIEW_ROWS).map((r) => (
               <tr key={`${r.line}`}>
-                <td className="whitespace-nowrap py-1.5 pe-3">{r.day}{r.days > 1 && <span className="text-muted"> +{r.days - 1} j</span>}</td>
+                <td className="whitespace-nowrap py-1.5 pe-3">{dayText(r.day)}{r.days > 1 && <span className="text-muted"> +{r.days - 1} j</span>}</td>
                 <td className="whitespace-nowrap px-2">{r.campaign ?? "—"}</td>
                 <td className="whitespace-nowrap px-2">{r.adSet ?? "—"}</td>
                 <td className="whitespace-nowrap px-2">{r.ad ?? "—"}{r.lines > 1 && <span className="block text-[11px] text-muted">{r.lines} lignes additionnées</span>}</td>

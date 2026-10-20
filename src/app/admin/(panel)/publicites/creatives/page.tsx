@@ -17,12 +17,16 @@ import { InsightList } from "../_ui/Insight";
 export const metadata = { title: "Créatives · Publicités" };
 
 /** What the ads can be compared on: what decides (the cost per delivered order), then the rates that say why. */
+/** "1 visite", "7 097 visites". */
+const count = (n: number, one: string, many: string) => `${fmt(n, "int")} ${n > 1 ? many : one}`;
+
 const METRICS: Record<AdMetric, { label: string; unit: KpiUnit; n: (n: number) => string; interval: string; best: string }> = {
-  cost: { label: "Coût par livrée", unit: "money", n: (n) => `${fmt(Math.round(n * 10) / 10, "int")} livrée(s), projection comprise`, interval: "90 %", best: "la moins chère par livrée" },
-  orderRate: { label: "Taux de commande", unit: "rate", n: (n) => `${fmt(n, "int")} visite(s)`, interval: "95 %", best: "celle qui fait le plus commander" },
-  ctr: { label: "CTR lien", unit: "rate", n: (n) => `${fmt(n, "int")} affichage(s)`, interval: "95 %", best: "celle qui fait le plus cliquer" },
-  confirmRate: { label: "Confirmation", unit: "rate", n: (n) => `${fmt(n, "int")} commande(s) appelée(s)`, interval: "95 %", best: "celle dont les commandes se confirment le mieux" },
-  deliveryRate: { label: "Livraison", unit: "rate", n: (n) => `${fmt(n, "int")} colis arrivé(s) au bout`, interval: "95 %", best: "celle dont les colis sont le mieux acceptés" },
+  // The cost is read on projected deliveries, which are rarely whole: "environ 59 livrées".
+  cost: { label: "Coût par livrée", unit: "money", n: (n) => (Number.isInteger(n) ? count(n, "livrée", "livrées") : `environ ${count(Math.round(n), "livrée", "livrées")}, projection comprise`), interval: "90 %", best: "la moins chère par livrée" },
+  orderRate: { label: "Taux de commande", unit: "rate", n: (n) => count(n, "visite", "visites"), interval: "95 %", best: "celle qui fait le plus commander" },
+  ctr: { label: "CTR lien", unit: "rate", n: (n) => count(n, "affichage", "affichages"), interval: "95 %", best: "celle qui fait le plus cliquer" },
+  confirmRate: { label: "Confirmation", unit: "rate", n: (n) => count(n, "commande appelée", "commandes appelées"), interval: "95 %", best: "celle dont les commandes se confirment le mieux" },
+  deliveryRate: { label: "Livraison", unit: "rate", n: (n) => count(n, "colis arrivé au bout", "colis arrivés au bout"), interval: "95 %", best: "celle dont les colis sont le mieux acceptés" },
 };
 const METRIC_KEYS = Object.keys(METRICS) as AdMetric[];
 
@@ -68,7 +72,10 @@ export default async function CreativesPage({ searchParams }: PageProps<"/admin/
   // Per campaign: the comparison, and the advice about its ads (the creative read first, then each ad's).
   const blocks = shown.map((g) => {
     const keys = new Set(g.rows.map((x) => x.key));
-    const insights = sortInsights([...creativeInsights(g.rows, costs, baseline), ...report.insights.filter((i) => i.key != null && keys.has(i.key))]);
+    const own = creativeInsights(g.rows, costs, baseline);
+    // The report also names each campaign's best ad: keep one copy.
+    const theirs = report.insights.filter((i) => i.key != null && keys.has(i.key) && !own.some((o) => o.key === i.key && o.title === i.title));
+    const insights = sortInsights([...own, ...theirs]);
     return { g, comps: compareAds(g.rows, metric, costs, baseline), insights };
   });
   const next = dedupe(blocks.flatMap((b) => b.insights.filter((i) => i.fix === "brief")));
@@ -109,7 +116,7 @@ export default async function CreativesPage({ searchParams }: PageProps<"/admin/
               Toutes
             </Link>
             {all.map((g) => (
-              <Link key={g.key} href={here(metric, g.key)} aria-current={only === g.key ? "true" : undefined} className={`flex min-h-10 max-w-full items-center rounded-full border px-3 text-[13px] ${only === g.key ? "border-sea bg-sea-soft font-medium text-sea-2" : "border-line bg-white text-ink-2"}`}>
+              <Link key={g.key} href={here(metric, g.key)} title={g.label} aria-current={only === g.key ? "true" : undefined} className={`flex min-h-10 max-w-full items-center rounded-full border px-3 text-[13px] ${only === g.key ? "border-sea bg-sea-soft font-medium text-sea-2" : "border-line bg-white text-ink-2"}`}>
                 <span className="truncate">{g.label}</span>
               </Link>
             ))}
@@ -191,8 +198,8 @@ function Comparison({ comps, metric, advice }: { comps: AdComparison[]; metric: 
                 <div className="min-w-0">
                   <p className="break-words text-[13px] font-medium text-ink">{c.label}</p>
                   <p className="text-xs text-muted">
-                    {valueText(c.value, m.unit)}
-                    {c.low != null && ` · entre ${valueText(c.low, m.unit)} et ${c.high == null ? "plus" : valueText(c.high, m.unit)}`}
+                    {m.label} : <span className="font-medium text-ink">{valueText(c.value, m.unit)}</span>
+                    {c.low != null && ` (entre ${valueText(c.low, m.unit)} et ${c.high == null ? "plus" : valueText(c.high, m.unit)})`}
                   </p>
                 </div>
                 <div className="flex shrink-0 items-center gap-1.5">
@@ -201,7 +208,7 @@ function Comparison({ comps, metric, advice }: { comps: AdComparison[]; metric: 
                       <Badge tone={fat.level === "clear" ? "warn" : "info"}>{fat.level === "clear" ? "S'use" : "Début d'usure"}</Badge>
                     </span>
                   )}
-                  {a && <VerdictBadge verdict={a.verdict} />}
+                  {a && <VerdictBadge verdict={a.verdict} ad />}
                 </div>
               </div>
               <IntervalBar value={c.value} low={c.low} high={c.high} max={scale} unit={m.unit} target={target} label={c.label} />

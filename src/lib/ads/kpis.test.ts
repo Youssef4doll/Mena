@@ -156,14 +156,17 @@ test("every KPI has a French label and a one-line explanation", () => {
   }
 });
 
-test("the account line sums the rows; a platform figure nobody has stays unknown", () => {
+test("the account line sums the rows; a platform count some spend lacks stays unknown", () => {
   const t = totalRow([mature, young]);
   assert.equal(t.key, "total");
   assert.equal(t.funnel.orders, 80);
   assert.equal(t.funnel.pending, 10);
   assert.equal(t.platform.spend, 510_000);
-  assert.equal(t.platform.impressions, 150_000, "only the rows that have it");
+  assert.equal(t.platform.impressions, null, "young spent without impressions: a CPM on part of them would be false");
+  assert.equal(kpis(t, costs, baseline).landingRate, null, "no landing rate from one row's clicks and every row's visits");
   assert.equal(totalRow([young]).platform.impressions, null);
+  const organic = row({ sessions: 300, orders: 3 });
+  assert.equal(totalRow([mature, organic]).platform.impressions, 150_000, "a row with no spend adds no count");
   const { pending, ...noPending } = young.funnel;
   void pending;
   assert.equal(totalRow([mature, { ...young, funnel: noPending }]).funnel.pending, undefined, "estimated later, not summed from a guess");
@@ -178,4 +181,23 @@ test("the funnel bar: each step with the share of the step before", () => {
   const noPlatform = funnelSteps(young);
   assert.equal(noPlatform[1].count, null);
   assert.equal(noPlatform[2].rate, null, "visits per click: no clicks imported");
+});
+
+test("the platform's purchases are read against the orders it was told about", () => {
+  near(kpis(mature, costs, baseline).overReporting, 66 / 60);
+  near(kpis(mature, costs, baseline, { purchaseAt: "confirmed" }).overReporting, 66 / 50);
+  near(kpis(mature, costs, baseline, { purchaseAt: "delivered" }).overReporting, 66 / 40);
+});
+
+test("without the shop's margin, a row with no delivered order borrows the account's, and says so", () => {
+  const noShop = { ...baseline, marginPerDelivered: null };
+  const k = kpis(young, costs, noShop, { accountMargin: 30_000 });
+  assert.equal(k.marginPerDelivered, 30_000);
+  assert.equal(k.marginBasis, "account");
+  assert.equal(k.breakEvenCpd, 30_000);
+  // The shop's own margin, when known, comes first.
+  assert.equal(kpis(young, costs, baseline, { accountMargin: 30_000 }).marginBasis, "shop");
+  // A row with delivered orders blends its own margin with the account's.
+  assert.equal(kpis(mature, costs, noShop, { accountMargin: 30_000 }).marginBasis, "blend");
+  assert.equal(kpis(young, costs, noShop).marginPerDelivered, null);
 });

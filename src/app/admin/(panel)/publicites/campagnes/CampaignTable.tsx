@@ -6,7 +6,7 @@ import { fmt } from "@/lib/viz";
 import type { RowAdvice, Stage } from "@/lib/ads/advisor";
 import { funnelSteps, kpiValue, type KpiKey } from "@/lib/ads/kpis";
 import type { AdRow } from "@/lib/ads/types";
-import { CONFIDENCE, kpiText, rowId, rowLabel, sourceLabel, STAGE_STEP, VERDICTS } from "../_ui/format";
+import { AD_VERDICTS, CONFIDENCE, kpiText, rowId, rowLabel, sourceLabel, STAGE_STEP, VERDICTS } from "../_ui/format";
 import { SortTable, type SortCell, type SortCol, type SortRow } from "../_ui/SortTable";
 import { KpiGrid, kpiCell, kpiCol } from "../_ui/cells";
 import { Budget, VerdictBadge } from "../_ui/Verdict";
@@ -87,14 +87,15 @@ function tableRow({ row, advice: a }: Line, period: string, level: "campaign" | 
   const cell = (v: SortCell["v"], node: React.ReactNode): SortCell => ({ v, node });
   const cells: Record<string, SortCell> = {
     name: cell(rowLabel(row), (
-      <span className="block w-[150px] sm:w-[190px]">
+      // Narrow on a phone, so the verdict column shows beside the frozen name.
+      <span className="block w-[124px] sm:w-[190px]">
         <span className="block break-words font-medium text-ink">{rowLabel(row)}</span>
         <span className="block text-[11px] text-muted">{level === "ad" ? "publicité" : sourceLabel(row.source)}</span>
       </span>
     )),
     verdict: cell(VERDICTS[a.verdict].rank, (
       <span className="flex flex-col items-start gap-1">
-        <VerdictBadge verdict={a.verdict} />
+        <VerdictBadge verdict={a.verdict} ad={level === "ad"} />
         <Budget change={a.budgetChange} perDay={a.budgetChange && a.spendPerDay != null ? formatTND(a.spendPerDay) : null} />
         {a.verdict === "wait" && a.moreSpend != null ? (
           <span className="whitespace-nowrap text-[11px] text-[#8a5a00]">peu de données : ~{formatTND(a.moreSpend)} de plus</span>
@@ -131,6 +132,16 @@ function tableRow({ row, advice: a }: Line, period: string, level: "campaign" | 
     funnel: cell(null, <FunnelChips steps={funnelSteps(row)} weak={neck ? STAGE_STEP[neck.stage] : null} />),
   };
   for (const key of [...MAIN, ...MONEY, ...EXTRA]) cells[key] = kpiCell(k, key);
+  // Young lines: the result so far carries the parcels sent and not yet paid; the projection goes under it, as for the cost.
+  if (projected && kpiValue(k, "projectedContribution") != null) {
+    const now = kpiCell(k, "contribution");
+    cells.contribution = cell(now.v, (
+      <span className="flex flex-col items-end">
+        {now.node}
+        <span className="whitespace-nowrap text-[11px] text-muted">proj. {kpiText(k, "projectedContribution")}</span>
+      </span>
+    ));
+  }
   return { key: row.key, id: rowId(row.key), cells, detail: <RowDetail row={row} a={a} period={period} level={level} /> };
 }
 
@@ -147,7 +158,7 @@ function RowDetail({ row, a, period, level }: { row: AdRow; a: RowAdvice; period
     <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
       <div className="flex min-w-0 flex-col gap-3">
         <div>
-          <p className="text-xs font-medium text-muted">Pourquoi « {VERDICTS[a.verdict].label.toLowerCase()} »</p>
+          <p className="text-xs font-medium text-muted">Pourquoi « {((level === "ad" ? AD_VERDICTS[a.verdict] : undefined) ?? VERDICTS[a.verdict]).label.toLowerCase()} »</p>
           <ul className="mt-1 flex list-disc flex-col gap-1 ps-4 text-[13px] leading-relaxed text-ink-2">
             {a.reasons.map((t) => (
               <li key={t}>{t}</li>

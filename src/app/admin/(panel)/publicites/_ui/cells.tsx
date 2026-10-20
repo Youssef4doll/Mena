@@ -39,7 +39,8 @@ export const KPI_GROUPS: { title: string; keys: KpiKey[] }[] = [
 export const MARGIN_BASIS: Record<NonNullable<Kpis["marginBasis"]>, string> = {
   row: "marge des commandes livrées de cette ligne",
   blend: "marge de cette ligne, ajustée sur celle de la boutique (peu de livrées)",
-  shop: "marge moyenne de la boutique (pas encore de livrée sur cette ligne)",
+  shop: "marge moyenne d'une livrée de la boutique sur 180 jours (pas encore de livrée au coût connu sur cette ligne)",
+  account: "marge moyenne des commandes livrées du compte sur la période (pas encore de livrée sur cette ligne)",
 };
 
 export function KpiGrid({ k, groups = KPI_GROUPS, period = "", legend = false }: { k: Kpis; groups?: { title: string; keys: KpiKey[] }[]; period?: string; legend?: boolean }) {
@@ -55,7 +56,7 @@ export function KpiGrid({ k, groups = KPI_GROUPS, period = "", legend = false }:
               const v = kpiValue(k, key);
               return (
                 <div key={key} className="min-w-0" title={legend ? KPI_DEFS[key].help : undefined}>
-                  <dt className="truncate text-[11px] text-muted">{KPI_DEFS[key].label}</dt>
+                  <dt className="text-[11px] leading-snug text-muted">{KPI_DEFS[key].label}</dt>
                   <dd className={`text-[13px] font-medium tabular-nums ${v == null ? "text-muted" : "text-ink"}`}>{kpiText(k, key)}</dd>
                 </div>
               );

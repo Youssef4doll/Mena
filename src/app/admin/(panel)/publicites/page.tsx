@@ -33,13 +33,19 @@ const META = new Set(["facebook", "instagram"]);
 /** Verdicts that ask for action keep their order (cut, broken measure, fix); the others are ranked together, by spend. */
 const urgency = (a: RowAdvice) => Math.min(VERDICTS[a.verdict].rank, VERDICTS.wait.rank);
 
+/** Insights in full at the top; the rest fold under them, so the tiles stay near on a phone. */
+const TOP_ACTIONS = 3;
+
+const plural = (n: number, word: string) => `${fmt(n, "int")} ${word}${n > 1 ? "s" : ""}`;
+
 /**
  * Vue d'ensemble: the whole ad account for the period, read on the traffic
  * that came from an ad link (utm_campaign or a paid medium; orders typed in
- * the back office are left out by the data layer). The verdict, the tiles
- * against the previous period, what the advisor says to do first, a verdict
- * per campaign, and what is missing to compute the rest. Every number and
- * every sentence of advice comes from the engine.
+ * the back office are left out by the data layer). The verdict, what the
+ * advisor says to do first and a verdict per campaign come first, then the
+ * tiles against the previous period, the funnel and what is missing to
+ * compute the rest. Every number and every sentence of advice comes from the
+ * engine.
  */
 export default async function AdsOverview({ searchParams }: PageProps<"/admin/publicites">) {
   await requireAdmin();
@@ -81,7 +87,14 @@ export default async function AdsOverview({ searchParams }: PageProps<"/admin/pu
   else if (hasTiktok && !tracking.tiktokEvents) extra.push({ label: "Jeton de l'API Événements TikTok absent", href: FIX_LINKS.tracking.href, cta: "Ajouter le jeton" });
 
   const nothing = f.sessions === 0 && f.orders === 0 && spend == null;
-  const hint = `Période ${periodText(r)}, comparée aux ${r.days} jours d'avant. Seulement le trafic venu d'un lien de publicité (utm_campaign ou medium payant) ; les commandes saisies dans l'admin n'y sont pas.`;
+  const hint = `Période ${periodText(r)}, comparée aux ${r.days} jours d'avant. Seulement les visites et les commandes venues d'un lien de publicité (avec ses UTM) ; les commandes saisies dans l'admin n'y sont pas.`;
+  // The verdict reads the rows it judges; the tiles read all the ad traffic. When the two differ
+  // (spend typed without a campaign), the box says so, or its figures would seem to contradict the tiles.
+  const judged = report.total.row;
+  const scope =
+    rows.length > 0 && ((judged.platform.spend ?? 0) !== (spend ?? 0) || judged.funnel.orders !== f.orders)
+      ? `Ce verdict lit les ${byCampaign ? "campagnes" : "sources"} une à une (${judged.platform.spend != null ? `${formatTND(judged.platform.spend)}, ` : ""}${plural(judged.funnel.orders, "commande")}) ; les chiffres plus bas comptent tout le trafic venu des publicités (${spend != null ? `${formatTND(spend)}, ` : ""}${plural(f.orders, "commande")}).`
+      : null;
 
   if (nothing) {
     return (
@@ -107,13 +120,39 @@ export default async function AdsOverview({ searchParams }: PageProps<"/admin/pu
 
   const cpdSub = [
     k.projection?.projected && kpiValue(k, "projectedCpd") != null ? `projection ${kpiText(k, "projectedCpd")}` : null,
-    k.breakEvenCpd != null ? `max ${kpiText(k, "breakEvenCpd")}` : null,
-    k.cpaPlaced != null ? `CPA ${kpiText(k, "cpaPlaced")}` : null,
+    k.breakEvenCpd != null ? `maximum ${kpiText(k, "breakEvenCpd")}` : null,
+    k.cpaPlaced != null ? `${kpiText(k, "cpaPlaced")} par commande passée` : null,
   ].filter(Boolean);
+  const units = kpiValue(k, "unitsPerOrder");
 
   return (
     <div className="flex flex-col gap-4">
-      <AccountVerdict advice={account} headline={headline} rowsCount={rows.length} byCampaign={byCampaign} q={q} />
+      <AccountVerdict advice={account} headline={headline} rowsCount={rows.length} byCampaign={byCampaign} scope={scope} q={q} />
+
+      {/* What to do comes before the figures: on a phone the ten tiles would push it two screens down. */}
+      <div className="grid gap-4 lg:grid-cols-[minmax(0,1.35fr)_minmax(0,1fr)]">
+        <Card title="À faire d'abord" hint={`Ce que disent les chiffres, le plus urgent en haut. Analyse ${byCampaign ? "par campagne" : "par source"}.`}>
+          <InsightList insights={insights} limit={TOP_ACTIONS} period={q} empty="Rien à signaler sur la période." />
+        </Card>
+        <Card
+          title={byCampaign ? "Verdict par campagne" : "Verdict par source"}
+          hint={byCampaign ? "Les plus urgentes en haut." : "La dépense est saisie par source : les campagnes ne peuvent pas être jugées une à une. Importez l'export de la plateforme pour le détail."}
+          aside={
+            byCampaign && (
+              <Link href={withPeriod("/admin/publicites/campagnes", q)} className="inline-flex min-h-10 items-center text-[13px] font-medium text-sea underline">
+                Tout voir
+              </Link>
+            )
+          }
+        >
+          <VerdictList rows={rows} advice={report.rows} q={q} linked={byCampaign} />
+          {unassigned > 0 && (
+            <p className="mt-3 text-xs text-muted">
+              {formatTND(unassigned)} de dépense sans campagne : comptés dans les chiffres plus bas, pas dans les campagnes.
+            </p>
+          )}
+        </Card>
+      </div>
 
       <section aria-label="Chiffres clés" className="flex flex-col gap-2">
         <p className="text-xs text-muted">{hint}</p>
@@ -122,7 +161,7 @@ export default async function AdsOverview({ searchParams }: PageProps<"/admin/pu
             label="Dépense pub"
             value={spend == null ? "—" : formatTND(spend)}
             change={change(spend, prevTotal.platform.spend, "money", null)}
-            sub={account.spendPerDay != null ? `${formatTND(account.spendPerDay)} / jour` : undefined}
+            sub={spend != null ? `${formatTND(Math.round(spend / r.days))} / jour` : undefined}
             help="Ce qui a été payé aux plateformes sur la période, saisi ou importé."
             missing={
               spend == null && (
@@ -147,46 +186,23 @@ export default async function AdsOverview({ searchParams }: PageProps<"/admin/pu
           <KpiTile k={k} prev={kp} kpi="orderRate" period={q} sub={`${fmt(f.sessions, "int")} visites`} empty="Aucune visite comptée." />
           <KpiTile k={k} prev={kp} kpi="confirmRate" period={q} sub={`${f.confirmed} sur ${k.decided} appelée${k.decided > 1 ? "s" : ""}`} empty="Aucune commande appelée." />
           <KpiTile k={k} prev={kp} kpi="deliveryRate" period={q} sub={`${f.delivered} livrée${f.delivered > 1 ? "s" : ""}, ${f.back} revenue${f.back > 1 ? "s" : ""}`} empty="Aucun colis arrivé au bout." />
-          <KpiTile k={k} prev={kp} kpi="aov" period={q} sub={k.unitsPerOrder != null ? `${kpiText(k, "unitsPerOrder")} article(s) par commande` : undefined} empty="Aucune commande." />
+          <KpiTile k={k} prev={kp} kpi="aov" period={q} sub={units != null ? `${kpiText(k, "unitsPerOrder")} article${units >= 2 ? "s" : ""} par commande` : undefined} empty="Aucune commande." />
         </TileGrid>
         {k.projection?.projected && <p className="text-xs leading-relaxed text-muted">{k.projection.note}</p>}
       </section>
 
-      <div className="grid gap-4 lg:grid-cols-[minmax(0,1.35fr)_minmax(0,1fr)]">
-        <Card title="À faire d'abord" hint={`Ce que disent les chiffres, le plus urgent en haut. Analyse ${byCampaign ? "par campagne" : "par source"}.`}>
-          <InsightList insights={insights} limit={6} period={q} empty="Rien à signaler sur la période." />
+      <div className="grid gap-4 lg:grid-cols-2">
+        <Card title="Entonnoir" hint="Pourcentage et barre : la part de l'étape d'avant qui passe à celle-ci.">
+          <FunnelBars steps={funnelSteps(total)} weak={weak ? STAGE_STEP[weak.stage] : null} />
+          {weak && (
+            <p className="mt-3 text-[13px] leading-relaxed text-ink-2">
+              <span className="font-medium text-ink">{weak.title}.</span> {weak.evidence}
+            </p>
+          )}
         </Card>
-        <div className="flex min-w-0 flex-col gap-4">
-          <Card
-            title={byCampaign ? "Verdict par campagne" : "Verdict par source"}
-            hint={byCampaign ? "Les plus urgentes en haut." : "La dépense est saisie par source : les campagnes ne peuvent pas être jugées une à une. Importez l'export de la plateforme pour le détail."}
-            aside={
-              byCampaign && (
-                <Link href={withPeriod("/admin/publicites/campagnes", q)} className="inline-flex min-h-10 items-center text-[13px] font-medium text-sea underline">
-                  Tout voir
-                </Link>
-              )
-            }
-          >
-            <VerdictList rows={rows} advice={report.rows} q={q} linked={byCampaign} />
-            {unassigned > 0 && (
-              <p className="mt-3 text-xs text-muted">
-                {formatTND(unassigned)} de dépense sans campagne : comptés dans les chiffres du haut, pas dans les campagnes.
-              </p>
-            )}
-          </Card>
-          <Card title="Entonnoir" hint="Pourcentage et barre : la part de l'étape d'avant qui passe à celle-ci.">
-            <FunnelBars steps={funnelSteps(total)} weak={weak ? STAGE_STEP[weak.stage] : null} />
-            {weak && (
-              <p className="mt-3 text-[13px] leading-relaxed text-ink-2">
-                <span className="font-medium text-ink">{weak.title}.</span> {weak.evidence}
-              </p>
-            )}
-          </Card>
-          <Card title="Ce qui manque" hint="Sans ces chiffres, certaines cases restent vides.">
-            <MissingList inputs={k.missing} extra={extra} period={q} done="Tout ce qu'il faut est renseigné." />
-          </Card>
-        </div>
+        <Card title="Ce qui manque" hint="Sans ces chiffres, certaines cases restent vides.">
+          <MissingList inputs={k.missing} extra={extra} period={q} done="Tout ce qu'il faut est renseigné." />
+        </Card>
       </div>
     </div>
   );
@@ -195,9 +211,10 @@ export default async function AdsOverview({ searchParams }: PageProps<"/admin/pu
 /**
  * The account in one box: the advisor's sentence about it when the money can
  * be judged (with its evidence and what to do), else the account's verdict
- * and its reasons (waiting for data, a broken measure, no margin).
+ * and its reasons (waiting for data, a broken measure, no margin). `scope`
+ * says when it reads less than the tiles do.
  */
-function AccountVerdict({ advice, headline, rowsCount, byCampaign, q }: { advice: RowAdvice; headline: Insight | null; rowsCount: number; byCampaign: boolean; q: string }) {
+function AccountVerdict({ advice, headline, rowsCount, byCampaign, scope, q }: { advice: RowAdvice; headline: Insight | null; rowsCount: number; byCampaign: boolean; scope: string | null; q: string }) {
   const level = byCampaign ? "campagne" : "source";
   return (
     <section className="flex flex-col gap-3 rounded-2xl border border-line bg-white p-4 sm:flex-row sm:items-start sm:gap-5 sm:p-5">
@@ -225,9 +242,10 @@ function AccountVerdict({ advice, headline, rowsCount, byCampaign, q }: { advice
             </ul>
           </>
         )}
+        {scope && <p className="mt-2 text-xs text-muted">{scope}</p>}
         {rowsCount > 0 && (
           <p className="mt-2 text-xs text-muted">
-            Le budget se règle {level} par {level} : voir le verdict de chacune plus bas
+            Le budget se règle {level} par {level} : voir le verdict de chacune juste en dessous
             {byCampaign && (
               <>
                 {" "}et dans <Link href={withPeriod("/admin/publicites/campagnes", q)} className="underline">Campagnes</Link>
@@ -256,30 +274,39 @@ function VerdictList({ rows, advice, q, linked }: { rows: AdRow[]; advice: RowAd
           const projected = a.kpis.projection?.projected;
           return (
             <li key={row.key} className="flex items-start justify-between gap-3 py-2.5">
-              <div className="min-w-0">
-                {linked ? (
-                  <Link href={withPeriod(`/admin/publicites/campagnes#${rowId(row.key)}`, q)} className="block truncate text-[13px] font-medium text-ink hover:underline">
-                    {name}
-                  </Link>
-                ) : (
-                  <p className="truncate text-[13px] font-medium text-ink">{name}</p>
-                )}
-                <p className="text-xs text-muted">
-                  {row.campaign ? `${sourceLabel(row.source)} · ` : ""}
-                  {row.platform.spend != null ? `${formatTND(row.platform.spend)} dépensés` : "dépense inconnue"}
-                  {a.judgedCpd != null && ` · ${formatTND(a.judgedCpd)} par livrée${projected ? " (projection)" : ""}`}
-                  {a.target != null && ` · max ${formatTND(a.target)}`}
-                </p>
-              </div>
-              <div className="flex shrink-0 items-start gap-3 text-[13px]">
-                <Budget change={a.budgetChange} />
+              {/* The name and its figures are one tap target; a long campaign name wraps rather than losing its end, where names usually differ. */}
+              {linked ? (
+                <Link href={withPeriod(`/admin/publicites/campagnes#${rowId(row.key)}`, q)} className="group block min-h-10 min-w-0">
+                  <span className="block break-words text-[13px] font-medium text-ink group-hover:underline">{name}</span>
+                  <Figures row={row} a={a} projected={projected} />
+                </Link>
+              ) : (
+                <div className="min-w-0">
+                  <p className="break-words text-[13px] font-medium text-ink">{name}</p>
+                  <Figures row={row} a={a} projected={projected} />
+                </div>
+              )}
+              <div className="flex shrink-0 flex-col items-end gap-1 text-[13px]">
                 <VerdictBadge verdict={a.verdict} />
+                <Budget change={a.budgetChange} prefix />
               </div>
             </li>
           );
         })}
       </ul>
-      {list.length > shown.length && <p className="pt-2 text-xs text-muted">Et {list.length - shown.length} autre(s) dans Campagnes.</p>}
+      {list.length > shown.length && <p className="pt-2 text-xs text-muted">{list.length - shown.length > 1 ? `Et ${list.length - shown.length} autres` : "Et 1 autre"} dans Campagnes.</p>}
     </>
+  );
+}
+
+/** A verdict line's figures: where it comes from, what it spent, the cost per delivered order it was judged on, and its ceiling. */
+function Figures({ row, a, projected }: { row: AdRow; a: RowAdvice; projected: boolean | undefined }) {
+  return (
+    <span className="block text-xs text-muted">
+      {row.campaign ? `${sourceLabel(row.source)} · ` : ""}
+      {row.platform.spend != null ? `${formatTND(row.platform.spend)} dépensés` : "dépense inconnue"}
+      {a.judgedCpd != null && ` · ${formatTND(a.judgedCpd)} par livrée${projected ? " (projection)" : ""}`}
+      {a.target != null && ` · maximum ${formatTND(a.target)}`}
+    </span>
   );
 }

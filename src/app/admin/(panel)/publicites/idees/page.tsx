@@ -54,11 +54,11 @@ export default async function IdeasPage({ searchParams }: PageProps<"/admin/publ
 
   // The tracking setup is booleans only (adsBasics): no token reaches the page.
   const total = totalRow(sources);
-  const k = kpis(total, costs, base);
+  const k = kpis(total, costs, base, { purchaseAt: setup.purchaseAt });
   const sum = (rows: typeof sources) => rows.reduce((s, x) => s + x.funnel.orders, 0);
   const coverage = tagged(sources);
   const platform = { orders: sum(sources.filter((s) => AD_SOURCES.has(s.source))), tagged: sum(campaigns.filter((c) => AD_SOURCES.has(c.source))) };
-  const insights = sortInsights(trackingInsights(sources, total, k, setup, coverage, r.days));
+  const insights = sortInsights(trackingInsights(sources, total, k, setup, coverage, r.days, base));
 
   return (
     <div className="flex flex-col gap-4">

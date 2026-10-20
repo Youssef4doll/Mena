@@ -42,7 +42,7 @@ export default async function ImportPage() {
           </div>
         </div>
         <p className="mt-3 text-xs text-muted">
-          Au plus {MAX_EXPORT_ROWS} lignes par fichier et {MAX_ROW_DAYS} jours par ligne. Le niveau publicité permet de comparer les créatives ; le nom de la publicité doit être celui du lien (utm_content).
+          Au plus {MAX_EXPORT_ROWS.toLocaleString("fr-FR")} lignes par fichier et {MAX_ROW_DAYS} jours par ligne. Le niveau publicité permet de comparer les créatives ; le nom de la publicité doit être celui du lien (utm_content).
         </p>
       </Card>
     </div>

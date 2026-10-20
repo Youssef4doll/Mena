@@ -131,7 +131,7 @@ export default async function ClientsPage({ searchParams }: PageProps<"/admin/pu
                           {c.ltv.map((p) => (
                             <td key={p.days} className="px-2 py-1.5 text-end">
                               <span className="inline-flex flex-col items-end leading-tight">
-                                <span>{money(p.perCustomer)}</span>
+                                <span className="whitespace-nowrap">{money(p.perCustomer)}</span>
                                 <span className="text-[11px] font-normal text-muted">{p.customers ? `${p.customers} client${p.customers > 1 ? "s" : ""} mesuré${p.customers > 1 ? "s" : ""}` : "pas encore"}</span>
                               </span>
                             </td>
@@ -176,22 +176,31 @@ function PaybackTable({ reads, shopMargin }: { reads: Read[]; shopMargin: number
               {LTV_DAYS.map((d) => (
                 <th key={d} className="px-2 text-end font-medium">Marge par client à {d} j</th>
               ))}
-              <th className="ps-2 text-start font-medium">Rentabilisé</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-line tabular-nums">
             {reads.map(({ cohort, spend, marginBasis, pb }) => (
               <tr key={cohort.source}>
+                {/* The answer sits under the source's name: on a phone the horizon columns scroll away. */}
                 <td className="py-2 pe-3">
                   {sourceLabel(cohort.source)}
                   {marginBasis === "shop" && <span className="block text-[11px] text-muted">marge de la boutique</span>}
+                  <span className="mt-1 block">
+                    {pb.paidBackAt ? (
+                      <Badge tone="ok">Rentabilisée à {pb.paidBackAt} jours</Badge>
+                    ) : pb.points.some((p) => p.enough) ? (
+                      <Badge tone="warn">Pas rentabilisée à {Math.max(...pb.points.filter((p) => p.enough).map((p) => p.days))} jours</Badge>
+                    ) : (
+                      <span className="text-[11px] text-muted">trop tôt pour le dire</span>
+                    )}
+                  </span>
                 </td>
-                <td className="px-2 text-end">{money(spend)}</td>
-                <td className="px-2 text-end">{money(pb.costPerCustomer)}</td>
+                <td className="whitespace-nowrap px-2 text-end">{money(spend)}</td>
+                <td className="whitespace-nowrap px-2 text-end">{money(pb.costPerCustomer)}</td>
                 {pb.points.map((p) => (
                   <td key={p.days} className={`px-2 py-1.5 text-end ${p.enough ? "" : "text-muted"}`}>
                     <span className="inline-flex flex-col items-end leading-tight">
-                      <span>{p.marginPerCustomer == null ? "—" : `environ ${formatTND(p.marginPerCustomer)}`}</span>
+                      <span className="whitespace-nowrap">{p.marginPerCustomer == null ? "—" : `environ ${formatTND(p.marginPerCustomer)}`}</span>
                       {p.ratio != null ? (
                         <span className="text-[11px] text-muted">{p.ratio.toLocaleString("fr-FR", { maximumFractionDigits: 1 })} × le coût</span>
                       ) : p.customers === 0 ? (
@@ -200,21 +209,12 @@ function PaybackTable({ reads, shopMargin }: { reads: Read[]; shopMargin: number
                     </span>
                   </td>
                 ))}
-                <td className="ps-2">
-                  {pb.paidBackAt ? (
-                    <Badge tone="ok">à {pb.paidBackAt} jours</Badge>
-                  ) : pb.points.some((p) => p.enough) ? (
-                    <Badge tone="warn">pas encore à {Math.max(...pb.points.filter((p) => p.enough).map((p) => p.days))} jours</Badge>
-                  ) : (
-                    <span className="text-xs text-muted">trop tôt pour le dire</span>
-                  )}
-                </td>
               </tr>
             ))}
           </tbody>
         </table>
       </div>
-      {shopMargin == null && <p className="mt-2 text-xs text-[#8a5a00]">Marge par livrée inconnue : renseignez le coût fournisseur des produits et les coûts du transporteur dans les <Link href="/admin/parametres" className="underline">Paramètres</Link>.</p>}
+      {shopMargin == null && <p className="mt-2 text-xs text-[#8a5a00]">Marge par livrée inconnue : renseignez le coût fournisseur dans <Link href="/admin/produits" className="underline">Produits</Link> et les coûts du transporteur dans <Link href="/admin/parametres" className="underline">Paramètres</Link> (carte Livraison).</p>}
     </>
   );
 }

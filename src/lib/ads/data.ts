@@ -5,6 +5,7 @@ import { getSettings } from "../settings";
 import { spendInRange } from "../profit";
 import { TZ, tunisDay } from "../analytics-range";
 import { SOURCE_ALIASES, normName, normSource, parseRowKey, rowKey } from "./match";
+import { unitMargin } from "./breakeven";
 import type { AdRow, Baseline, Costs, DayPoint, Funnel, Level, Platform } from "./types";
 
 /**
@@ -20,7 +21,7 @@ import type { AdRow, Baseline, Costs, DayPoint, Funnel, Level, Platform } from "
  * Range (Tunis midnights, `to` excluded); days are Tunisian calendar days.
  *
  *   adRows(from: Date, to: Date, level: Level, filter?: AdFilter): Promise<AdRow[]>
- *   baseline(to?: Date): Promise<Baseline>
+ *   baseline(to?: Date, costs?: Costs): Promise<Baseline>   (marginPerDelivered only with costs)
  *   adCosts(): Promise<Costs>
  *   dailyByRow(from: Date, to: Date, level: Level, filter?: AdFilter): Promise<Record<string, DayPoint[]>>
  *   daily(from: Date, to: Date, key: string): Promise<DayPoint[]>
@@ -212,8 +213,10 @@ function spendKey(r: SpendEntry, level: Level): string | null {
 
 // ------------------------------------------------------------------ rows
 
+// pending is counted, not left to the engine's estimate (orders − confirmed − cancelled), which
+// misses an order confirmed then cancelled and so reads the confirmation rate too low.
 const emptyFunnel = (): Funnel => ({
-  sessions: 0, visitors: 0, productViews: 0, formStarts: 0, orders: 0, confirmed: 0, cancelled: 0, shipped: 0, delivered: 0, back: 0, open: 0,
+  sessions: 0, visitors: 0, productViews: 0, formStarts: 0, orders: 0, confirmed: 0, cancelled: 0, shipped: 0, delivered: 0, back: 0, open: 0, pending: 0,
   revenuePlaced: 0, revenueDelivered: 0, productCostDelivered: 0, costUnknownDelivered: 0, units: 0, multiUnitOrders: 0, newCustomers: 0,
 });
 
@@ -298,6 +301,7 @@ export async function adRows(from: Date, to: Date, level: Level, filter?: AdFilt
     f.orders += n(o.orders);
     f.confirmed += n(o.confirmed);
     f.cancelled += n(o.cancelled);
+    f.pending = (f.pending ?? 0) + n(o.pending);
     f.shipped += n(o.shipped);
     f.delivered += n(o.delivered);
     f.back += n(o.back);
@@ -346,12 +350,21 @@ export async function adRows(from: Date, to: Date, level: Level, filter?: AdFilt
  * over the orders where it is decided: confirmation over orders confirmed or
  * cancelled, delivery over parcels delivered or back, net delivery over
  * orders at least 14 days old.
+ *
+ * With the shop's costs, also what a delivered order leaves before ads
+ * (marginPerDelivered, as kpis computes it for a row): the average delivered
+ * order whose product cost is known, minus the carrier and return costs of
+ * the parcels sent per delivered one. A row with no delivered order yet is
+ * then judged on this margin instead of the account's average cost.
  */
-export async function baseline(to: Date = new Date()): Promise<Baseline> {
+export async function baseline(to: Date = new Date(), costs?: Costs): Promise<Baseline> {
   const since = new Date(to.getTime() - BASELINE_DAYS * DAY);
   const mature = new Date(to.getTime() - MATURE_DAYS * DAY);
   const [b] = await prisma.$queryRaw<
-    { orders: bigint; confirmed: bigint; decided: bigint; delivered: bigint; back: bigint; mature: bigint; mature_delivered: bigint; placed: bigint; not_cancelled: bigint; days_to_deliver: number | null }[]
+    {
+      orders: bigint; confirmed: bigint; decided: bigint; delivered: bigint; back: bigint; mature: bigint; mature_delivered: bigint; placed: bigint; not_cancelled: bigint; days_to_deliver: number | null;
+      costed: bigint; costed_revenue: bigint; costed_cost: bigint;
+    }[]
   >`
     SELECT COUNT(*) AS orders,
       COUNT(*) FILTER (WHERE ${Prisma.raw(CONFIRMED_SQL)}) AS confirmed,
@@ -362,17 +375,27 @@ export async function baseline(to: Date = new Date()): Promise<Baseline> {
       COUNT(*) FILTER (WHERE "createdAt" < ${mature} AND status = 'DELIVERED') AS mature_delivered,
       COALESCE(SUM(total) FILTER (WHERE status <> 'CANCELLED'), 0) AS placed,
       COUNT(*) FILTER (WHERE status <> 'CANCELLED') AS not_cancelled,
-      AVG(EXTRACT(EPOCH FROM ("deliveredAt" - "createdAt")) / 86400) FILTER (WHERE "deliveredAt" IS NOT NULL) AS days_to_deliver
+      AVG(EXTRACT(EPOCH FROM ("deliveredAt" - "createdAt")) / 86400) FILTER (WHERE "deliveredAt" IS NOT NULL) AS days_to_deliver,
+      COUNT(*) FILTER (WHERE status = 'DELIVERED' AND "costTotal" IS NOT NULL) AS costed,
+      COALESCE(SUM(total) FILTER (WHERE status = 'DELIVERED' AND "costTotal" IS NOT NULL), 0) AS costed_revenue,
+      COALESCE(SUM("costTotal") FILTER (WHERE status = 'DELIVERED' AND "costTotal" IS NOT NULL), 0) AS costed_cost
     FROM "Order" o
     WHERE "createdAt" >= ${since} AND "createdAt" < ${to} AND ${Prisma.raw(`o.${NOT_ADMIN_SQL}`)}`;
   const rate = (a: bigint, d: bigint) => (n(d) > 0 ? n(a) / n(d) : null);
+  const deliveryRate = n(b.delivered) + n(b.back) > 0 ? n(b.delivered) / (n(b.delivered) + n(b.back)) : null;
+  const costed = n(b.costed);
   return {
     orders: n(b.orders),
     confirmRate: rate(b.confirmed, b.decided),
-    deliveryRate: n(b.delivered) + n(b.back) > 0 ? n(b.delivered) / (n(b.delivered) + n(b.back)) : null,
+    deliveryRate,
     netDeliveryRate: rate(b.mature_delivered, b.mature),
     aov: n(b.not_cancelled) > 0 ? Math.round(n(b.placed) / n(b.not_cancelled)) : null,
     daysToDeliver: b.days_to_deliver == null ? null : Math.round(Number(b.days_to_deliver) * 10) / 10,
+    // Null: no delivered order with a known product cost, or a carrier or return cost not given.
+    marginPerDelivered:
+      costs && costed > 0
+        ? unitMargin({ revenue: n(b.costed_revenue) / costed, productCost: n(b.costed_cost) / costed, carrierPerParcel: costs.carrierPerParcel, returnPerParcel: costs.returnPerParcel, deliveryRate })
+        : null,
   };
 }
 

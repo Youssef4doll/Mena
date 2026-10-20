@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
-  BIG_SCALE_STEP, CUT_STEP, FIX_STEP, SCALE_STEP,
+  BIG_SCALE_STEP, CUT_STEP, FIX_STEP, MIN_SCALE_DAYS, SCALE_STEP,
   advise, compareAds, creativeInsights, fatigue, hourBlocks, readSegments, segmentInsights,
   type AdviseInput, type SegmentRow, type TrackingSetup,
 } from "./advisor";
@@ -192,7 +192,13 @@ test("without the carrier cost: compared with the account average, low confidenc
     assert.equal(a.targetBasis, "account");
     assert.equal(a.confidence, "low");
   }
-  assert.equal(r.rows[0].verdict, "scale");
+  // Cheaper than the account is not profitable: without the margin nothing is scaled or paused, only ranked.
+  assert.equal(r.rows[0].verdict, "keep");
+  assert.equal(r.rows[0].budgetChange, 0);
+  assert.ok(r.rows[0].reasons.some((t) => t.includes("sans la marge rien ne dit qu'elle est rentable")));
+  assert.equal(r.rows[1].verdict, "fix");
+  assert.equal(r.rows[1].budgetChange, FIX_STEP);
+  assert.ok(r.rows[1].reasons.some((t) => t.startsWith("Probabilité d'être sous la moyenne du compte")));
   assert.equal(r.total.advice.verdict, "wait");
   assert.match(r.total.advice.reasons[0], /coût du transporteur non renseigné/);
   const missing = r.insights.find((i) => i.title === "Coût du transporteur manquant")!;
@@ -255,13 +261,24 @@ test("a tiring winner is kept, not scaled; so is one whose audience is saturated
 
 test("a winner whose orders confirm badly only takes the small step", () => {
   const good = line("bonne", { spend: 200_000, cancelled: 6, delivered: 26, back: 5, open: 0 });
-  // 50 cancelled out of 80: cheap orders, many never confirmed.
-  const fakes = line("promo", { spend: 300_000, cancelled: 50, delivered: 25, back: 5, sessions: 3_000 });
+  // 40 cancelled out of 86: cheap orders, many never confirmed.
+  const fakes = line("promo", { spend: 300_000, cancelled: 40, delivered: 40, back: 6, sessions: 3_000 });
   const a = adviceOf([good, fakes], fakes.key);
   assert.equal(a.verdict, "scale");
   assert.equal(a.bottleneck?.stage, "confirmation");
   assert.equal(a.budgetChange, SCALE_STEP);
   assert.ok(a.reasons.some((r) => r.startsWith("À améliorer en même temps : trop de commandes non confirmées")));
+});
+
+test("cheap deliveries out of a pile of fake orders: not scaled before the cancellations are fixed", () => {
+  const good = line("bonne", { spend: 200_000, cancelled: 6, delivered: 26, back: 5, open: 0 });
+  // 50 cancelled out of 80, 25 delivered: 31 % of the orders end delivered, about 3 orders handled for a sale.
+  const fakes = line("promo", { spend: 300_000, cancelled: 50, delivered: 25, back: 5, sessions: 3_000 });
+  const a = adviceOf([good, fakes], fakes.key);
+  assert.ok(a.judgedCpd! < 0.4 * a.target!, "cheap per delivered order");
+  assert.equal(a.verdict, "keep");
+  assert.equal(a.budgetChange, 0);
+  assert.ok(a.reasons.some((r) => r.includes("seules 31 % des commandes finissent livrées") && r.includes("3,2 commandes à appeler")));
 });
 
 test("the platform counting more purchases than the shop has orders", () => {
@@ -398,7 +415,9 @@ test("ads compared: the probability of being the cheapest per delivered order, w
   assert.ok(ctr[0].probBest! > 0.99);
   const r = run(ads);
   assert.ok(r.ads != null && r.ads.length === 3);
-  assert.ok(r.insights.some((i) => i.title === "« video-ugc » est la meilleure publicité" && i.fix === "brief"));
+  const best = r.insights.find((i) => i.title === "« video-ugc » est la meilleure publicité")!;
+  assert.equal(best.fix, "brief");
+  assert.doesNotMatch(best.evidence, /: 100 %/, "a probability is never shown as a certainty");
   assert.equal(run([winner]).ads, null, "campaign rows: no ad comparison");
 });
 
@@ -429,4 +448,130 @@ test("the whole report: critical first, numbers in every evidence, plain text, d
   }
   for (const i of r.insights) assert.match(i.evidence, /\d/, i.title);
   assert.deepEqual(advise(input), r);
+});
+
+test("an ad gets no budget percentage: kept or switched off, its ad set holds the budget", () => {
+  const good = line("video-1", { level: "ad", spend: 300_000, cancelled: 10, delivered: 32, back: 6, open: 2 });
+  const dead = line("photo-2", { level: "ad", spend: 80_000, sessions: 400, formStarts: 30 });
+  const r = run([good, dead]);
+  const [g, d] = r.rows;
+  assert.equal(g.verdict, "scale");
+  assert.equal(g.budgetChange, null);
+  assert.ok(g.reasons.some((t) => t.includes("couper les publicités perdantes de son ensemble")));
+  assert.equal(d.verdict, "cut");
+  assert.equal(d.budgetChange, CUT_STEP);
+  assert.ok(d.reasons.some((t) => t.includes("la désactiver")));
+  assert.ok(r.insights.some((i) => i.title === "« video-1 » est gagnante"));
+  assert.ok(!r.insights.some((i) => i.title === "Déplacer le budget"), "an ad set shares its budget by itself");
+  // The account is the sum of its lines: no budget step of its own.
+  assert.equal(r.total.advice.budgetChange, null);
+});
+
+test("the account is only 'scale' when one of its lines is", () => {
+  // Profitable as a whole, but the winner wears out: no line to scale.
+  const r = run([winner], { daily: { [winner.key]: tiring } });
+  assert.equal(r.rows[0].verdict, "keep");
+  assert.equal(r.total.advice.verdict, "keep");
+  assert.equal(r.total.advice.budgetChange, null);
+  assert.equal(run([winner]).total.advice.verdict, "scale");
+});
+
+test("platform stages are compared within the platform, an ad with the other ads of its campaign", () => {
+  const meta = line("meta-1", { spend: 300_000, cancelled: 5, delivered: 30, back: 6, open: 2, impressions: 150_000, clicks: 2_000, sessions: 1_600 });
+  // TikTok's CPM is 2,5 times Meta's: not a fault of this campaign, the platform prices differently.
+  const tiktok = line("tt-1", { source: "tiktok", spend: 300_000, cancelled: 5, delivered: 14, back: 6, open: 2, impressions: 60_000, clicks: 600, sessions: 500 });
+  assert.notEqual(adviceOf([meta, tiktok], tiktok.key).bottleneck?.stage, "cpm");
+  // Against another TikTok campaign it is compared, and the text says with what.
+  const tiktok2 = line("tt-2", { source: "tiktok", spend: 300_000, cancelled: 5, delivered: 30, back: 6, open: 2, impressions: 150_000, clicks: 1_500, sessions: 1_200 });
+  const neck = adviceOf([meta, tiktok, tiktok2], tiktok.key).bottleneck!;
+  assert.equal(neck.stage, "cpm");
+  assert.equal(neck.referenceKind, "platform");
+  assert.match(neck.evidence, /pour le reste du compte TikTok/);
+  // Two ads of one campaign: the page stage is held against the other ad of the same campaign, not the other product's.
+  const ad = (n: string, campaign: string, formStarts: number, delivered: number) => {
+    const row = line(n, { level: "ad", spend: 200_000, cancelled: 3, delivered, back: 2, sessions: 2_000, productViews: 1_900, formStarts });
+    return { ...row, key: `facebook|${campaign}|${n}`, campaign };
+  };
+  const a1 = ad("a1", "lampe", 60, 8);
+  const a2 = ad("a2", "lampe", 240, 30);
+  const other = ad("b1", "montre", 60, 8);
+  const n1 = adviceOf([a1, a2, other], a1.key).bottleneck!;
+  assert.equal(n1.stage, "formStart");
+  assert.equal(n1.referenceKind, "campaign");
+  assert.match(n1.evidence, /pour les autres publicités de la campagne/);
+});
+
+test("a winner waits for 3 days of spend and for its calls before more budget", () => {
+  const twoDays = Array.from({ length: 10 }, (_, i) => day(i, { spend: i < 8 ? 0 : 150_000, impressions: null, clicks: null, sessions: i < 8 ? 0 : 400 }));
+  const a = adviceOf([winner], winner.key, { daily: { [winner.key]: twoDays } });
+  assert.equal(a.verdict, "keep");
+  assert.equal(a.budgetChange, 0);
+  assert.ok(a.reasons.some((t) => t.includes(`attendre ${MIN_SCALE_DAYS} jours`)));
+  // 18 of 30 orders not called yet: the projection is mostly the shop's rates, not this campaign's buyers.
+  const uncalled = line("appels", { spend: 60_000, cancelled: 1, delivered: 6, back: 1, open: 22, pending: 18, sessions: 900 });
+  const u = adviceOf([uncalled], uncalled.key);
+  assert.equal(u.verdict, "keep");
+  assert.ok(u.reasons.some((t) => t.includes("n'ont pas encore été appelées")));
+});
+
+test("the budget per day is today's, not the period's average", () => {
+  // Started 4 days before the end of a 14-day period, at 75 DT a day.
+  const late = Array.from({ length: 14 }, (_, i) => ({ day: `2026-10-${String(5 + i).padStart(2, "0")}`, spend: i < 10 ? 0 : 75_000, impressions: null, clicks: null, sessions: i < 10 ? 0 : 300, orders: i < 10 ? 0 : 10, delivered: 0 }));
+  const a = adviceOf([winner], winner.key, { daily: { [winner.key]: late } });
+  assert.equal(a.spendPerDay, 75_000);
+  assert.equal(adviceOf([winner], winner.key).spendPerDay, Math.round(300_000 / 14));
+});
+
+test("a row with no delivered order yet is judged on the account's margin when the shop's is unknown", () => {
+  const b = { ...baseline, marginPerDelivered: null };
+  const fresh = line("fresh", { spend: 50_000, open: 6, pending: 4 });
+  const r = advise({ rows: [winner, fresh], costs, baseline: b, days: 14, tracking: pixels });
+  const a = r.rows.find((x) => x.key === fresh.key)!;
+  assert.equal(a.kpis.marginBasis, "account");
+  assert.equal(a.targetBasis, "margin");
+  assert.equal(a.target, r.total.advice.kpis.marginPerDelivered);
+  assert.equal(a.verdict, "wait", "50 DT is not yet twice a 38 DT max");
+});
+
+test("the platform's purchases are compared with the orders it was told about", () => {
+  // Told at confirmation: 50 purchases for 52 confirmed orders is right, not under-counting against 72 placed.
+  const row = line("promo", { spend: 300_000, cancelled: 20, delivered: 40, back: 8, open: 4, purchases: 50 });
+  const confirmed = run([row], { tracking: { ...pixels, purchaseAt: "confirmed" } });
+  assert.ok(Math.abs(confirmed.rows[0].kpis.overReporting! - 50 / 52) < 1e-12);
+  assert.ok(!confirmed.insights.some((i) => i.title === "Le pixel ne voit qu'une partie des commandes"));
+  // Told at delivery, 50 purchases for 40 delivered orders.
+  const delivered = run([{ ...row, platform: { ...row.platform, purchases: 70 } }], { tracking: { ...pixels, purchaseAt: "delivered" } });
+  const over = delivered.insights.find((i) => i.title === "La plateforme compte plus d'achats que la boutique")!;
+  assert.match(over.evidence, /^70 achats comptés pour 40 commandes livrées\.$/);
+});
+
+test("purchases sent at delivery that arrive after the 7 days in which an ad is credited", () => {
+  const slow = { ...baseline, daysToDeliver: 6 };
+  const late = run([winner], { baseline: slow, tracking: { ...pixels, purchaseAt: "delivered" } }).insights.find((i) => i.title === "L'achat arrive trop tard pour les publicités")!;
+  assert.equal(late.severity, "warning");
+  assert.match(late.evidence, /en moyenne 6 jours/);
+  assert.match(late.action, /confirmation/);
+  assert.ok(!run([winner], { tracking: { ...pixels, purchaseAt: "delivered" } }).insights.some((i) => i.title === "L'achat arrive trop tard pour les publicités"), "3 days to deliver: in time");
+});
+
+test("a clean buyer audience for a lookalike once the purchase is sent after the call", () => {
+  const i = run([winner], { tracking: { ...pixels, purchaseAt: "confirmed" } }).insights.find((x) => x.title === "Une audience similaire à partir des vrais acheteurs")!;
+  assert.equal(i.severity, "info");
+  assert.match(i.evidence, /Environ 648 commandes confirmées sur 180 jours/);
+  assert.ok(!run([winner], { tracking: { ...pixels, purchaseAt: "placed" } }).insights.some((x) => x.title.startsWith("Une audience similaire")), "placed: the audience holds the fake orders");
+  assert.ok(!run([winner], { tracking: { ...pixels, purchaseAt: "confirmed" }, baseline: { ...baseline, orders: 60 } }).insights.some((x) => x.title.startsWith("Une audience similaire")), "under 100 buyers");
+});
+
+test("forms started and not finished: call them back, the numbers are kept", () => {
+  const healthy = line("sain", { spend: 200_000, cancelled: 6, delivered: 26, back: 5, sessions: 2_000, productViews: 1_900, formStarts: 90 });
+  const leaky = line("fuite", { spend: 400_000, cancelled: 6, delivered: 26, back: 5, sessions: 2_000, productViews: 1_900, formStarts: 400 });
+  const r = run([healthy, leaky]);
+  const a = r.rows.find((x) => x.key === leaky.key)!;
+  assert.equal(a.verdict, "scale");
+  assert.equal(a.bottleneck?.stage, "formCompletion");
+  // The step up and the leak in the same insight, with the page to fix it.
+  const i = r.insights.find((x) => x.key === leaky.key)!;
+  assert.equal(i.title, "Monter « fuite »");
+  assert.equal(i.fix, "carts");
+  assert.match(i.action, /En même temps, le formulaire perd des clients : appeler dans la journée les formulaires commencés sans commande \(leur numéro est gardé dans Commandes non terminées\)/);
 });

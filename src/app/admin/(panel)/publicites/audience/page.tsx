@@ -122,10 +122,18 @@ function Rate({ rate, ci, n, unit }: { rate: number | null; ci: { low: number; h
   );
 }
 
-function Flag({ flag, what }: { flag: SegmentRead["confirmFlag"]; what: string }) {
-  if (flag === "worse") return <Badge tone="danger">{what} nettement plus basse</Badge>;
-  if (flag === "better") return <Badge tone="ok">{what} nettement meilleure</Badge>;
-  return null;
+/**
+ * The advisor's flag, short enough to sit under the segment's name: on a phone the rate columns
+ * scroll away, the flag must not. Only a clear gap is flagged (readSegments), so the words stay plain.
+ */
+const FLAGS = {
+  confirm: { worse: "Confirme moins", better: "Confirme mieux" },
+  delivery: { worse: "Refuse plus", better: "Refuse moins" },
+} as const;
+
+function Flag({ flag, what }: { flag: SegmentRead["confirmFlag"]; what: keyof typeof FLAGS }) {
+  if (flag == null) return null;
+  return <Badge tone={flag === "worse" ? "danger" : "ok"}>{FLAGS[what][flag]}</Badge>;
 }
 
 function SegmentTable({ rows, name, label = (l) => l, sessions, revenue }: { rows: SegmentRead[]; name: string; label?: (l: string) => string; sessions?: Map<string, number | null>; revenue?: Map<string, number> }) {
@@ -142,8 +150,7 @@ function SegmentTable({ rows, name, label = (l) => l, sessions, revenue }: { row
             <th className="px-2 text-end font-medium">Confirmation</th>
             <th className="px-2 text-end font-medium">Livraison</th>
             <th className="px-2 text-end font-medium">Refus</th>
-            {revenue && <th className="px-2 text-end font-medium">CA livré</th>}
-            <th className="ps-2 text-start font-medium">Écart</th>
+            {revenue && <th className="ps-2 text-end font-medium">CA livré</th>}
           </tr>
         </thead>
         <tbody className="divide-y divide-line tabular-nums">
@@ -154,20 +161,22 @@ function SegmentTable({ rows, name, label = (l) => l, sessions, revenue }: { row
             const conv = visits ? wilson(x.orders, visits) : null;
             return (
               <tr key={x.label} className={x.orders === 0 ? "text-muted" : ""}>
-                <td className="py-2 pe-3">{label(x.label)}</td>
-                {sessions && <td className="px-2 text-end">{visits ?? "—"}</td>}
+                <td className="py-2 pe-3">
+                  <span className="block whitespace-nowrap">{label(x.label)}</span>
+                  {(x.confirmFlag || x.deliveryFlag) && (
+                    <span className="mt-1 flex flex-col items-start gap-1">
+                      <Flag flag={x.confirmFlag} what="confirm" />
+                      <Flag flag={x.deliveryFlag} what="delivery" />
+                    </span>
+                  )}
+                </td>
+                {sessions && <td className="px-2 text-end">{visits == null ? "—" : fmt(visits, "int")}</td>}
                 {sessions && <td className="px-2 text-end">{conv ? pct(conv.rate) : "—"}</td>}
                 <td className="px-2 text-end">{x.orders}</td>
                 <td className="px-2 py-1.5 text-end"><Rate rate={x.confirmRate} ci={x.confirmCi} n={called} unit="appelées" /></td>
                 <td className="px-2 py-1.5 text-end"><Rate rate={x.deliveryRate} ci={x.deliveryCi} n={parcels} unit="colis" /></td>
                 <td className="px-2 text-end">{pct(x.refusalRate)}</td>
-                {revenue && <td className="px-2 text-end">{formatTND(revenue.get(x.label) ?? 0)}</td>}
-                <td className="ps-2">
-                  <span className="flex flex-wrap gap-1">
-                    <Flag flag={x.confirmFlag} what="Confirmation" />
-                    <Flag flag={x.deliveryFlag} what="Livraison" />
-                  </span>
-                </td>
+                {revenue && <td className="whitespace-nowrap ps-2 text-end">{formatTND(revenue.get(x.label) ?? 0)}</td>}
               </tr>
             );
           })}

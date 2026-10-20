@@ -15,8 +15,8 @@ import type { AdRow, Baseline, Costs, Funnel, Level, Platform } from "./types";
  * they end delivered, the row's rates pulled toward the shop's), always
  * labelled as one.
  *
- *   kpis(row, costs, baseline)   → Kpis
- *   totalRow(rows, key?)         → AdRow       sum of rows (platform fields: sum of the known ones)
+ *   kpis(row, costs, baseline, opts?) → Kpis
+ *   totalRow(rows, key?)         → AdRow       sum of rows (a platform count only when every row that spent has it)
  *   pendingOf(funnel)            → number      orders still waiting for their call
  *   funnelSteps(row)             → FunnelStep[] impressions → … → delivered, with the rate from the step before
  *   kpiValue(k, key)             → number | null
@@ -109,13 +109,13 @@ export type Kpis = {
   poas: number | null;
   /** Unit economics: what one delivered order leaves before ads, refusals' costs included. */
   marginPerDelivered: number | null;
-  /** Where the margin comes from: this row, this row blended with the shop, or the shop alone. */
-  marginBasis: "row" | "blend" | "shop" | null;
+  /** Where the margin comes from: this row, this row blended with the shop's (or the account's), the shop alone, or the account's delivered orders of the period. */
+  marginBasis: "row" | "blend" | "shop" | "account" | null;
   breakEvenCpd: number | null;
   breakEvenCpa: number | null;
   breakEvenRoas: number | null;
   projection: Projection | null;
-  /** Platform purchases per real placed order. */
+  /** Platform purchases per real order at the stage the platform is told about (placed, confirmed or delivered). */
   overReporting: number | null;
   missing: Input[];
 };
@@ -129,7 +129,24 @@ export function pendingOf(f: Funnel): number {
   return Math.max(0, Math.min(f.open, f.orders - f.confirmed - f.cancelled));
 }
 
-export function kpis(row: AdRow, costs: Costs, baseline: Baseline | null): Kpis {
+/** What the caller knows beyond the row: the account's own margin, and when the platforms are told about a purchase. */
+export type KpiOptions = {
+  /**
+   * Margin per delivered order of the whole account over the period. Stands
+   * in for the shop's when the baseline has none, so a row with no delivered
+   * order yet is still judged on a margin, not on the account's average cost.
+   */
+  accountMargin?: number | null;
+  /** The platforms only hear of a purchase at this stage: their count is compared with the orders that reached it. */
+  purchaseAt?: "placed" | "confirmed" | "delivered";
+};
+
+/** The orders a platform's purchase count should match: those it was told about. */
+export function reportedOrders(f: Funnel, purchaseAt: KpiOptions["purchaseAt"] = "placed"): number {
+  return purchaseAt === "confirmed" ? f.confirmed : purchaseAt === "delivered" ? f.delivered : f.orders;
+}
+
+export function kpis(row: AdRow, costs: Costs, baseline: Baseline | null, opts: KpiOptions = {}): Kpis {
   const f = row.funnel;
   const p = row.platform;
   const spend = p.spend;
@@ -164,7 +181,8 @@ export function kpis(row: AdRow, costs: Costs, baseline: Baseline | null): Kpis 
           deliveryRate: deliveryExpect,
         })
       : null;
-  const shopMargin = baseline?.marginPerDelivered ?? null;
+  const shopMargin = baseline?.marginPerDelivered ?? opts.accountMargin ?? null;
+  const fromShop = baseline?.marginPerDelivered != null;
   let marginPerDelivered: number | null = null;
   let marginBasis: Kpis["marginBasis"] = null;
   if (rowMargin != null && shopMargin != null) {
@@ -175,7 +193,7 @@ export function kpis(row: AdRow, costs: Costs, baseline: Baseline | null): Kpis 
     marginBasis = "row";
   } else if (shopMargin != null) {
     marginPerDelivered = shopMargin;
-    marginBasis = "shop";
+    marginBasis = fromShop ? "shop" : "account";
   }
 
   const projection = project(f, pending, confirmExpect, deliveryExpect, spend, marginPerDelivered);
@@ -233,7 +251,7 @@ export function kpis(row: AdRow, costs: Costs, baseline: Baseline | null): Kpis 
     breakEvenCpa: breakEvenCpd != null && expectedNet != null ? Math.round(breakEvenCpd * expectedNet) : null,
     breakEvenRoas: marginPerDelivered != null && marginPerDelivered > 0 && revenuePerDelivered != null ? revenuePerDelivered / marginPerDelivered : null,
     projection,
-    overReporting: p.purchases != null ? ratio(p.purchases, f.orders) : null,
+    overReporting: p.purchases != null ? ratio(p.purchases, reportedOrders(f, opts.purchaseAt)) : null,
     missing,
   };
 }
@@ -275,9 +293,13 @@ const FUNNEL_KEYS = [
 const PLATFORM_KEYS = ["spend", "impressions", "clicks", "reach", "purchases"] as const;
 
 /**
- * The sum of rows, for the account line. A platform figure is the sum of the
- * rows that have it, null when none has it. Reach is summed too: people
- * reached by two campaigns count twice, so the frequency is a floor.
+ * The sum of rows, for the account line. A platform count (impressions,
+ * clicks, reach, purchases) is only summed when every row that spent has it,
+ * as data.ts does for one row: clicks of one campaign against the visits of
+ * all of them would give a false landing rate, and the whole spend over part
+ * of the impressions a false CPM. Rows with no spend add no count. Reach is
+ * summed too: people reached by two campaigns count twice, so the frequency
+ * is a floor.
  */
 export function totalRow(rows: AdRow[], key = "total", level: Level = "source"): AdRow {
   const funnel = Object.fromEntries(FUNNEL_KEYS.map((k) => [k, rows.reduce((s, r) => s + r.funnel[k], 0)])) as Funnel;
@@ -285,7 +307,8 @@ export function totalRow(rows: AdRow[], key = "total", level: Level = "source"):
   const platform = Object.fromEntries(
     PLATFORM_KEYS.map((k) => {
       const known = rows.map((r) => r.platform[k]).filter((v): v is number => v != null);
-      return [k, known.length ? known.reduce((s, v) => s + v, 0) : null];
+      const partial = k !== "spend" && rows.some((r) => r.platform.spend != null && r.platform[k] == null);
+      return [k, known.length && !partial ? known.reduce((s, v) => s + v, 0) : null];
     }),
   ) as Platform;
   return { level, key, source: key, campaign: null, ad: null, funnel, platform };
@@ -330,7 +353,7 @@ export const KPI_DEFS: Record<KpiKey, KpiDef> = {
   cpm: { label: "CPM", help: "Coût de 1 000 affichages de la publicité.", unit: "money", better: "lower", needs: ["spend", "impressions"] },
   ctr: { label: "CTR lien", help: "Part des affichages qui donnent un clic sur le lien.", unit: "rate", better: "higher", needs: ["impressions", "clicks"] },
   cpc: { label: "CPC lien", help: "Coût d'un clic sur le lien.", unit: "money", better: "lower", needs: ["spend", "clicks"] },
-  frequency: { label: "Fréquence", help: "Nombre moyen de fois qu'une personne a vu la publicité. Haute : l'audience se lasse.", unit: "number", better: null, needs: ["impressions", "reach"] },
+  frequency: { label: "Fréquence", help: "Nombre moyen de fois qu'une personne a vu la publicité. Haute : l'audience se lasse. Importée jour par jour, c'est la moyenne d'une journée : sur toute la période, elle est plus haute.", unit: "number", better: null, needs: ["impressions", "reach"] },
   landingRate: { label: "Clics arrivés", help: "Visites comptées par la boutique pour 100 clics comptés par la plateforme. Bas : page lente, mauvais lien ou clics par erreur.", unit: "rate", better: "higher", needs: ["clicks"] },
   costPerVisit: { label: "Coût par visite", help: "Dépense divisée par les visites arrivées sur la boutique.", unit: "money", better: "lower", needs: ["spend"] },
   viewRate: { label: "Fiche vue", help: "Part des visites qui ouvrent une fiche produit.", unit: "rate", better: "higher", needs: [] },
@@ -357,7 +380,7 @@ export const KPI_DEFS: Record<KpiKey, KpiDef> = {
   breakEvenCpd: { label: "Coût max par livrée", help: "Au-dessus, chaque client livré fait perdre de l'argent.", unit: "money", better: null, needs: ["productCost", "carrierCost", "returnCost"] },
   breakEvenCpa: { label: "CPA max", help: "Coût max par commande passée, une fois les annulations et les refus comptés.", unit: "money", better: null, needs: ["productCost", "carrierCost", "returnCost"] },
   breakEvenRoas: { label: "ROAS minimum", help: "ROAS livré en dessous duquel la publicité perd de l'argent.", unit: "multiple", better: null, needs: ["productCost", "carrierCost", "returnCost"] },
-  overReporting: { label: "Achats plateforme par commande", help: "Achats comptés par Meta ou TikTok pour 1 commande réelle. Au-dessus de 1, la plateforme s'attribue des ventes qui n'existent pas.", unit: "multiple", better: null, needs: ["purchases"] },
+  overReporting: { label: "Achats plateforme par commande", help: "Achats comptés par Meta ou TikTok pour 1 commande réelle (passée, confirmée ou livrée, selon le moment où l'achat leur est envoyé). Au-dessus de 1, la plateforme s'attribue des ventes qui n'existent pas.", unit: "multiple", better: null, needs: ["purchases"] },
   projectedDelivered: { label: "Livrées (projection)", help: "Livrées + commandes en cours × leur chance d'être livrées. Une projection, pas un résultat.", unit: "number", better: "higher", needs: ["baseline"] },
   projectedCpd: { label: "Coût par livrée (projection)", help: "Dépense divisée par les livrées projetées : le coût attendu quand les commandes en cours seront terminées.", unit: "money", better: "lower", needs: ["spend", "baseline"] },
   projectedContribution: { label: "Résultat après pub (projection)", help: "Livrées projetées × marge par livrée − dépense.", unit: "money", better: "higher", needs: ["spend", "baseline", "productCost", "carrierCost", "returnCost"] },

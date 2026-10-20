@@ -55,7 +55,7 @@ export default async function CampaignsPage({ searchParams }: PageProps<"/admin/
   return (
     <div className="flex flex-col gap-4">
       <p className="text-xs text-muted">
-        Période {periodText(r)}. Une ligne par utm_campaign ; la flèche déplie le détail et les publicités (utm_content). Les commandes saisies dans l&apos;admin n&apos;y sont pas.
+        Période {periodText(r)}. Une ligne par campagne (le nom utm_campaign de ses liens) ; la flèche déplie le détail et ses publicités (utm_content). Les commandes saisies dans l&apos;admin n&apos;y sont pas.
       </p>
 
       {counts.length > 0 && (
@@ -82,6 +82,16 @@ export default async function CampaignsPage({ searchParams }: PageProps<"/admin/
           period={q}
           empty="Aucune campagne sur la période : aucune visite ni commande avec utm_campaign, et aucune dépense saisie par campagne."
         />
+        {campaigns.length === 0 && (
+          <p className="mt-2 flex flex-wrap gap-x-4 text-[13px]">
+            <Link href={withPeriod("/admin/publicites/idees#liens", q)} className="inline-flex min-h-10 items-center font-medium text-sea underline">
+              Créer un lien avec ses UTM
+            </Link>
+            <Link href="/admin/publicites/importer" className="inline-flex min-h-10 items-center font-medium text-sea underline">
+              Importer un export Meta ou TikTok
+            </Link>
+          </p>
+        )}
         {loose > 0 && (
           <p className="mt-3 text-xs text-muted">
             {loose} publicité{loose > 1 ? "s" : ""} sans campagne connue : voir{" "}

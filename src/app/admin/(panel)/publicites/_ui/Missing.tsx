@@ -8,7 +8,8 @@ import { FIX_LINKS, fixHref, MISSING_GROUPS, missingItems } from "./format";
  *
  *   <MissingList inputs={k.missing} extra={[{ label, href, cta }]} period={q} />
  *     Grouped by what each input unlocks (MISSING_GROUPS), each line with its
- *     link. `extra` adds lines that are not KPI inputs (a pixel, a token).
+ *     link, or one link under a group whose inputs all come from the same
+ *     place. `extra` adds lines that are not KPI inputs (a pixel, a token).
  *     Renders `done` (or nothing) when there is nothing to list.
  *   <MissingNote inputs={whyMissing(k, "poas")} period={q} />
  *     One sentence for a row or a figure: "Manque : … Corriger".
@@ -22,33 +23,53 @@ export function MissingList({ inputs, extra = [], period = "", done }: { inputs:
   const groups = MISSING_GROUPS.map((g) => ({ title: g.title, items: items.filter((i) => g.inputs.includes(i.input)) })).filter((g) => g.items.length > 0);
   return (
     <div className="flex flex-col gap-3 text-[13px]">
-      {groups.map((g) => (
-        <div key={g.title}>
-          <p className="text-xs font-medium text-muted">{g.title}</p>
-          <ul className="mt-1 divide-y divide-line">
-            {g.items.map((i) => (
-              <li key={i.input} className="flex flex-wrap items-center justify-between gap-x-3">
-                <span className="py-2 text-ink-2">{i.label.charAt(0).toUpperCase() + i.label.slice(1)}</span>
-                {i.fix ? (
-                  <Link href={fixHref(i.fix, period)} className="inline-flex min-h-10 items-center font-medium text-sea underline">
-                    {FIX_LINKS[i.fix].label}
+      {groups.map((g) => {
+        // Several inputs given in the same place (impressions, clicks, reach: one export) get one link, not one each.
+        const fixes = [...new Set(g.items.map((i) => i.fix))];
+        const shared = g.items.length > 1 && fixes.length === 1 && fixes[0] != null ? fixes[0] : null;
+        if (shared) {
+          return (
+            <div key={g.title}>
+              <p className="text-xs font-medium text-muted">{g.title}</p>
+              <ul className="mt-1 flex flex-col gap-0.5 py-1 text-ink-2">
+                {g.items.map((i) => (
+                  <li key={i.input}>{i.label.charAt(0).toUpperCase() + i.label.slice(1)}</li>
+                ))}
+              </ul>
+              <Link href={fixHref(shared, period)} className="inline-flex min-h-10 items-center font-medium text-sea underline">
+                {FIX_LINKS[shared].label}
+              </Link>
+            </div>
+          );
+        }
+        return (
+          <div key={g.title}>
+            <p className="text-xs font-medium text-muted">{g.title}</p>
+            <ul className="mt-1 divide-y divide-line">
+              {g.items.map((i) => (
+                <li key={i.input} className="flex flex-wrap items-center justify-between gap-x-3">
+                  <span className="py-2 text-ink-2">{i.label.charAt(0).toUpperCase() + i.label.slice(1)}</span>
+                  {i.fix ? (
+                    <Link href={fixHref(i.fix, period)} className="inline-flex min-h-10 items-center font-medium text-sea underline">
+                      {FIX_LINKS[i.fix].label}
+                    </Link>
+                  ) : (
+                    <span className="py-2 text-xs text-muted">viendra avec les premières commandes terminées</span>
+                  )}
+                </li>
+              ))}
+              {g.items.some((i) => i.input === "spend") && (
+                <li className="flex flex-wrap items-center justify-between gap-x-3">
+                  <span className="py-2 text-xs text-muted">Ou à la main, jour par jour</span>
+                  <Link href={FIX_LINKS.spend.href} className="inline-flex min-h-10 items-center font-medium text-sea underline">
+                    {FIX_LINKS.spend.label}
                   </Link>
-                ) : (
-                  <span className="py-2 text-xs text-muted">viendra avec les premières commandes terminées</span>
-                )}
-              </li>
-            ))}
-            {g.items.some((i) => i.input === "spend") && (
-              <li className="flex flex-wrap items-center justify-between gap-x-3">
-                <span className="py-2 text-xs text-muted">Ou à la main, jour par jour</span>
-                <Link href={FIX_LINKS.spend.href} className="inline-flex min-h-10 items-center font-medium text-sea underline">
-                  {FIX_LINKS.spend.label}
-                </Link>
-              </li>
-            )}
-          </ul>
-        </div>
-      ))}
+                </li>
+              )}
+            </ul>
+          </div>
+        );
+      })}
       {extra.length > 0 && (
         <div>
           <p className="text-xs font-medium text-muted">Suivi des publicités</p>

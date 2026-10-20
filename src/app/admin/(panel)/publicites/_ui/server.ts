@@ -33,6 +33,8 @@ export async function trackingSetup(): Promise<TrackingSetup> {
  */
 export async function adsBasics(to: Date): Promise<{ costs: Costs; baseline: Baseline; tracking: TrackingSetup }> {
   const until = new Date(Math.min(to.getTime(), Date.now()));
-  const [costs, base, tracking] = await Promise.all([adCosts(), baseline(until), trackingSetup()]);
+  // The costs also give the shop's margin per delivered order.
+  const costsRead = adCosts();
+  const [costs, base, tracking] = await Promise.all([costsRead, costsRead.then((c) => baseline(until, c)), trackingSetup()]);
   return { costs, baseline: base, tracking };
 }

@@ -121,9 +121,10 @@ export type Insight = {
 /**
  * Back-office places an insight can send the owner to: the costs or tracking
  * settings, the manual spend page, the import tab, the products (supplier
- * cost), the ad link builder, the creative brief.
+ * cost), the ad link builder, the creative brief, the order forms started
+ * and not finished (their phone numbers, to call back).
  */
-export type Fix = "costs" | "tracking" | "spend" | "import" | "productCost" | "links" | "brief";
+export type Fix = "costs" | "tracking" | "spend" | "import" | "productCost" | "links" | "brief" | "carts";
 
 /** What to do with a row now. "wait": not enough data to judge; "tracking": the measure itself is broken. */
 export type Verdict = "scale" | "keep" | "fix" | "cut" | "wait" | "tracking";

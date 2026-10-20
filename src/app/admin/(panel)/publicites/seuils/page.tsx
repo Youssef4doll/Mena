@@ -26,6 +26,8 @@ export const metadata = { title: "Seuils · Publicités" };
 const money = (v: number | null | undefined) => (v == null ? "—" : formatTND(v));
 const pct = (v: number | null | undefined) => fmt(v, "pct");
 const times = (v: number | null | undefined) => valueText(v, "multiple");
+/** A KPI's help after "Name :", in the run of the sentence; an acronym ("ROAS livré…") keeps its capitals. */
+const lower = (s: string) => (/^[A-ZÀ-Ý][a-zà-ÿ]/.test(s) ? s.charAt(0).toLowerCase() + s.slice(1) : s);
 
 /** What a missing input means for the owner, and where it is fixed. */
 const MISSING: Record<BreakEvenInput, { text: string; href?: string }> = {
@@ -92,7 +94,7 @@ export default async function ThresholdsPage({ searchParams }: PageProps<"/admin
     { label: "Retour d'un colis", value: money(costs.returnPerParcel), note: "en plus, sur un colis refusé", missing: costs.returnPerParcel == null ? "returnCost" : undefined },
     { label: "Confirmation", value: pct(base.confirmRate), note: `boutique, 180 jours, ${base.orders} commande${base.orders > 1 ? "s" : ""}`, missing: base.confirmRate == null ? "confirmRate" : undefined },
     { label: "Livraison", value: pct(base.deliveryRate), note: "colis livrés sur colis arrivés au bout, 180 jours", missing: base.deliveryRate == null ? "deliveryRate" : undefined },
-    { label: "Taux de commande (pub)", value: pct(k.orderRate), note: `${total.funnel.orders} commande${total.funnel.orders > 1 ? "s" : ""} pour ${total.funnel.sessions} visite${total.funnel.sessions > 1 ? "s" : ""} pub, ${periodText(r)}`, missing: k.orderRate == null ? "orderRate" : undefined },
+    { label: "Taux de commande (pub)", value: pct(k.orderRate), note: `${fmt(total.funnel.orders, "int")} commande${total.funnel.orders > 1 ? "s" : ""} pour ${fmt(total.funnel.sessions, "int")} visite${total.funnel.sessions > 1 ? "s" : ""} pub, ${periodText(r)}`, missing: k.orderRate == null ? "orderRate" : undefined },
     { label: "Clics arrivés (pub)", value: pct(k.landingRate), note: "visites pour 100 clics de la plateforme", missing: k.landingRate == null ? "landingRate" : undefined },
     { label: "CTR lien (pub)", value: pct(k.ctr), note: "clics sur le lien pour 100 affichages", missing: k.ctr == null ? "ctr" : undefined },
     { label: "CPA actuel (pub)", value: money(k.cpaPlaced), note: `dépense divisée par les commandes, ${periodText(r)}`, missing: k.cpaPlaced == null ? "cpa" : undefined },
@@ -120,8 +122,8 @@ export default async function ThresholdsPage({ searchParams }: PageProps<"/admin
 
       <Card title="Ce que veulent dire les plafonds">
         <ul className="grid gap-x-6 gap-y-1.5 text-[13px] text-ink-2 sm:grid-cols-2">
-          <li><strong className="text-ink">Coût max par livrée</strong> : {KPI_DEFS.breakEvenCpd.help}</li>
-          <li><strong className="text-ink">CPA max</strong> : {KPI_DEFS.breakEvenCpa.help} Le CPA est le coût publicitaire d&apos;une commande passée.</li>
+          <li><strong className="text-ink">Coût max par livrée</strong> : {lower(KPI_DEFS.breakEvenCpd.help)}</li>
+          <li><strong className="text-ink">CPA max</strong> : {lower(KPI_DEFS.breakEvenCpa.help)} Le CPA est le coût publicitaire d&apos;une commande passée.</li>
           <li><strong className="text-ink">CPC max</strong> : ce qu&apos;un clic sur le lien peut coûter, au taux de commande et aux clics arrivés mesurés.</li>
           <li><strong className="text-ink">CPM max</strong> : ce que 1 000 affichages peuvent coûter, au CTR lien mesuré.</li>
           <li><strong className="text-ink">ROAS minimum</strong> : {KPI_DEFS.breakEvenRoas.help} Le ROAS est le chiffre d&apos;affaires livré pour 1 DT de publicité.</li>
@@ -265,7 +267,9 @@ function OfferTable({ rows }: { rows: OfferBreakEven[] }) {
               <th key={x.key} className="min-w-28 px-2 py-2 text-end font-medium">
                 <span className="block text-ink">{x.label}</span>
                 <span className="block font-normal">
-                  {x.units} article{x.units > 1 ? "s" : ""} · {money(x.input.price)}
+                  {/* The single unit is already called "1 article": its price alone. */}
+                  {x.label === `${x.units} article` ? "" : `${x.units} article${x.units > 1 ? "s" : ""} · `}
+                  {money(x.input.price)}
                   {x.input.deliveryFee === 0 ? " · livraison offerte" : ""}
                 </span>
               </th>
@@ -275,7 +279,7 @@ function OfferTable({ rows }: { rows: OfferBreakEven[] }) {
         <tbody className="divide-y divide-line tabular-nums">
           {TABLE_ROWS.map((t) => (
             <tr key={t.key} className={t.key === "maxCostPerDelivered" || t.key === "maxCpa" ? "font-semibold text-ink" : ""}>
-              <th scope="row" className="py-2 pe-3 text-start font-normal text-ink-2">
+              <th scope="row" className="min-w-32 py-2 pe-3 text-start font-normal text-ink-2">
                 {t.label}
                 {t.help && <span className="block text-[11px] text-muted">{t.help}</span>}
               </th>

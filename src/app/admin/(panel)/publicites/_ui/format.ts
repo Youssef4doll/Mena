@@ -16,6 +16,7 @@ import type { AdRow, Advice, Fix, Severity, Verdict } from "@/lib/ads/types";
  *   change(cur, prev, unit, better) → { text: "▲ 12 %" | "▼ 3,1 pt" | "stable", tone } | null
  *   chanceText(p)                 → "72 %" | "plus de 99 %" | "moins de 1 %"   a probability without false certainty
  *   VERDICTS[verdict]             → { label, tone, rank, hint }   rank: most urgent first when sorted ascending
+ *   AD_VERDICTS[verdict]          → { label, hint } for an ad, where it differs (no budget of its own)
  *   CONFIDENCE[confidence]        → "confiance faible" …
  *   budgetText(change)            → "+20 %" | "−30 %" | "Pause" | "Inchangé" | "—"
  *   SEVERITIES[severity]          → { label, tone, edge }
@@ -85,8 +86,14 @@ export const VERDICTS: Record<Verdict, { label: string; tone: Tone; rank: number
   tracking: { label: "Mesure cassée", tone: "danger", rank: 1, hint: "La dépense ne retrouve pas ses visites : le lien ou ses UTM sont à revoir avant de juger." },
   fix: { label: "À corriger", tone: "warn", rank: 2, hint: "Trop chère par livrée, avec une étape à réparer." },
   wait: { label: "Attendre", tone: "neutral", rank: 3, hint: "Pas encore assez de données pour juger." },
-  keep: { label: "Garder", tone: "info", rank: 4, hint: "Sous le coût max, sans assez de marge ou de certitude pour monter." },
+  keep: { label: "Garder", tone: "info", rank: 4, hint: "Garder le budget : pas assez de marge, de jours, d'appels faits ou de certitude pour monter." },
   scale: { label: "Monter", tone: "ok", rank: 5, hint: "Rentable avec de la marge : monter le budget par petits paliers." },
+};
+
+/** An ad has no budget of its own (its ad set has): the verdicts that speak of budget read differently. */
+export const AD_VERDICTS: Partial<Record<Verdict, { label: string; hint: string }>> = {
+  scale: { label: "Gagnante", hint: "Rentable avec de la marge : la garder et couper les perdantes de son ensemble, qui lui laissent leur budget." },
+  cut: { label: "Désactiver", hint: "Perd de l'argent avec assez de données pour le dire : désactiver la publicité." },
 };
 
 export const CONFIDENCE: Record<Advice["confidence"], string> = { low: "confiance faible", medium: "confiance moyenne", high: "confiance élevée" };
@@ -106,15 +113,19 @@ export const SEVERITIES: Record<Severity, { label: string; tone: Tone; edge: str
   info: { label: "Info", tone: "info", edge: "border-s-sea" },
 };
 
-/** Back-office pages behind an insight's `fix`. The Idées tab carries the ads' link builder under #liens. */
+/**
+ * Back-office pages behind an insight's `fix`. The Idées tab carries the ads' link builder under #liens.
+ * The labels name the card of Paramètres where the figure is typed, since that page has no anchors.
+ */
 export const FIX_LINKS: Record<Fix, { href: string; label: string }> = {
-  costs: { href: "/admin/parametres", label: "Renseigner les coûts" },
-  tracking: { href: "/admin/parametres", label: "Régler le suivi" },
+  costs: { href: "/admin/parametres", label: "Renseigner les coûts (Paramètres, carte Livraison)" },
+  tracking: { href: "/admin/parametres", label: "Régler les pixels (Paramètres, Pixels publicitaires)" },
   spend: { href: "/admin/depenses", label: "Saisir une dépense" },
   import: { href: "/admin/publicites/importer", label: "Importer un export" },
   productCost: { href: "/admin/produits", label: "Coûts des produits" },
   links: { href: "/admin/publicites/idees#liens", label: "Créer le bon lien" },
   brief: { href: "/admin/publicites/idees", label: "Préparer des créatives" },
+  carts: { href: "/admin/paniers", label: "Rappeler les formulaires abandonnés" },
 };
 
 /** A fix link; the period follows when it stays in the ads section. */
