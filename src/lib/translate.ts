@@ -11,7 +11,7 @@ export type { ProductTexts, TranslateMode };
  * never leaves the server, and the back office receives only the texts, to
  * read again before saving.
  */
-const MODEL = process.env.ANTHROPIC_MODEL || "claude-opus-5-5";
+export const MODEL = process.env.ANTHROPIC_MODEL || "claude-opus-5-5";
 
 export const translationReady = () => Boolean(process.env.ANTHROPIC_API_KEY);
 

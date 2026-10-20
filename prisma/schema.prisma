@@ -567,29 +567,45 @@ model AdminSession {
 
 // --------------------------------------------------------------- analytics
 
-/// First-party analytics: no external service needed to read the funnel.
-/// Append-only, no relations. Hot dimensions are real columns (indexed,
-/// groupable in SQL); the rest sits in `props`.
-/// Advertising spend as the ads manager reports it, entered by hand: the cost
-/// per delivered order and the profit after ads are computed from it. A row
-/// covers one or several days (a weekly total is spread evenly over its days).
+/// Advertising spend as the ads manager reports it, typed in the back office
+/// or imported from a Meta or TikTok export: the cost per delivered order and
+/// the profit after ads are computed from it. A row covers one or several days
+/// (a weekly total is spread evenly over its days).
 model AdSpend {
-  id        String   @id @default(cuid())
+  id          String   @id @default(cuid())
   /// First Tunisian calendar day covered.
-  day       DateTime @db.Date
+  day         DateTime @db.Date
   /// Days covered, from `day` on (1 for one day).
-  days      Int      @default(1)
+  days        Int      @default(1)
   /// Same words as an order's source: facebook, instagram, tiktok, google…
-  source    String
-  campaign  String?
+  source      String
+  campaign    String?
+  /// Ad set (Meta) or ad group (TikTok), and the ad's name: the ad matches
+  /// the visits' utm_content.
+  adSet       String?
+  ad          String?
+  /// What the platform counted over the same days. Null: not given.
+  impressions Int?
+  /// Link clicks, not all clicks.
+  clicks      Int?
+  reach       Int?
+  /// Purchases the platform's pixel counted, to compare with the real orders.
+  purchases   Int?
   /// Millimes, as paid (taxes and card fees included).
-  amount    Int
-  note      String?
-  createdAt DateTime @default(now())
+  amount      Int
+  note        String?
+  /// Rows read from an export: a hash of source, campaign, ad set, ad and
+  /// days, so importing the same export again replaces its rows instead of
+  /// counting them twice. Null for a row typed by hand.
+  importKey   String?  @unique
+  createdAt   DateTime @default(now())
 
   @@index([day])
 }
 
+/// First-party analytics: no external service needed to read the funnel.
+/// Append-only, no relations. Hot dimensions are real columns (indexed,
+/// groupable in SQL); the rest sits in `props`.
 model AnalyticsEvent {
   id        String   @id @default(cuid())
   /// snake_case: page_view, product_viewed, add_to_cart, checkout_started,
@@ -605,6 +621,8 @@ model AnalyticsEvent {
   source    String?
   medium    String?
   campaign  String?
+  /// utm_content of the visit: which ad (or ad variant) brought it.
+  content   String?
   device    String?
   /// Millimes, for revenue-bearing events.
   value     Int?

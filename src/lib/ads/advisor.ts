@@ -1,0 +1,1166 @@
+import { formatTND } from "../money";
+import { fmt } from "../viz";
+import { INPUT_LABELS, kpis, pendingOf, totalRow, type Kpis } from "./kpis";
+import { costInterval, probBeats, probBestCost, probBestRate, probCostUnder, probRateAbove, wilson, type Count, type Interval } from "./stats";
+import type { AdRow, Advice, Baseline, Costs, DayPoint, Fix, Insight, Severity } from "./types";
+
+/**
+ * The media buyer. Reads every row the way someone who has run very large
+ * cash-on-delivery budgets on Meta and TikTok would, and says what to do,
+ * in plain French, with the numbers behind it. Pure and deterministic.
+ *
+ * The rules it holds to:
+ *  - The only true KPI is the cost per DELIVERED order against what a
+ *    delivered order leaves. Placed orders lie (fake orders, refusals), and
+ *    the platform's own purchase count lies more.
+ *  - No verdict without evidence: a row is judged once it has spent twice its
+ *    max cost per delivered order, or has 10 orders. Before that: "wait".
+ *  - Young rows have open orders: they are read through a projection (the
+ *    row's rates pulled toward the shop's), and the text says so.
+ *  - Winners are scaled by 20–30 % steps, never doubled; losers are cut;
+ *    "fix" when one stage is clearly the problem and fixing it would be enough.
+ *  - One bottleneck at a time: the stage whose gap costs the most.
+ *
+ *   advise(input)                        → Report         everything below, in one call
+ *   adviseRow(row, k, ctx)               → RowAdvice      verdict, confidence, budget change, reasons
+ *   reference(rest, baseline)            → Reference      what a row's stages are compared with
+ *   bottleneck(row, ref)                 → Bottleneck | null
+ *   fatigue(points, frequency?)          → Fatigue | null
+ *   trackingInsights(rows, total, k, setup?, coverage?, days?) → Insight[]
+ *   readSegments(rows)                   → SegmentRead[]  rates, intervals and flags for an audience table
+ *   segmentInsights(kind, rows)          → Insight[]
+ *   hourBlocks(rows, size?)              → SegmentRow[]   24 hours grouped into blocks with enough orders
+ *   compareAds(rows, metric, costs, baseline) → AdComparison[]  winner probability and intervals
+ *   creativeInsights(rows, costs, baseline)   → Insight[]
+ *   sortInsights(insights)               → Insight[]      critical first
+ */
+
+// ── Thresholds ─────────────────────────────────────────────────────────
+
+/** A row is judged once it spent twice its max cost per delivered order: at break-even it would show about 2 deliveries by then, so 0 is a signal, not bad luck. */
+export const JUDGE_SPEND_MULTIPLE = 2;
+/** …or once it has this many placed orders, whatever it spent. */
+export const JUDGE_MIN_ORDERS = 10;
+/** Probability of being under the max cost per delivered order above which a row is a winner… */
+export const WIN_PROB = 0.9;
+/** …and under which it is a loser. In between, the money is not decided yet. */
+export const LOSE_PROB = 0.1;
+/** Scale only with room: under 80 % of the max, because the cost per delivered order rises as the budget grows. */
+export const SCALE_MAX_SHARE = 0.8;
+/** Budget steps in percent. Meta and TikTok restart their learning when a budget jumps much more than 20–30 %. */
+export const SCALE_STEP = 20;
+export const BIG_SCALE_STEP = 30;
+/** The bigger step needs a clear winner: very likely profitable and under 60 % of the max. */
+export const BIG_SCALE_PROB = 0.97;
+export const BIG_SCALE_MAX_SHARE = 0.6;
+/** Up to 30 % over the max, a row is close enough to reduce and fix rather than cut. */
+export const NEAR_MAX_SHARE = 1.3;
+/** Budget cuts: lighter when close to the max, firmer while fixing a loser, a pause when cut. */
+export const NEAR_STEP = -20;
+export const FIX_STEP = -30;
+export const CUT_STEP = -100;
+/** Certainty (the larger of p and 1 − p) for a high or a medium confidence; high also needs 30 orders or 4 times the max spent. */
+export const HIGH_CERTAINTY = 0.97;
+export const MEDIUM_CERTAINTY = 0.85;
+export const HIGH_ORDERS = 30;
+export const HIGH_SPEND_MULTIPLE = 4;
+/** Above this share of open orders the money figures are mostly projection: confidence at most medium, and only the small scale step. */
+export const YOUNG_OPEN_SHARE = 0.5;
+/** Frequency above which the audience has seen the ad too often to take more budget. */
+export const SATURATED_FREQUENCY = 3.5;
+/** Spend with no visit at all above 10 DT: the link or its UTM is wrong, it is not bad luck. */
+export const TRACKING_MIN_SPEND = 10_000;
+/** 100+ platform clicks and under 20 % arriving as visits: the UTM does not match; a slow page loses less than that. */
+export const TRACKING_MIN_CLICKS = 100;
+export const TRACKING_LANDING_FLOOR = 0.2;
+/** Under this share of placed orders ending delivered, the platform's CPA hides much of the true cost. */
+export const PLACED_LIE_RATE = 0.7;
+/** Platform purchases per real order above which the platform over-reports, under which the pixel misses sales; and the counts needed to say so. */
+export const OVER_REPORT_RATIO = 1.5;
+export const UNDER_REPORT_RATIO = 0.5;
+export const REPORT_MIN_EVENTS = 10;
+/** Under this confirmation rate, a pixel told at "placed" learns from too many people who never buy. */
+export const PIXEL_CONFIRM_FLOOR = 0.8;
+/** Optimisation events per week an ad set needs to leave the learning phase on Meta. */
+export const LEARNING_EVENTS_PER_WEEK = 50;
+/** Share of recent orders that should carry a source when ads run. */
+export const UTM_COVERAGE_FLOOR = 0.7;
+/** One row making this share of the delivered orders: the account hangs on it. Needs this many delivered orders in all. */
+export const CONCENTRATION_SHARE = 0.6;
+export const CONCENTRATION_MIN_DELIVERED = 10;
+/** This many rows still waiting for data, together taking this share of the spend: the budget is spread too thin. */
+export const FRAGMENTED_ROWS = 4;
+export const FRAGMENTED_SHARE = 0.4;
+/** Orders, and the margin's base, under which the AOV is not compared; 15 % under the shop's AOV calls for packs. */
+export const AOV_MIN_ORDERS = 15;
+export const AOV_LOW_SHARE = 0.85;
+
+/** A stage is a bottleneck when its rate is, with 95 % probability, under 90 % of its reference. */
+export const STAGE_SIGNIFICANCE = 0.05;
+export const STAGE_TOLERANCE = 0.1;
+/** CPM this many times the reference: the audience is too narrow or too contested. */
+export const CPM_HIGH_FACTOR = 1.5;
+/**
+ * Rules of thumb for cash-on-delivery shops on Meta and TikTok, used only
+ * when the shop has no reference of its own, and always called general
+ * guidance in the text: 1 % link CTR, 70 % of link clicks arriving, 60 % of
+ * visits opening a product, 6 % of product views starting the form, a third
+ * of the forms finished, 70 % confirmed, 75 % delivered. Deliberately low floors.
+ */
+export const GUIDE: Record<Exclude<Stage, "cpm">, number> = { ctr: 0.01, landing: 0.7, view: 0.6, formStart: 0.06, formCompletion: 0.35, confirmation: 0.7, delivery: 0.75 };
+/** Counts a row needs behind a stage before that stage can be blamed, and a reference from the rest of the account before it is used. */
+const STAGE_MIN: Record<Stage, number> = { cpm: 10_000, ctr: 2_000, landing: 50, view: 50, formStart: 50, formCompletion: 20, confirmation: 15, delivery: 15 };
+const REF_MIN: Record<Stage, number> = { cpm: 20_000, ctr: 5_000, landing: 200, view: 200, formStart: 200, formCompletion: 60, confirmation: 40, delivery: 40 };
+
+/** Fatigue: the last 3 active days against up to 7 days before them. */
+export const FATIGUE_RECENT_DAYS = 3;
+export const FATIGUE_BASE_DAYS = 7;
+/** Impressions (or visits, without platform figures) each window needs. */
+export const FATIGUE_MIN_IMPRESSIONS = { base: 3_000, recent: 1_000 };
+export const FATIGUE_MIN_SESSIONS = { base: 150, recent: 60 };
+/** CTR down 20 % (clear) or 15 % (early), with 95 % probability that the drop is real; CPM up 15 % or a frequency of 2.5 confirms it. */
+export const FATIGUE_CTR_DROP = 0.2;
+export const FATIGUE_EARLY_DROP = 0.15;
+export const FATIGUE_SIGNIFICANCE = 0.95;
+export const FATIGUE_CPM_RISE = 0.15;
+export const FATIGUE_FREQUENCY = 2.5;
+/** Without platform figures: cost per visit up 30 % reads as early fatigue (CTR down or CPM up, we cannot tell which). */
+export const FATIGUE_COST_RISE = 0.3;
+
+/** Audience segments: orders or parcels a segment needs, the smallest gap worth acting on, and the false-alarm budget shared by all the segments of a table. */
+export const SEGMENT_MIN_ORDERS = 20;
+export const SEGMENT_MIN_PARCELS = 15;
+export const SEGMENT_MIN_GAP = 0.08;
+export const SEGMENT_FALSE_ALARM = 0.1;
+export const SEGMENT_MAX_INSIGHTS = 3;
+
+/** Ads: what an ad needs before it is compared, per metric; and the winner probability that names a winner. */
+const AD_MIN: Record<AdMetric, number> = { cost: 3, orderRate: 100, ctr: 1_000, confirmRate: 15, deliveryRate: 15 };
+export const AD_WINNER_PROB = 0.9;
+
+const META_SOURCES = new Set(["facebook", "fb", "instagram", "ig", "meta", "messenger", "audience_network", "an"]);
+const TIKTOK_SOURCES = new Set(["tiktok", "tt", "tiktok_ads"]);
+
+// ── Types ──────────────────────────────────────────────────────────────
+
+export type Stage = "cpm" | "ctr" | "landing" | "view" | "formStart" | "formCompletion" | "confirmation" | "delivery";
+export type RefKind = "account" | "shop" | "guide";
+type RefValue = { value: number; kind: RefKind };
+/** Per stage; `viewOrder` (orders per product view) stands in for both form stages when a row's form events cannot be trusted. */
+export type Reference = Partial<Record<Stage, RefValue>> & { viewOrder?: RefValue };
+
+export type Bottleneck = {
+  stage: Stage;
+  rate: number;
+  reference: number;
+  referenceKind: RefKind;
+  /** How many times cheaper a delivered order would be with this stage at its reference (CPM: how many times dearer the reach is). */
+  factor: number;
+  /** Count behind the rate. */
+  n: number;
+  title: string;
+  evidence: string;
+  action: string;
+};
+
+export type Trend = { base: number; recent: number; change: number };
+
+export type Fatigue = {
+  level: "none" | "early" | "clear";
+  /** "platform": read from impressions and clicks; "visits": only the shop's visits and the spend (weaker). */
+  basis: "platform" | "visits";
+  ctr: Trend | null;
+  cpm: Trend | null;
+  costPerVisit: Trend | null;
+  orderRate: Trend | null;
+  frequency: number | null;
+  /** French, with the numbers; empty when level is "none". */
+  evidence: string;
+};
+
+export type RowAdvice = Advice & {
+  kpis: Kpis;
+  /** The max cost per delivered order the row is judged against, and where it comes from ("account": the account's average, costs missing). */
+  target: number | null;
+  targetBasis: "margin" | "account" | null;
+  /** Cost per delivered order the verdict used: the projection when orders are still open. */
+  judgedCpd: number | null;
+  /** Probability that the true cost per delivered order is under the target. */
+  probProfitable: number | null;
+  /** Spend still needed before the row can be judged ("wait"). */
+  moreSpend: number | null;
+  bottleneck: Bottleneck | null;
+  fatigue: Fatigue | null;
+  spendPerDay: number | null;
+};
+
+export type RowContext = {
+  ref: Reference;
+  /** Days in the period, for the budget per day. */
+  days?: number | null;
+  /** The account's cost per delivered order, used as the target when the margin cannot be computed. */
+  accountCpd?: number | null;
+  daily?: DayPoint[];
+};
+
+export type TrackingSetup = { metaPixel: boolean; tiktokPixel: boolean; metaCapi: boolean; tiktokEvents: boolean; purchaseAt: "placed" | "confirmed" | "delivered" };
+
+export type SegmentKind = "governorate" | "device" | "hour" | "weekday";
+/** One line of an audience table. `pending`: orders not called yet, left out of the confirmation rate when given. */
+export type SegmentRow = { label: string; orders: number; confirmed: number; delivered: number; back: number; pending?: number };
+export type SegmentFlag = "worse" | "better" | null;
+export type SegmentRead = SegmentRow & {
+  confirmRate: number | null;
+  confirmCi: Interval | null;
+  deliveryRate: number | null;
+  deliveryCi: Interval | null;
+  refusalRate: number | null;
+  /** Probability that the segment's rate is under the rest's. */
+  confirmProbWorse: number | null;
+  deliveryProbWorse: number | null;
+  confirmFlag: SegmentFlag;
+  deliveryFlag: SegmentFlag;
+};
+
+export type AdMetric = "cost" | "orderRate" | "ctr" | "confirmRate" | "deliveryRate";
+export type AdComparison = {
+  key: string;
+  label: string;
+  /** Cost per delivered order (projection) for "cost", a rate otherwise. */
+  value: number | null;
+  low: number | null;
+  high: number | null;
+  /** Count behind it: projected deliveries, visits, impressions, calls or parcels. */
+  n: number;
+  /** Probability of being the best of these ads (lowest cost, highest rate). */
+  probBest: number | null;
+  enough: boolean;
+};
+
+export type AdviseInput = {
+  /** Rows of one level: the campaigns, or the ads. */
+  rows: AdRow[];
+  costs: Costs;
+  baseline: Baseline | null;
+  /** Days in the period. */
+  days: number;
+  /** Daily points per row key, for fatigue. */
+  daily?: Record<string, DayPoint[]>;
+  tracking?: TrackingSetup;
+  /** Recent orders, and how many carry a utm_source: tagging coverage. */
+  coverage?: { orders: number; tagged: number };
+  segments?: Partial<Record<SegmentKind, SegmentRow[]>>;
+};
+
+export type Report = {
+  rows: RowAdvice[];
+  total: { row: AdRow; advice: RowAdvice; bottleneck: Bottleneck | null };
+  /** Sorted: critical, warning, good, info; the biggest spend first within each. */
+  insights: Insight[];
+  /** Only when the rows are ads: the cost comparison. */
+  ads: AdComparison[] | null;
+};
+
+// ── Text helpers ───────────────────────────────────────────────────────
+
+const money = (m: number | null | undefined) => (m == null ? "—" : formatTND(m));
+const pct = (x: number | null | undefined) => fmt(x, "pct");
+const signed = (x: number) => `${x >= 0 ? "+" : "−"}${fmt(Math.abs(x), "pct")}`;
+const count = (n: number) => Math.round(n).toLocaleString("fr-FR");
+/** "0 commande", "1 livrée", "12 commandes": French takes the singular under 2. */
+const nb = (n: number, one: string, many: string) => `${count(n)} ${Math.round(n) < 2 ? one : many}`;
+/** A probability shown without false certainty: never "100 %" or "0 %". */
+const chance = (p: number) => (p > 0.99 ? "plus de 99 %" : p < 0.01 ? "moins de 1 %" : pct(p));
+const dec = (n: number) => n.toLocaleString("fr-FR", { maximumFractionDigits: 1 });
+const name = (r: AdRow) => `« ${r.ad ?? r.campaign ?? r.source} »`;
+
+const STAGE_LABEL: Record<Stage, string> = {
+  cpm: "CPM",
+  ctr: "CTR lien",
+  landing: "Clics arrivés",
+  view: "Fiche vue",
+  formStart: "Formulaire commencé",
+  formCompletion: "Formulaire fini",
+  confirmation: "Confirmation",
+  delivery: "Livraison",
+};
+const STAGE_UNIT: Record<Stage, string> = {
+  cpm: "affichages",
+  ctr: "affichages",
+  landing: "clics",
+  view: "visites",
+  formStart: "fiches vues",
+  formCompletion: "formulaires commencés",
+  confirmation: "commandes appelées",
+  delivery: "colis arrivés au bout",
+};
+/** "X % contre Y % pour le reste du compte, sur N visites." A rule of thumb is never presented as the shop's own figure. */
+function versus(label: string, rate: string, ref: string, kind: RefKind, n: string): string {
+  if (kind === "guide") return `${label} ${rate} sur ${n}, contre un repère courant de ${ref} (pas un chiffre de la boutique).`;
+  return `${label} ${rate} contre ${ref} pour ${kind === "account" ? "le reste du compte" : "la boutique"}, sur ${n}.`;
+}
+/** Lowercase the first letter after a colon, unless the word is an acronym (CTR, CPM). */
+const lowerFirst = (t: string) => (/^[A-ZÀ-Ý][A-ZÀ-Ý]/.test(t) ? t : t.charAt(0).toLowerCase() + t.slice(1));
+
+const STAGE_TEXT: Record<Stage, { title: string; action: string; fix?: Fix }> = {
+  cpm: { title: "Diffusion chère", action: "Élargir l'audience (ciblage large), regrouper les petits ensembles de publicités et laisser les placements automatiques." },
+  ctr: { title: "La publicité n'arrête pas le défilement", action: "Tester 3 nouvelles accroches pour les 3 premières secondes (problème puis solution, démonstration, avant/après) en gardant la même audience.", fix: "brief" },
+  landing: { title: "Des clics qui n'arrivent pas sur la boutique", action: "Ouvrir le lien de la publicité sur un téléphone en 4G : la fiche doit s'afficher en moins de 3 secondes. Vérifier les UTM du lien et retirer Audience Network.", fix: "links" },
+  view: { title: "Les visiteurs n'ouvrent pas la fiche produit", action: "Faire pointer la publicité directement sur la fiche du produit montré, pas sur l'accueil.", fix: "links" },
+  formStart: { title: "La fiche ne convainc pas", action: "Revoir l'offre et la confiance en haut de la fiche : prix clair, pack de 2 ou 3, vraies photos, paiement à la livraison et délai visibles. Le prix doit être celui de la publicité." },
+  formCompletion: { title: "Le formulaire perd des clients", action: "Raccourcir le formulaire, essayer la saisie du téléphone sur un Android, afficher les frais de livraison avant le bouton." },
+  confirmation: { title: "Trop de commandes non confirmées", action: "Appeler dans l'heure qui suit la commande. Si l'écart reste : audience trop large ou fausses commandes ; exclure les placements en cause et envoyer l'achat au pixel à la confirmation.", fix: "tracking" },
+  delivery: { title: "Trop de colis refusés", action: "Montrer le vrai produit et le prix total dans la publicité, reconfirmer la veille de la livraison par appel ou SMS, vérifier les gouvernorats qui refusent le plus.", fix: "brief" },
+};
+
+const SEVERITY_RANK: Record<Severity, number> = { critical: 0, warning: 1, good: 2, info: 3 };
+
+// ── Stages and references ──────────────────────────────────────────────
+
+const RATE_STAGES: Exclude<Stage, "cpm">[] = ["ctr", "landing", "view", "formStart", "formCompletion", "confirmation", "delivery"];
+
+/**
+ * The count behind one stage of a row; null when the figures it needs are
+ * missing. The shop's funnel is made monotone first (an order implies a
+ * started form, a started form a product view): a flow that skips an event
+ * must not look like a leak. A row with orders but no visit recorded has no
+ * visit stages at all.
+ */
+function stageCount(stage: Exclude<Stage, "cpm">, row: AdRow): Count | null {
+  const f = row.funnel;
+  const p = row.platform;
+  const formStarts = Math.max(f.formStarts, f.orders);
+  const productViews = Math.max(f.productViews, formStarts);
+  const visits = f.sessions > 0;
+  switch (stage) {
+    case "ctr":
+      return p.impressions != null && p.clicks != null ? { successes: p.clicks, n: p.impressions } : null;
+    case "landing":
+      return p.clicks != null && visits ? { successes: Math.min(f.sessions, p.clicks), n: p.clicks } : null;
+    case "view":
+      return visits ? { successes: Math.min(productViews, f.sessions), n: f.sessions } : null;
+    case "formStart":
+      return { successes: formStarts, n: productViews };
+    case "formCompletion":
+      return { successes: f.orders, n: formStarts };
+    case "confirmation":
+      return { successes: f.confirmed, n: Math.max(0, f.orders - pendingOf(f)) };
+    case "delivery":
+      return { successes: f.delivered, n: f.delivered + f.back };
+  }
+}
+
+/** a − b, field by field: the rest of the account once a row is taken out. */
+function subtract(a: AdRow, b: AdRow): AdRow {
+  const funnel = { ...a.funnel };
+  for (const k of Object.keys(funnel) as (keyof typeof funnel)[]) {
+    const v = funnel[k];
+    if (typeof v === "number") (funnel as Record<string, number>)[k] = Math.max(0, v - ((b.funnel[k] as number | undefined) ?? 0));
+  }
+  if (a.funnel.pending == null || b.funnel.pending == null) delete funnel.pending;
+  const platform = { ...a.platform };
+  for (const k of Object.keys(platform) as (keyof typeof platform)[]) {
+    const av = a.platform[k];
+    platform[k] = av == null ? null : Math.max(0, av - (b.platform[k] ?? 0));
+  }
+  return { ...a, funnel, platform };
+}
+
+/**
+ * What a row's stages are held against: the rest of the account when it has
+ * enough data (same period, same kind of traffic), else the shop's own rates
+ * for confirmation and delivery, else the general rule of thumb.
+ */
+export function reference(rest: AdRow | null, baseline: Baseline | null): Reference {
+  const ref: Reference = {};
+  for (const stage of RATE_STAGES) {
+    const c = rest ? stageCount(stage, rest) : null;
+    if (c && c.n >= REF_MIN[stage]) ref[stage] = { value: Math.min(c.successes, c.n) / c.n, kind: "account" };
+    else if (stage === "confirmation" && baseline?.confirmRate != null) ref[stage] = { value: baseline.confirmRate, kind: "shop" };
+    else if (stage === "delivery" && baseline?.deliveryRate != null) ref[stage] = { value: baseline.deliveryRate, kind: "shop" };
+    else ref[stage] = { value: GUIDE[stage], kind: "guide" };
+  }
+  const views = rest ? stageCount("formStart", rest) : null;
+  ref.viewOrder = views && views.n >= REF_MIN.formStart ? { value: rest!.funnel.orders / views.n, kind: "account" } : { value: GUIDE.formStart * GUIDE.formCompletion, kind: "guide" };
+  if (rest && rest.platform.spend != null && rest.platform.impressions != null && rest.platform.impressions >= REF_MIN.cpm) {
+    ref.cpm = { value: (rest.platform.spend * 1000) / rest.platform.impressions, kind: "account" };
+  }
+  return ref;
+}
+
+/**
+ * The one stage that costs the row the most: of the stages significantly
+ * under their reference, the one whose gap multiplies the cost per delivered
+ * order the most (the cost is the spend divided by the product of every
+ * stage's rate, so a stage at half its reference doubles it).
+ */
+export function bottleneck(row: AdRow, ref: Reference): Bottleneck | null {
+  let best: Bottleneck | null = null;
+  const consider = (b: Bottleneck) => {
+    if (!best || b.factor > best.factor) best = b;
+  };
+  const p = row.platform;
+  if (ref.cpm && p.spend != null && p.impressions != null && p.impressions >= STAGE_MIN.cpm) {
+    const cpm = (p.spend * 1000) / p.impressions;
+    if (cpm >= CPM_HIGH_FACTOR * ref.cpm.value) {
+      consider({
+        stage: "cpm",
+        rate: cpm,
+        reference: ref.cpm.value,
+        referenceKind: ref.cpm.kind,
+        factor: cpm / ref.cpm.value,
+        n: p.impressions,
+        title: STAGE_TEXT.cpm.title,
+        evidence: versus("CPM", money(Math.round(cpm)), money(Math.round(ref.cpm.value)), ref.cpm.kind, `${count(p.impressions)} affichages`),
+        action: STAGE_TEXT.cpm.action,
+      });
+    }
+  }
+  // Fewer form starts than orders cannot happen in one coherent funnel: the visit and the order were attributed
+  // differently. The form stages are then read together, as orders per product view.
+  const formsTrusted = row.funnel.formStarts >= row.funnel.orders;
+  for (const stage of RATE_STAGES) {
+    if (stage === "formCompletion" && !formsTrusted) continue;
+    const merged = stage === "formStart" && !formsTrusted;
+    const views = stageCount(stage, row);
+    const c = merged && views ? { successes: row.funnel.orders, n: views.n } : views;
+    const r = merged ? ref.viewOrder : ref[stage];
+    if (!c || !r || c.n < STAGE_MIN[stage]) continue;
+    const threshold = r.kind === "guide" ? r.value : r.value * (1 - STAGE_TOLERANCE);
+    const above = probRateAbove(c, threshold);
+    if (above == null || above > STAGE_SIGNIFICANCE) continue;
+    const rate = Math.min(c.successes, c.n) / c.n;
+    consider({
+      stage,
+      rate,
+      reference: r.value,
+      referenceKind: r.kind,
+      // A stage at 0 is capped: the comparison still ranks it first without an infinite cost.
+      factor: rate > 0 ? r.value / rate : 100,
+      n: c.n,
+      title: STAGE_TEXT[stage].title,
+      evidence: versus(merged ? "Commandes par fiche vue" : STAGE_LABEL[stage], pct(rate), pct(r.value), r.kind, `${count(c.n)} ${STAGE_UNIT[stage]}`),
+      action: STAGE_TEXT[stage].action,
+    });
+  }
+  return best;
+}
+
+// ── Fatigue ────────────────────────────────────────────────────────────
+
+/**
+ * Creative fatigue from daily points: the same people see the ad again, the
+ * CTR falls, the platform charges more to find new ones (CPM up). Read on
+ * the last 3 active days against the 7 before them. Null when there are not
+ * enough days or volume to say anything.
+ */
+export function fatigue(points: DayPoint[], frequency: number | null = null): Fatigue | null {
+  const active = points
+    .filter((p) => (p.spend ?? 0) > 0 || (p.impressions ?? 0) > 0 || p.sessions > 0)
+    .sort((a, b) => a.day.localeCompare(b.day));
+  if (active.length < FATIGUE_RECENT_DAYS + 3) return null;
+  const recent = active.slice(-FATIGUE_RECENT_DAYS);
+  const base = active.slice(-FATIGUE_RECENT_DAYS - FATIGUE_BASE_DAYS, -FATIGUE_RECENT_DAYS);
+  const sum = (xs: DayPoint[], f: (p: DayPoint) => number | null) => xs.reduce((s, p) => s + (f(p) ?? 0), 0);
+  const all = (xs: DayPoint[], f: (p: DayPoint) => number | null) => xs.every((p) => f(p) != null);
+  const trend = (b: number, r: number): Trend => ({ base: b, recent: r, change: b > 0 ? r / b - 1 : 0 });
+  const window = `entre les ${base.length} jours d'avant et les ${recent.length} derniers jours`;
+  const freqText = frequency != null ? `, fréquence ${dec(frequency)}` : "";
+  const hasSpend = all([...base, ...recent], (p) => p.spend);
+
+  const platform = all([...base, ...recent], (p) => p.impressions) && all([...base, ...recent], (p) => p.clicks);
+  const bImp = sum(base, (p) => p.impressions);
+  const rImp = sum(recent, (p) => p.impressions);
+  if (platform && bImp >= FATIGUE_MIN_IMPRESSIONS.base && rImp >= FATIGUE_MIN_IMPRESSIONS.recent) {
+    const bClk = sum(base, (p) => p.clicks);
+    const rClk = sum(recent, (p) => p.clicks);
+    const ctr = trend(bClk / bImp, rClk / rImp);
+    const cpm = hasSpend ? trend((sum(base, (p) => p.spend) * 1000) / bImp, (sum(recent, (p) => p.spend) * 1000) / rImp) : null;
+    const drop = -ctr.change;
+    const real = (probBeats({ successes: bClk, n: bImp }, { successes: rClk, n: rImp }) ?? 0) >= FATIGUE_SIGNIFICANCE;
+    const confirmed = (cpm != null && cpm.change >= FATIGUE_CPM_RISE) || (frequency ?? 0) >= FATIGUE_FREQUENCY;
+    const level = real && drop >= FATIGUE_CTR_DROP && confirmed ? "clear" : real && drop >= FATIGUE_EARLY_DROP ? "early" : "none";
+    const cpmText = cpm ? `, CPM ${money(Math.round(cpm.base))} → ${money(Math.round(cpm.recent))} (${signed(cpm.change)})` : "";
+    return {
+      level,
+      basis: "platform",
+      ctr,
+      cpm,
+      costPerVisit: null,
+      orderRate: null,
+      frequency,
+      evidence: level === "none" ? "" : `CTR ${pct(ctr.base)} → ${pct(ctr.recent)} (${signed(ctr.change)})${cpmText} ${window}${freqText}.`,
+    };
+  }
+
+  const bSes = sum(base, (p) => p.sessions);
+  const rSes = sum(recent, (p) => p.sessions);
+  if (!hasSpend || bSes < FATIGUE_MIN_SESSIONS.base || rSes < FATIGUE_MIN_SESSIONS.recent) return null;
+  const cpv = trend(sum(base, (p) => p.spend) / bSes, sum(recent, (p) => p.spend) / rSes);
+  const orderRate = trend(sum(base, (p) => p.orders) / bSes, sum(recent, (p) => p.orders) / rSes);
+  // Without impressions the cause cannot be told apart (CTR or CPM): never more than "early".
+  const level = cpv.change >= FATIGUE_COST_RISE ? "early" : "none";
+  return {
+    level,
+    basis: "visits",
+    ctr: null,
+    cpm: null,
+    costPerVisit: cpv,
+    orderRate,
+    frequency,
+    evidence:
+      level === "none"
+        ? ""
+        : `Coût par visite ${money(Math.round(cpv.base))} → ${money(Math.round(cpv.recent))} (${signed(cpv.change)}) ${window}${freqText}. Sans les chiffres de la plateforme, impossible de dire si c'est le CTR ou le CPM.`,
+  };
+}
+
+// ── One row ────────────────────────────────────────────────────────────
+
+/**
+ * The verdict for one row. Order of the questions: is there spend at all, is
+ * the measure broken, does a delivered order leave any margin, is there
+ * enough evidence, and then the money: how likely is the true cost per
+ * delivered order under the max.
+ */
+export function adviseRow(row: AdRow, k: Kpis, ctx: RowContext): RowAdvice {
+  const f = row.funnel;
+  const spend = row.platform.spend;
+  const proj = k.projection;
+  const delivered = proj?.delivered ?? f.delivered;
+  const judgedCpd = spend != null && delivered > 0 ? Math.round(spend / delivered) : null;
+  const spendPerDay = spend != null && ctx.days ? Math.round(spend / ctx.days) : null;
+  const fat = ctx.daily ? fatigue(ctx.daily, k.frequency) : null;
+  const neck = bottleneck(row, ctx.ref);
+  const reasons: string[] = [];
+  const out = (verdict: Advice["verdict"], confidence: Advice["confidence"], budgetChange: number | null, extra: Partial<RowAdvice> = {}): RowAdvice => ({
+    key: row.key,
+    verdict,
+    confidence,
+    budgetChange,
+    reasons,
+    kpis: k,
+    target: null,
+    targetBasis: null,
+    judgedCpd,
+    probProfitable: null,
+    moreSpend: null,
+    bottleneck: neck,
+    fatigue: fat,
+    spendPerDay,
+    ...extra,
+  });
+
+  if (spend == null || spend === 0) {
+    reasons.push(spend == null ? "Pas de dépense saisie ou importée pour cette ligne : son coût ne peut pas être jugé." : "Aucune dépense sur la période.");
+    return out("wait", "low", null);
+  }
+
+  // The measure is broken: money goes out and the shop sees no visit, or almost none of the clicks.
+  // Orders without any visit are different: the orders carry the attribution, the visits were not recorded
+  // (ad-level visits only carry utm_content since it is captured), so the row is judged on its orders.
+  const visitsMissing = f.sessions === 0 && f.orders > 0;
+  if (f.sessions === 0 && f.orders === 0 && spend >= TRACKING_MIN_SPEND) {
+    reasons.push(`${money(spend)} dépensés et aucune visite avec ce nom : le lien n'a pas les bons UTM, ou le nom ne correspond pas à la dépense saisie.`);
+    return out("tracking", spend >= 3 * TRACKING_MIN_SPEND ? "high" : "medium", null, { bottleneck: null });
+  }
+  if (!visitsMissing && row.platform.clicks != null && row.platform.clicks >= TRACKING_MIN_CLICKS && k.landingRate != null && k.landingRate < TRACKING_LANDING_FLOOR) {
+    reasons.push(`${count(row.platform.clicks)} clics comptés par la plateforme, ${count(f.sessions)} visites dans la boutique (${pct(k.landingRate)}) : les UTM du lien ne correspondent pas, ou le lien est cassé.`);
+    return out("tracking", "medium", null, { bottleneck: null });
+  }
+
+  // A delivered order already loses money before any ad.
+  if (k.marginPerDelivered != null && k.marginPerDelivered <= 0) {
+    reasons.push(`Chaque commande livrée perd déjà ${money(-k.marginPerDelivered)} avant la publicité : revoir le prix, le coût fournisseur ou les frais de livraison avant de dépenser.`);
+    return out("fix", k.marginBasis === "shop" ? "medium" : "high", CUT_STEP, { target: 0, targetBasis: "margin" });
+  }
+
+  const fromMargin = k.breakEvenCpd != null && k.breakEvenCpd > 0;
+  const target = fromMargin ? k.breakEvenCpd : (ctx.accountCpd ?? null);
+  const basis: RowAdvice["targetBasis"] = target == null ? null : fromMargin ? "margin" : "account";
+  if (target == null) {
+    const costs = k.missing.filter((m) => m === "productCost" || m === "carrierCost" || m === "returnCost").map((m) => INPUT_LABELS[m]);
+    reasons.push(costs.length ? `Impossible de calculer le coût max par livrée : ${costs.join(", ")}.` : "Pas encore de livrée ni de marge connue : rien pour juger le coût.");
+    return out("wait", "low", 0);
+  }
+
+  const young = (k.openShare ?? 0) > YOUNG_OPEN_SHARE;
+  const cpdText = judgedCpd != null ? `${proj?.projected ? "Coût par livrée projeté" : "Coût par livrée"} : ${money(judgedCpd)}` : `Aucune livrée${proj?.projected ? " projetée" : ""} pour ${money(spend)} dépensés`;
+  reasons.push(
+    basis === "account"
+      ? `${cpdText}, contre ${money(target)} en moyenne sur le compte (les coûts manquent pour calculer la marge).`
+      : `${cpdText}, pour un maximum de ${money(target)}.`,
+  );
+  if (f.orders > 0) reasons.push(`${nb(f.orders, "commande", "commandes")}, ${nb(f.delivered, "livrée", "livrées")}, ${count(f.open)} en cours.`);
+  if (young) reasons.push(`${pct(k.openShare)} des commandes sont encore en cours : chiffres de livraison en partie projetés.`);
+  if (fat && fat.level !== "none") reasons.push(`La publicité s'use : ${lowerFirst(fat.evidence)}`);
+  if (visitsMissing) reasons.push("Aucune visite comptée pour cette ligne alors que ses commandes le sont : jugée sur ses commandes seulement.");
+
+  const enough = spend >= JUDGE_SPEND_MULTIPLE * target || f.orders >= JUDGE_MIN_ORDERS;
+  if (!enough) {
+    const moreSpend = Math.max(0, Math.round(JUDGE_SPEND_MULTIPLE * target - spend));
+    reasons.push(`Pas encore assez de données : juger après environ ${money(moreSpend)} de plus, ou ${JUDGE_MIN_ORDERS} commandes.`);
+    if (f.orders === 0 && spend >= target) reasons.push(`Aucune commande pour l'instant : si rien n'arrive avant ${money(Math.round(JUDGE_SPEND_MULTIPLE * target))} dépensés, couper.`);
+    return out("wait", "low", 0, { target, targetBasis: basis, moreSpend });
+  }
+
+  const p = probCostUnder(delivered, spend, target) ?? 0;
+  reasons.push(`Probabilité d'être sous le coût max : ${chance(p)}.`);
+  if (k.cpaPlaced != null && judgedCpd != null && proj?.netDeliveryRate != null && proj.netDeliveryRate < PLACED_LIE_RATE && f.orders >= 5) {
+    reasons.push(`CPA ${money(k.cpaPlaced)} par commande passée, mais ${money(judgedCpd)} par livrée : seules ${pct(proj.netDeliveryRate)} des commandes ${proj.projected ? "devraient finir livrées (projection)" : "finissent livrées"}.`);
+  }
+  const certainty = Math.max(p, 1 - p);
+  let confidence: Advice["confidence"] = certainty >= HIGH_CERTAINTY && (f.orders >= HIGH_ORDERS || spend >= HIGH_SPEND_MULTIPLE * target) ? "high" : certainty >= MEDIUM_CERTAINTY ? "medium" : "low";
+  if (young && confidence === "high") confidence = "medium";
+  if (basis === "account") confidence = "low";
+  const base = { target, targetBasis: basis, probProfitable: p };
+  const share = judgedCpd != null ? judgedCpd / target : Infinity;
+
+  if (p >= WIN_PROB && share <= SCALE_MAX_SHARE) {
+    if (fat && fat.level !== "none") {
+      reasons.push("Rentable, mais la publicité s'use : renouveler la créative avant de monter le budget.");
+      return out("keep", confidence, 0, base);
+    }
+    if (k.frequency != null && k.frequency >= SATURATED_FREQUENCY) {
+      reasons.push(`Rentable, mais la fréquence atteint ${dec(k.frequency)} : élargir l'audience avant de monter le budget.`);
+      return out("keep", confidence, 0, base);
+    }
+    // More budget reaches wider, colder people: a row whose orders already confirm or deliver badly only takes the small step.
+    const weakBuyers = neck != null && (neck.stage === "confirmation" || neck.stage === "delivery");
+    const big = p >= BIG_SCALE_PROB && share <= BIG_SCALE_MAX_SHARE && !young && !weakBuyers && confidence === "high";
+    const step = big ? BIG_SCALE_STEP : SCALE_STEP;
+    reasons.push(`Gagnante : monter le budget de ${step} %, pas plus, puis attendre 3 jours avant le palier suivant.`);
+    if (neck) reasons.push(`À améliorer en même temps : ${lowerFirst(neck.title)}. ${neck.evidence}`);
+    return out("scale", confidence, step, base);
+  }
+  if (share <= 1) {
+    reasons.push(share > SCALE_MAX_SHARE ? "Rentable, sans assez de marge pour monter : garder le budget." : "Sous le coût max, mais pas encore assez sûr pour monter : garder le budget.");
+    if (neck) reasons.push(`À améliorer : ${lowerFirst(neck.title)}. ${neck.evidence}`);
+    return out("keep", confidence, 0, base);
+  }
+  // Over the max. Fixing is worth it only when the weak stage, brought back to its reference, would be enough.
+  const fixable = neck != null && neck.stage !== "cpm" && judgedCpd != null && judgedCpd / neck.factor <= target;
+  if (p <= LOSE_PROB) {
+    if (fixable && neck) {
+      reasons.push(`À corriger : ${lowerFirst(neck.title)}. Corrigé, le coût par livrée serait d'environ ${money(Math.round(judgedCpd! / neck.factor))}.`);
+      return out("fix", confidence, FIX_STEP, base);
+    }
+    if (f.orders === 0) reasons.push(`${money(spend)} dépensés sans commande : à ce coût, environ ${nb(spend / target, "livrée était attendue", "livrées étaient attendues")}.`);
+    reasons.push("Perdante : la mettre en pause et reporter le budget sur les gagnantes.");
+    if (neck) reasons.push(`Là où les clients se perdent : ${lowerFirst(neck.evidence)}`);
+    return out("cut", confidence, CUT_STEP, base);
+  }
+  const near = share <= NEAR_MAX_SHARE;
+  if (neck) {
+    const fixed = judgedCpd != null && neck.stage !== "cpm" ? ` Corrigé, le coût par livrée serait d'environ ${money(Math.round(judgedCpd / neck.factor))}.` : "";
+    reasons.push(`À corriger : ${lowerFirst(neck.title)}.${fixed}`);
+    return out("fix", confidence, near ? NEAR_STEP : FIX_STEP, base);
+  }
+  if (near) {
+    reasons.push("Un peu au-dessus du coût max : réduire de 20 % et tester une nouvelle créative.");
+    return out("keep", confidence, NEAR_STEP, base);
+  }
+  reasons.push("Au-dessus du coût max sans étape nettement plus faible que le reste : tester de nouvelles créatives, ou une offre (pack) qui augmente la marge.");
+  return out("fix", confidence, FIX_STEP, base);
+}
+
+// ── Account, tracking, money ───────────────────────────────────────────
+
+type Weighted = { insight: Insight; weight: number };
+
+/** Critical first, then warnings, wins, information; within each, as given. */
+export function sortInsights(insights: Insight[]): Insight[] {
+  return insights.map((x, i) => ({ x, i })).sort((a, b) => SEVERITY_RANK[a.x.severity] - SEVERITY_RANK[b.x.severity] || a.i - b.i).map((x) => x.x);
+}
+
+function rowInsights(row: AdRow, a: RowAdvice): Insight[] {
+  const out: Insight[] = [];
+  const k = a.kpis;
+  const evidence = a.reasons.slice(0, 3).join(" ");
+  const perDay = (step: number) => (a.spendPerDay != null ? ` (environ ${step > 0 ? "+" : "−"}${money(Math.round((a.spendPerDay * Math.abs(step)) / 100))} par jour)` : "");
+  if (a.verdict === "tracking") {
+    out.push({ severity: "critical", key: row.key, title: `${name(row)} : les visites ne sont pas comptées`, evidence: a.reasons[0], action: `Vérifier que le lien de la publicité contient utm_source=${row.source}${row.campaign ? ` et utm_campaign=${row.campaign}` : ""}, exactement comme la dépense saisie ; le recréer avec le générateur de liens.`, fix: "links" });
+  } else if (a.verdict === "cut") {
+    const lost = a.bottleneck ? ` Là où les clients se perdent : ${lowerFirst(a.bottleneck.evidence)}` : "";
+    out.push({ severity: "critical", key: row.key, title: `Couper ${name(row)}`, evidence: `${evidence}${lost}`, action: "Mettre en pause. Garder l'angle si les clics étaient bons, et reporter le budget sur les gagnantes." });
+  } else if (a.verdict === "scale") {
+    out.push({ severity: "good", key: row.key, title: `Monter ${name(row)}`, evidence, action: `Augmenter le budget de ${a.budgetChange} %${perDay(a.budgetChange ?? 0)}, puis attendre 3 jours avant le palier suivant. Ne pas dupliquer l'ensemble de publicités.` });
+  } else if (a.verdict === "fix") {
+    const neck = a.bottleneck;
+    const stop = a.budgetChange === CUT_STEP ? "Mettre en pause le temps de corriger." : `Réduire le budget de ${Math.abs(a.budgetChange ?? 0)} %${perDay(a.budgetChange ?? 0)} le temps de corriger.`;
+    if (k.marginPerDelivered != null && k.marginPerDelivered <= 0) {
+      out.push({ severity: "critical", key: row.key, title: `${name(row)} perd de l'argent avant la publicité`, evidence: a.reasons[0], action: `${stop} Voir l'onglet Seuils pour le prix ou le pack qui redonne de la marge.`, fix: "productCost" });
+    } else {
+      out.push({ severity: "warning", key: row.key, title: `${name(row)} : ${neck ? lowerFirst(neck.title) : "trop cher par livrée"}`, evidence: neck ? `${neck.evidence} ${a.reasons[0]}` : evidence, action: `${neck ? neck.action : "Tester 2 à 3 nouvelles créatives, ou une offre qui augmente la marge."} ${stop}`, fix: neck ? STAGE_TEXT[neck.stage].fix : "brief" });
+    }
+  } else if (a.bottleneck && a.verdict === "keep") {
+    out.push({ severity: "info", key: row.key, title: `${name(row)} : ${lowerFirst(a.bottleneck.title)}`, evidence: a.bottleneck.evidence, action: a.bottleneck.action, fix: STAGE_TEXT[a.bottleneck.stage].fix });
+  }
+  if (a.fatigue && a.fatigue.level !== "none") {
+    out.push({
+      severity: a.fatigue.level === "clear" ? "warning" : "info",
+      key: row.key,
+      title: `${name(row)} s'use`,
+      evidence: a.fatigue.evidence,
+      action: "Préparer 2 à 3 nouvelles accroches sur le même angle et les lancer dans le même ensemble ; ne pas monter le budget avant.",
+      fix: "brief",
+    });
+  }
+  const purchases = row.platform.purchases;
+  if (purchases != null && k.overReporting != null && purchases >= REPORT_MIN_EVENTS && k.overReporting >= OVER_REPORT_RATIO) {
+    out.push({
+      severity: "warning",
+      key: row.key,
+      title: `${name(row)} : la plateforme compte trop d'achats`,
+      evidence: `${count(purchases)} achats comptés par la plateforme pour ${count(row.funnel.orders)} commandes réelles, dont ${count(row.funnel.delivered)} livrées.`,
+      action: "Juger cette ligne sur le coût par livrée de cette page, pas sur le coût par achat du gestionnaire de publicités.",
+    });
+  }
+  return out;
+}
+
+/** Inputs the owner has not given, each with where to give it. */
+function missingInsights(rows: AdRow[], total: AdRow, k: Kpis, costs: Costs): Weighted[] {
+  const out: Weighted[] = [];
+  const spend = total.platform.spend ?? 0;
+  if (costs.carrierPerParcel == null) {
+    out.push({ weight: spend, insight: { severity: "warning", key: null, title: "Coût du transporteur manquant", evidence: `${nb(total.funnel.shipped, "colis envoyé", "colis envoyés")} sur la période sans coût de transport connu : ni la marge par livrée ni le coût max par livrée ne peuvent être calculés, les lignes sont comparées à la moyenne du compte.`, action: "Le renseigner dans Réglages, rubrique Coûts.", fix: "costs" } });
+  }
+  if (costs.returnPerParcel == null && total.funnel.back > 0) {
+    out.push({ weight: spend, insight: { severity: "warning", key: null, title: "Coût d'un retour manquant", evidence: `${count(total.funnel.back)} colis sont revenus sur la période ; leur coût de retour n'est pas connu.`, action: "Renseigner le coût d'un colis refusé dans Réglages, rubrique Coûts (0 si le transporteur ne le facture pas).", fix: "costs" } });
+  }
+  if (total.funnel.costUnknownDelivered > 0) {
+    out.push({ weight: spend, insight: { severity: "warning", key: null, title: "Coût fournisseur manquant", evidence: `${count(total.funnel.costUnknownDelivered)} commandes livrées n'ont pas de coût fournisseur : la marge de ces lignes ne peut pas être calculée.`, action: "Renseigner le coût d'achat des produits concernés.", fix: "productCost" } });
+  }
+  const unpaid = rows.filter((r) => r.platform.spend == null && (META_SOURCES.has(r.source.toLowerCase()) || TIKTOK_SOURCES.has(r.source.toLowerCase())) && (r.funnel.sessions > 0 || r.funnel.orders > 0));
+  if (unpaid.length > 0) {
+    const sessions = unpaid.reduce((s, r) => s + r.funnel.sessions, 0);
+    const orders = unpaid.reduce((s, r) => s + r.funnel.orders, 0);
+    out.push({
+      weight: spend,
+      insight: {
+        severity: "warning",
+        key: null,
+        title: "Dépenses manquantes",
+        evidence: `${unpaid.slice(0, 3).map(name).join(", ")}${unpaid.length > 3 ? ` et ${unpaid.length - 3} autres` : ""} : ${nb(sessions, "visite", "visites")} et ${nb(orders, "commande venue", "commandes venues")} de publicités sans dépense saisie.`,
+        action: "Importer l'export Meta ou TikTok, ou saisir la dépense dans Dépenses pub.",
+        fix: "import",
+      },
+    });
+  }
+  if (spend > 0 && k.missing.includes("impressions") && rows.every((r) => r.platform.impressions == null)) {
+    out.push({ weight: 0, insight: { severity: "info", key: null, title: "Chiffres de la plateforme absents", evidence: `${money(spend)} dépensés sans affichages ni clics importés : le CTR, le CPM et l'usure des publicités ne peuvent pas être calculés.`, action: "Importer l'export du gestionnaire de publicités Meta ou TikTok.", fix: "import" } });
+  }
+  return out;
+}
+
+/**
+ * The checks on the measure itself: a pixel, its server link, when it is
+ * told about a purchase, whether the platform's count matches the shop's,
+ * whether the orders carry their source.
+ */
+export function trackingInsights(rows: AdRow[], total: AdRow, k: Kpis, setup?: TrackingSetup, coverage?: { orders: number; tagged: number }, days?: number | null): Insight[] {
+  const out: Insight[] = [];
+  const spendOf = (set: Set<string>) => rows.filter((r) => set.has(r.source.toLowerCase())).reduce((s, r) => s + (r.platform.spend ?? 0), 0);
+  const metaSpend = spendOf(META_SOURCES);
+  const tiktokSpend = spendOf(TIKTOK_SOURCES);
+  const deliveredPerWeek = days && days > 0 ? (total.funnel.delivered * 7) / days : null;
+  const stage = (s: TrackingSetup["purchaseAt"]) => (s === "confirmed" ? "confirmation" : "livraison");
+
+  if (setup) {
+    const platforms: { label: string; spend: number; pixel: boolean; server: boolean; serverName: string; serverTitle: string }[] = [
+      { label: "Meta", spend: metaSpend, pixel: setup.metaPixel, server: setup.metaCapi, serverName: "l'API Conversions", serverTitle: "API Conversions Meta non reliée" },
+      { label: "TikTok", spend: tiktokSpend, pixel: setup.tiktokPixel, server: setup.tiktokEvents, serverName: "l'API Événements", serverTitle: "API Événements TikTok non reliée" },
+    ];
+    for (const pl of platforms) {
+      if (pl.spend <= 0) continue;
+      if (!pl.pixel) {
+        out.push({ severity: "critical", key: null, title: `Pixel ${pl.label} absent`, evidence: `${money(pl.spend)} dépensés sur ${pl.label} sans pixel : l'algorithme ne sait pas qui achète et cherche des clics, pas des acheteurs.`, action: `Coller l'identifiant du pixel ${pl.label} dans Réglages, rubrique Suivi.`, fix: "tracking" });
+      } else if (!pl.server && setup.purchaseAt !== "placed") {
+        out.push({ severity: "critical", key: null, title: `${pl.label} ne reçoit aucun achat`, evidence: `L'achat est envoyé à la ${stage(setup.purchaseAt)}, ce qui passe par ${pl.serverName}, et son jeton n'est pas renseigné.`, action: `Ajouter le jeton dans Réglages, rubrique Suivi, ou revenir à l'envoi à la commande.`, fix: "tracking" });
+      } else if (!pl.server) {
+        out.push({ severity: "warning", key: null, title: pl.serverTitle, evidence: `${money(pl.spend)} dépensés sur ${pl.label} avec le pixel du navigateur seul : il perd des achats (bloqueurs, iPhone, refus des cookies), l'algorithme apprend sur moins d'acheteurs.`, action: `Ajouter le jeton de ${pl.serverName} dans Réglages, rubrique Suivi.`, fix: "tracking" });
+      }
+    }
+    const anyPixel = (setup.metaPixel && metaSpend > 0) || (setup.tiktokPixel && tiktokSpend > 0);
+    const server = (setup.metaPixel && setup.metaCapi) || (setup.tiktokPixel && setup.tiktokEvents);
+    if (anyPixel && setup.purchaseAt === "placed" && k.confirmRate != null && k.confirmRate < PIXEL_CONFIRM_FLOOR && k.decided >= 20) {
+      const delivered = deliveredPerWeek != null && deliveredPerWeek >= LEARNING_EVENTS_PER_WEEK ? ` (ou « livrée » : environ ${count(deliveredPerWeek)} livraisons par semaine suffisent pour apprendre)` : "";
+      out.push({
+        severity: "warning",
+        key: null,
+        title: "Le pixel apprend sur des commandes jamais confirmées",
+        evidence: `${pct(1 - k.confirmRate)} des commandes appelées ne sont pas confirmées, mais chacune est envoyée comme un achat : l'algorithme cherche des gens qui leur ressemblent.`,
+        action: server ? `Passer l'envoi de l'achat à « confirmée » dans Réglages, rubrique Suivi${delivered}.` : "Ajouter le jeton de l'API Conversions, puis passer l'envoi de l'achat à « confirmée ».",
+        fix: "tracking",
+      });
+    }
+    if (anyPixel && setup.purchaseAt === "delivered" && deliveredPerWeek != null && deliveredPerWeek < LEARNING_EVENTS_PER_WEEK) {
+      out.push({ severity: "info", key: null, title: "Peu d'achats envoyés pour apprendre", evidence: `Environ ${count(deliveredPerWeek)} livraisons par semaine : moins que les ${LEARNING_EVENTS_PER_WEEK} dont un ensemble de publicités a besoin pour sortir de l'apprentissage.`, action: "Envoyer l'achat à la confirmation : plus d'événements, presque aussi propres.", fix: "tracking" });
+    }
+  }
+
+  const purchases = total.platform.purchases;
+  if (purchases != null && k.overReporting != null) {
+    if (purchases >= 2 * REPORT_MIN_EVENTS && k.overReporting >= OVER_REPORT_RATIO) {
+      out.push({ severity: "warning", key: null, title: "La plateforme compte plus d'achats que la boutique", evidence: `${count(purchases)} achats comptés pour ${count(total.funnel.orders)} commandes réelles, dont ${count(total.funnel.delivered)} livrées.`, action: "Juger uniquement sur les chiffres de la boutique : la plateforme compte aussi des achats après un simple affichage, et des doublons." });
+    } else if (total.funnel.orders >= 2 * REPORT_MIN_EVENTS && k.overReporting <= UNDER_REPORT_RATIO) {
+      out.push({ severity: "warning", key: null, title: "Le pixel ne voit qu'une partie des commandes", evidence: `${count(purchases)} achats reçus par la plateforme pour ${count(total.funnel.orders)} commandes réelles.`, action: "Relier l'API Conversions. Les clients qui refusent les cookies ne sont pas envoyés : une partie de l'écart est normale.", fix: "tracking" });
+    }
+  }
+  if (coverage && coverage.orders >= 20 && (total.platform.spend ?? 0) > 0) {
+    const share = coverage.tagged / coverage.orders;
+    if (share < UTM_COVERAGE_FLOOR) {
+      out.push({ severity: "warning", key: null, title: "Commandes sans source", evidence: `${pct(1 - share)} des ${count(coverage.orders)} commandes récentes n'ont pas de source : les publicités qui les ont amenées ne sont pas créditées.`, action: "Ajouter les UTM à chaque lien de publicité avec le générateur de liens.", fix: "links" });
+    }
+  }
+  return out;
+}
+
+/** Budget spread over many rows that never get enough data. */
+function fragmentation(rows: AdRow[], advice: RowAdvice[], total: AdRow): Weighted | null {
+  const waiting = rows.map((row, i) => ({ spend: row.platform.spend ?? 0, a: advice[i] })).filter((x) => x.a.verdict === "wait" && x.spend > 0);
+  const spend = total.platform.spend ?? 0;
+  const waitingSpend = waiting.reduce((s, x) => s + x.spend, 0);
+  if (waiting.length < FRAGMENTED_ROWS || spend <= 0 || waitingSpend / spend < FRAGMENTED_SHARE) return null;
+  const target = waiting.find((x) => x.a.target != null)?.a.target ?? null;
+  return {
+    weight: waitingSpend,
+    insight: {
+      severity: "warning",
+      key: null,
+      title: "Budget trop éparpillé",
+      evidence: `${waiting.length} lignes se partagent ${money(waitingSpend)} (${pct(waitingSpend / spend)} de la dépense) sans qu'aucune ait assez de données pour être jugée.`,
+      action: `Garder 3 à 5 publicités par ensemble et couper les autres, pour que chacune atteigne ${target != null ? `environ ${money(JUDGE_SPEND_MULTIPLE * target)}` : "assez"} de dépense.`,
+    },
+  };
+}
+
+/** One row carrying most of the delivered orders: the account dies with it. */
+function concentration(rows: AdRow[], advice: RowAdvice[]): Weighted | null {
+  const delivered = advice.map((a) => a.kpis.projection?.delivered ?? rows.find((r) => r.key === a.key)?.funnel.delivered ?? 0);
+  const sum = delivered.reduce((s, d) => s + d, 0);
+  if (rows.length < 2 || sum < CONCENTRATION_MIN_DELIVERED) return null;
+  const top = delivered.indexOf(Math.max(...delivered));
+  const share = delivered[top] / sum;
+  if (share < CONCENTRATION_SHARE) return null;
+  return {
+    weight: rows[top].platform.spend ?? 0,
+    insight: {
+      severity: "warning",
+      key: rows[top].key,
+      title: `Tout repose sur ${name(rows[top])}`,
+      evidence: `Elle fait environ ${pct(share)} des livraisons du compte${advice[top].kpis.projection?.projected ? " (projection)" : ""}.`,
+      action: "Préparer la relève avant qu'elle s'use : 2 à 3 nouvelles créatives par semaine dans un ensemble de test avec 10 à 20 % du budget.",
+      fix: "brief",
+    },
+  };
+}
+
+/** Money freed by the losers, against what the winners' next step needs. */
+function reallocation(advice: RowAdvice[]): Weighted | null {
+  const freedRows = advice.filter((a) => (a.budgetChange ?? 0) < 0 && a.spendPerDay != null);
+  const freed = freedRows.reduce((s, a) => s + (a.spendPerDay! * Math.abs(a.budgetChange!)) / 100, 0);
+  if (freed <= 0) return null;
+  const winners = advice.filter((a) => a.verdict === "scale" && a.spendPerDay != null);
+  const needed = winners.reduce((s, a) => s + (a.spendPerDay! * (a.budgetChange ?? 0)) / 100, 0);
+  const rest = Math.max(0, freed - needed);
+  return {
+    weight: freed,
+    insight: {
+      severity: "info",
+      key: null,
+      title: "Déplacer le budget",
+      evidence: `Couper ou réduire ${nb(freedRows.length, "ligne libère", "lignes libèrent")} environ ${money(Math.round(freed))} par jour.${winners.length ? ` Monter ${winners.length > 1 ? `les ${winners.length} gagnantes` : "la gagnante"} d'un palier demande environ ${money(Math.round(needed))} par jour.` : ""}`,
+      action: !winners.length
+        ? "Aucune ligne n'est assez sûre pour recevoir plus : garder ce budget pour tester 2 à 3 nouvelles créatives dans un ensemble de test."
+        : freed >= needed
+          ? `Faire les deux le même jour${rest > 0 ? `, et garder le reste (environ ${money(Math.round(rest))} par jour) pour tester 2 à 3 nouvelles créatives` : ""}.`
+          : "Mettre d'abord ce budget sur la gagnante la moins chère par livrée, puis monter les autres si le budget total le permet.",
+      fix: winners.length ? undefined : "brief",
+    },
+  };
+}
+
+// ── Audience segments ──────────────────────────────────────────────────
+
+/**
+ * Rates of each segment with Wilson intervals, and whether it is
+ * significantly worse or better than the rest of the table: probability over
+ * 1 − 0.1 / (segments tested), so a table of 24 governorates does not raise
+ * false alarms by chance, and a gap of at least 8 points. Confirmation is
+ * read over the orders already called when `pending` is given.
+ */
+export function readSegments(rows: SegmentRow[]): SegmentRead[] {
+  const called = (r: SegmentRow) => Math.max(0, r.orders - (r.pending ?? 0));
+  const tot = sumSegments(rows);
+  const totCalled = rows.reduce((s, r) => s + called(r), 0);
+  const testedConfirm = rows.filter((r) => called(r) >= SEGMENT_MIN_ORDERS && totCalled - called(r) > 0).length;
+  const testedDelivery = rows.filter((r) => r.delivered + r.back >= SEGMENT_MIN_PARCELS && tot.delivered + tot.back - r.delivered - r.back > 0).length;
+  const flag = (seg: Count, rest: Count, tested: number, min: number): { prob: number | null; flag: SegmentFlag } => {
+    if (seg.n < min || rest.n <= 0) return { prob: null, flag: null };
+    const prob = probBeats(rest, seg);
+    if (prob == null) return { prob: null, flag: null };
+    const need = 1 - SEGMENT_FALSE_ALARM / Math.max(1, tested);
+    const gap = seg.successes / seg.n - rest.successes / rest.n;
+    return { prob, flag: prob >= need && gap <= -SEGMENT_MIN_GAP ? "worse" : 1 - prob >= need && gap >= SEGMENT_MIN_GAP ? "better" : null };
+  };
+  return rows.map((r) => {
+    const parcels = r.delivered + r.back;
+    const n = called(r);
+    const c = flag({ successes: r.confirmed, n }, { successes: tot.confirmed - r.confirmed, n: totCalled - n }, testedConfirm, SEGMENT_MIN_ORDERS);
+    const d = flag({ successes: r.delivered, n: parcels }, { successes: tot.delivered - r.delivered, n: tot.delivered + tot.back - parcels }, testedDelivery, SEGMENT_MIN_PARCELS);
+    return {
+      ...r,
+      confirmRate: n > 0 ? Math.min(1, r.confirmed / n) : null,
+      confirmCi: wilson(r.confirmed, n),
+      deliveryRate: parcels > 0 ? r.delivered / parcels : null,
+      deliveryCi: wilson(r.delivered, parcels),
+      refusalRate: parcels > 0 ? r.back / parcels : null,
+      confirmProbWorse: c.prob,
+      deliveryProbWorse: d.prob,
+      confirmFlag: c.flag,
+      deliveryFlag: d.flag,
+    };
+  });
+}
+
+function sumSegments(rows: SegmentRow[]): Required<Omit<SegmentRow, "label">> {
+  return rows.reduce(
+    (t, r) => ({ orders: t.orders + r.orders, confirmed: t.confirmed + r.confirmed, delivered: t.delivered + r.delivered, back: t.back + r.back, pending: t.pending + (r.pending ?? 0) }),
+    { orders: 0, confirmed: 0, delivered: 0, back: 0, pending: 0 },
+  );
+}
+
+/** Hours of the day (labels "0" to "23", or "9 h") grouped into blocks: one hour rarely has enough orders on its own. Other labels: unchanged. */
+export function hourBlocks(rows: SegmentRow[], size = 4): SegmentRow[] {
+  const hours = rows.map((r) => Number.parseInt(r.label, 10));
+  if (hours.some((h) => !Number.isInteger(h) || h < 0 || h > 23)) return rows;
+  const groups = new Map<number, SegmentRow[]>();
+  rows.forEach((r, i) => {
+    const start = Math.floor(hours[i] / size) * size;
+    groups.set(start, [...(groups.get(start) ?? []), r]);
+  });
+  const withPending = rows.every((r) => r.pending != null);
+  return [...groups.entries()]
+    .sort((a, b) => a[0] - b[0])
+    .map(([start, rs]) => {
+      const t = sumSegments(rs);
+      const block: SegmentRow = { label: `${start} h – ${Math.min(24, start + size)} h`, orders: t.orders, confirmed: t.confirmed, delivered: t.delivered, back: t.back };
+      return withPending ? { ...block, pending: t.pending } : block;
+    });
+}
+
+const WEEKDAYS = ["lundi", "mardi", "mercredi", "jeudi", "vendredi", "samedi", "dimanche"];
+const DEVICES: Record<string, string> = { mobile: "un téléphone", desktop: "un ordinateur", tablet: "une tablette", inconnu: "un appareil inconnu" };
+
+const SEGMENT_TEXT: Record<SegmentKind, { who: (l: string) => string; confirm: string; delivery: string; better: string | null }> = {
+  governorate: {
+    who: (l) => l,
+    confirm: "Appeler ces commandes en premier ; si l'écart reste deux semaines, réduire ce gouvernorat dans le ciblage.",
+    delivery: "Reconfirmer la veille de la livraison dans ce gouvernorat et vérifier le délai du transporteur ; si rien ne change en deux semaines, l'exclure des audiences.",
+    better: "Tester un ensemble de publicités ciblé sur ce gouvernorat avec 10 à 20 % du budget.",
+  },
+  device: {
+    who: (l) => `Les commandes depuis ${DEVICES[l.toLowerCase()] ?? l}`,
+    confirm: "Séparer cet appareil dans un ensemble de publicités à part pour en contrôler le budget, et appeler ces commandes plus vite.",
+    delivery: "Séparer cet appareil dans un ensemble de publicités à part pour en contrôler le budget ; reconfirmer ces commandes avant l'envoi.",
+    better: null,
+  },
+  hour: {
+    who: (l) => `Les commandes de ${l.replace(" – ", " à ")}`,
+    confirm: "Appeler ces commandes en premier le matin ; si l'écart reste, réduire la diffusion à ces heures (programmation horaire).",
+    delivery: "Reconfirmer ces commandes avant l'envoi ; si l'écart reste, réduire la diffusion à ces heures.",
+    better: null,
+  },
+  weekday: {
+    // ISO weekday numbers ("1" is Monday) or a name.
+    who: (l) => `Les commandes du ${/^[1-7]$/.test(l) ? WEEKDAYS[Number(l) - 1] : l.toLowerCase()}`,
+    confirm: "Appeler plus vite les commandes de ce jour-là ; si l'écart reste, baisser le budget ce jour-là.",
+    delivery: "Reconfirmer les commandes de ce jour-là avant l'envoi ; si l'écart reste, baisser le budget ce jour-là.",
+    better: null,
+  },
+};
+
+/** What the audience table says, at most 3 insights per table: the worst segments by volume, then the best governorate. */
+export function segmentInsights(kind: SegmentKind, rows: SegmentRow[]): Insight[] {
+  const read = readSegments(kind === "hour" ? hourBlocks(rows) : rows);
+  const tot = sumSegments(read);
+  const called = (r: SegmentRow) => Math.max(0, r.orders - (r.pending ?? 0));
+  const totCalled = tot.orders - tot.pending;
+  const text = SEGMENT_TEXT[kind];
+  const found: { insight: Insight; weight: number }[] = [];
+  for (const r of read) {
+    const restParcels = tot.delivered + tot.back - r.delivered - r.back;
+    const parcels = r.delivered + r.back;
+    const refused = r.deliveryFlag === "worse" && r.refusalRate != null ? `Refus ${pct(r.refusalRate)} sur ${count(parcels)} colis, contre ${pct((tot.back - r.back) / restParcels)} ailleurs.` : null;
+    const unconfirmed =
+      r.confirmFlag === "worse" && r.confirmRate != null
+        ? `Confirmation ${pct(r.confirmRate)} sur ${nb(called(r), "commande appelée", "commandes appelées")}, contre ${pct((tot.confirmed - r.confirmed) / (totCalled - called(r)))} ailleurs.`
+        : null;
+    if (!refused && !unconfirmed) continue;
+    // One insight per segment. A refused parcel costs the carrier both ways, an unconfirmed order only a call: refusals lead.
+    const title = refused && unconfirmed ? "moins de confirmations et plus de refus" : refused ? "plus de refus" : "moins de confirmations";
+    found.push({
+      weight: r.orders,
+      insight: { severity: "warning", key: null, title: `${text.who(r.label)} : ${title}`, evidence: [unconfirmed, refused].filter(Boolean).join(" "), action: refused ? text.delivery : text.confirm },
+    });
+  }
+  found.sort((a, b) => b.weight - a.weight);
+  const out = found.slice(0, SEGMENT_MAX_INSIGHTS).map((x) => x.insight);
+  if (text.better && out.length < SEGMENT_MAX_INSIGHTS) {
+    const best = read.filter((r) => r.deliveryFlag === "better" || r.confirmFlag === "better").sort((a, b) => b.orders - a.orders)[0];
+    if (best) {
+      const what = best.deliveryFlag === "better" ? `Livraison ${pct(best.deliveryRate)} sur ${count(best.delivered + best.back)} colis` : `Confirmation ${pct(best.confirmRate)} sur ${nb(called(best), "commande appelée", "commandes appelées")}`;
+      out.push({ severity: "good", key: null, title: `${text.who(best.label)} : de meilleurs clients`, evidence: `${what}, nettement au-dessus du reste.`, action: text.better });
+    }
+  }
+  return out;
+}
+
+// ── Ads compared ───────────────────────────────────────────────────────
+
+/**
+ * Ads side by side on one metric: the value, a 90 % interval for the cost
+ * (95 % Wilson for rates), and the probability that each is the best.
+ * "cost" is the cost per delivered order with the projection, the one that
+ * decides; the rates say why.
+ */
+export function compareAds(rows: AdRow[], metric: AdMetric, costs: Costs, baseline: Baseline | null): AdComparison[] {
+  const label = (r: AdRow) => r.ad ?? r.campaign ?? r.source;
+  if (metric === "cost") {
+    const events = rows.map((r) => kpis(r, costs, baseline).projection?.delivered ?? r.funnel.delivered);
+    const probs = probBestCost(rows.map((r, i) => ({ events: events[i], spend: r.platform.spend })));
+    return rows.map((r, i) => {
+      const iv = costInterval(events[i], r.platform.spend);
+      const spend = r.platform.spend;
+      return { key: r.key, label: label(r), value: spend != null && events[i] > 0 ? Math.round(spend / events[i]) : null, low: iv?.low ?? null, high: iv?.high ?? null, n: events[i], probBest: probs[i], enough: spend != null && events[i] >= AD_MIN.cost };
+    });
+  }
+  const counts: (Count | null)[] = rows.map((r) => {
+    const f = r.funnel;
+    if (metric === "orderRate") return { successes: f.orders, n: f.sessions };
+    if (metric === "ctr") return r.platform.impressions != null && r.platform.clicks != null ? { successes: r.platform.clicks, n: r.platform.impressions } : null;
+    if (metric === "confirmRate") return { successes: f.confirmed, n: Math.max(0, f.orders - pendingOf(f)) };
+    return { successes: f.delivered, n: f.delivered + f.back };
+  });
+  const probs = probBestRate(counts.map((c) => c ?? { successes: 0, n: 0 }));
+  return rows.map((r, i) => {
+    const c = counts[i];
+    const iv = c ? wilson(c.successes, c.n) : null;
+    return { key: r.key, label: label(r), value: iv?.rate ?? null, low: iv?.low ?? null, high: iv?.high ?? null, n: c?.n ?? 0, probBest: probs[i], enough: c != null && c.n >= AD_MIN[metric] };
+  });
+}
+
+/** Winner, not enough data per ad, and what to test next. */
+export function creativeInsights(rows: AdRow[], costs: Costs, baseline: Baseline | null): Insight[] {
+  const out: Insight[] = [];
+  if (rows.length < 2) return out;
+  const cost = compareAds(rows, "cost", costs, baseline);
+  const ready = cost.filter((c) => c.enough);
+  const spend = rows.reduce((s, r) => s + (r.platform.spend ?? 0), 0);
+  if (ready.length === 0) {
+    if (spend > 0) out.push({ severity: "info", key: null, title: "Pas assez de données par publicité", evidence: `${rows.length} publicités se partagent ${money(spend)} ; aucune n'a encore ${AD_MIN.cost} livrées.`, action: "Garder 3 à 5 publicités par ensemble, pas plus, pour que chacune reçoive assez de budget pour être jugée." });
+    return out;
+  }
+  const best = [...cost].sort((a, b) => (b.probBest ?? 0) - (a.probBest ?? 0))[0];
+  if (best.enough && (best.probBest ?? 0) >= AD_WINNER_PROB) {
+    const range = best.low != null ? ` (entre ${money(best.low)} et ${best.high != null ? money(best.high) : "plus"})` : "";
+    out.push({
+      severity: "good",
+      key: best.key,
+      title: `« ${best.label} » est la meilleure publicité`,
+      evidence: `Probabilité d'être la moins chère par livrée : ${pct(best.probBest)} ; coût par livrée ${money(best.value)}${range}.`,
+      action: "Lui donner la plus grande part du budget, et tester 3 variantes de son accroche : mêmes images, nouvelles 3 premières secondes.",
+      fix: "brief",
+    });
+  } else if (ready.length >= 2) {
+    out.push({ severity: "info", key: null, title: "Pas encore de gagnante nette", evidence: `La meilleure publicité n'a que ${pct(best.probBest)} de chances d'être la moins chère par livrée.`, action: "Laisser tourner sans toucher aux budgets jusqu'à ce qu'une publicité dépasse 90 %, puis couper les autres." });
+  }
+  return out;
+}
+
+// ── Everything ─────────────────────────────────────────────────────────
+
+/**
+ * The whole report for one level of rows: each row's advice, the account's,
+ * and every insight sorted by severity then by the money involved. Pass the
+ * campaigns (or the ads) of a period, with that period's length in days.
+ */
+export function advise(input: AdviseInput): Report {
+  const { rows, costs, baseline, days } = input;
+  const total = totalRow(rows);
+  const kTotal = kpis(total, costs, baseline);
+  const accountDelivered = kTotal.projection?.delivered ?? total.funnel.delivered;
+  const accountCpd = total.platform.spend != null && accountDelivered > 0 ? Math.round(total.platform.spend / accountDelivered) : null;
+
+  const advice = rows.map((row) => {
+    const k = kpis(row, costs, baseline);
+    const ref = reference(rows.length > 1 ? subtract(total, row) : null, baseline);
+    return adviseRow(row, k, { ref, days, accountCpd: rows.length > 1 ? accountCpd : null, daily: input.daily?.[row.key] });
+  });
+  const totalRef = reference(null, baseline);
+  const totalAdvice = adviseRow(total, kTotal, { ref: totalRef, days });
+  const totalNeck = bottleneck(total, totalRef);
+
+  const weighted: Weighted[] = [];
+  const spendOf = (key: string | null) => (key == null ? (total.platform.spend ?? 0) : (rows.find((r) => r.key === key)?.platform.spend ?? 0));
+  const push = (xs: Insight[]) => xs.forEach((insight) => weighted.push({ insight, weight: spendOf(insight.key) }));
+
+  // The account's money, first.
+  const spend = total.platform.spend;
+  if (spend != null && spend > 0 && totalAdvice.target != null && totalAdvice.probProfitable != null) {
+    const p = totalAdvice.probProfitable;
+    const proj = kTotal.projection;
+    const contribution = proj?.contribution ?? kTotal.contribution;
+    const evidence = `Coût par livrée ${proj?.projected ? "projeté " : ""}${money(totalAdvice.judgedCpd)} pour un maximum de ${money(totalAdvice.target)}${contribution != null ? ` ; résultat après pub ${proj?.projected ? "projeté " : ""}${money(contribution)}` : ""}.`;
+    if (p <= LOSE_PROB) weighted.push({ weight: spend, insight: { severity: "critical", key: null, title: "Le compte perd de l'argent", evidence, action: "Couper les lignes marquées « couper » et garder seulement celles sous le coût max." } });
+    else if (p >= WIN_PROB) {
+      const action = advice.some((a) => a.verdict === "scale") ? "Monter les gagnantes par paliers de 20 à 30 %, une fois tous les 3 jours." : "Garder les budgets : aucune ligne n'est encore assez sûre pour monter seule.";
+      weighted.push({ weight: spend, insight: { severity: "good", key: null, title: "Le compte est rentable", evidence, action } });
+    }
+    else weighted.push({ weight: spend, insight: { severity: "info", key: null, title: "Le compte est proche du coût max", evidence, action: "Couper les perdantes avant de monter quoi que ce soit." } });
+  }
+  // Placed orders lie.
+  const net = kTotal.projection?.netDeliveryRate ?? null;
+  if (spend != null && spend > 0 && net != null && net < PLACED_LIE_RATE && total.funnel.orders >= 20 && kTotal.cpaPlaced != null && totalAdvice.judgedCpd != null) {
+    weighted.push({
+      weight: spend * 0.5,
+      insight: {
+        severity: "info",
+        key: null,
+        title: "Les commandes passées embellissent les résultats",
+        evidence: `Sur ${count(total.funnel.orders)} commandes, environ ${pct(net)} ${kTotal.projection?.projected ? "devraient finir livrées (projection)" : "finissent livrées"} : un CPA de ${money(kTotal.cpaPlaced)} devient ${money(totalAdvice.judgedCpd)} par client livré.`,
+        action: "Juger les publicités sur le coût par livrée de cette page, pas sur le coût par achat du gestionnaire de publicités.",
+      },
+    });
+  }
+  if (kTotal.projection?.projected && (kTotal.openShare ?? 0) > YOUNG_OPEN_SHARE) {
+    weighted.push({ weight: 0, insight: { severity: "info", key: null, title: "Beaucoup de commandes en cours", evidence: kTotal.projection.note, action: "Revenir dans quelques jours pour les chiffres réels ; ne pas couper une ligne sur ses seules commandes en attente." } });
+  }
+  weighted.push(...missingInsights(rows, total, kTotal, costs));
+  push(trackingInsights(rows, total, kTotal, input.tracking, input.coverage, days));
+  rows.forEach((row, i) => push(rowInsights(row, advice[i])));
+  if (totalNeck) weighted.push({ weight: (spend ?? 0) * 0.8, insight: { severity: "warning", key: null, title: `Point faible du compte : ${lowerFirst(totalNeck.title)}`, evidence: totalNeck.evidence, action: totalNeck.action, fix: STAGE_TEXT[totalNeck.stage].fix } });
+  if (baseline?.aov != null && kTotal.aov != null && total.funnel.orders - total.funnel.cancelled >= AOV_MIN_ORDERS && kTotal.aov < AOV_LOW_SHARE * baseline.aov) {
+    weighted.push({ weight: (spend ?? 0) * 0.3, insight: { severity: "info", key: null, title: "Panier plus petit que d'habitude", evidence: `Panier moyen ${money(kTotal.aov)} contre ${money(baseline.aov)} pour la boutique.`, action: "Mettre en avant un pack de 2 ou 3 avec une remise, ou la livraison offerte dès 2 articles." } });
+  }
+  for (const w of [fragmentation(rows, advice, total), concentration(rows, advice), reallocation(advice)]) if (w) weighted.push(w);
+  if (rows.length > 0 && rows.every((r) => r.level === "ad")) push(creativeInsights(rows, costs, baseline));
+  for (const kind of ["governorate", "device", "hour", "weekday"] as SegmentKind[]) {
+    const seg = input.segments?.[kind];
+    if (seg?.length) segmentInsights(kind, seg).forEach((insight) => weighted.push({ insight, weight: (spend ?? 0) * 0.2 }));
+  }
+
+  const insights = weighted
+    .map((w, i) => ({ ...w, i }))
+    .sort((a, b) => SEVERITY_RANK[a.insight.severity] - SEVERITY_RANK[b.insight.severity] || b.weight - a.weight || a.i - b.i)
+    .map((w) => w.insight);
+
+  return {
+    rows: advice,
+    total: { row: total, advice: totalAdvice, bottleneck: totalNeck },
+    insights,
+    ads: rows.length > 0 && rows.every((r) => r.level === "ad") ? compareAds(rows, "cost", costs, baseline) : null,
+  };
+}

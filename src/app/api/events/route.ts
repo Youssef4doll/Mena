@@ -12,6 +12,8 @@ const body = z.object({
   source: z.string().max(60).optional(),
   medium: z.string().max(60).optional(),
   campaign: z.string().max(120).nullish(),
+  /** utm_content: the ad that brought the visit. */
+  content: z.string().max(120).nullish(),
   events: z
     .array(
       z.object({
@@ -56,6 +58,7 @@ export async function POST(request: Request) {
         source: d.source ?? "direct",
         medium: d.medium,
         campaign: d.campaign ?? null,
+        content: d.content ?? null,
         device,
         value: e.value,
         props: props ? JSON.parse(props) : undefined,

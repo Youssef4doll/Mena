@@ -1,0 +1,432 @@
+import { test } from "node:test";
+import assert from "node:assert/strict";
+import {
+  BIG_SCALE_STEP, CUT_STEP, FIX_STEP, SCALE_STEP,
+  advise, compareAds, creativeInsights, fatigue, hourBlocks, readSegments, segmentInsights,
+  type AdviseInput, type SegmentRow, type TrackingSetup,
+} from "./advisor";
+import type { AdRow, Baseline, Costs, DayPoint, Insight, Level } from "./types";
+
+// A 59,900 DT lamp + 8 DT delivery = 67,900 DT a delivered order, bought 20 DT. Carrier 7 DT a parcel, 3 DT for one back.
+const PRICE = 67_900;
+const COST = 20_000;
+const costs: Costs = { carrierPerParcel: 7_000, returnPerParcel: 3_000 };
+const baseline: Baseline = { orders: 900, confirmRate: 0.72, deliveryRate: 0.8, netDeliveryRate: 0.55, aov: 70_000, daysToDeliver: 3, marginPerDelivered: 35_000 };
+const pixels: TrackingSetup = { metaPixel: true, tiktokPixel: false, metaCapi: true, tiktokEvents: false, purchaseAt: "confirmed" };
+
+type Spec = {
+  spend: number | null;
+  cancelled?: number;
+  delivered?: number;
+  back?: number;
+  open?: number;
+  pending?: number;
+  sessions?: number;
+  productViews?: number;
+  formStarts?: number;
+  impressions?: number;
+  clicks?: number;
+  reach?: number;
+  purchases?: number;
+  unitCost?: number;
+  source?: string;
+  level?: Level;
+};
+
+/** A row whose numbers add up: orders = cancelled + delivered + back + open, confirmed = all but cancelled and pending. */
+function line(name: string, s: Spec): AdRow {
+  const cancelled = s.cancelled ?? 0;
+  const delivered = s.delivered ?? 0;
+  const back = s.back ?? 0;
+  const open = s.open ?? 0;
+  const pending = s.pending ?? 0;
+  const orders = cancelled + delivered + back + open;
+  const sessions = s.sessions ?? orders * 40;
+  const productViews = s.productViews ?? Math.round(sessions * 0.95);
+  const formStarts = s.formStarts ?? Math.max(orders, Math.round(productViews * 0.12));
+  const source = s.source ?? "facebook";
+  const level = s.level ?? "campaign";
+  return {
+    level,
+    key: level === "ad" ? `${source}|lampe|${name}` : `${source}|${name}`,
+    source,
+    campaign: level === "ad" ? "lampe" : name,
+    ad: level === "ad" ? name : null,
+    funnel: {
+      sessions, visitors: Math.round(sessions * 0.9), productViews, formStarts, orders,
+      confirmed: delivered + back + open - pending, cancelled, shipped: delivered + back + open - pending, delivered, back, open, pending,
+      revenuePlaced: (orders - cancelled) * PRICE, revenueDelivered: delivered * PRICE, productCostDelivered: delivered * (s.unitCost ?? COST), costUnknownDelivered: 0,
+      units: orders - cancelled, multiUnitOrders: 0, newCustomers: orders,
+    },
+    platform: { spend: s.spend, impressions: s.impressions ?? null, clicks: s.clicks ?? null, reach: s.reach ?? null, purchases: s.purchases ?? null },
+  };
+}
+
+const run = (rows: AdRow[], extra: Partial<AdviseInput> = {}) => advise({ rows, costs, baseline, days: 14, tracking: pixels, ...extra });
+const adviceOf = (rows: AdRow[], key: string, extra: Partial<AdviseInput> = {}) => run(rows, extra).rows.find((a) => a.key === key)!;
+const titles = (xs: Insight[]) => xs.map((i) => i.title);
+
+const winner = line("lampe-oct", { spend: 300_000, cancelled: 10, delivered: 32, back: 6, open: 2 });
+const youngWinner = line("nouvelle", { spend: 60_000, cancelled: 2, open: 18, pending: 10, sessions: 700 });
+
+test("a clear winner is scaled by +30 %, never doubled", () => {
+  const a = adviceOf([winner], winner.key);
+  assert.equal(a.verdict, "scale");
+  assert.equal(a.confidence, "high");
+  assert.equal(a.budgetChange, BIG_SCALE_STEP);
+  assert.ok(a.judgedCpd! < 0.6 * a.target!);
+  assert.ok(a.probProfitable! > 0.99);
+  assert.equal(a.targetBasis, "margin");
+  assert.ok(a.reasons.some((r) => r.includes("pas plus")));
+});
+
+test("a young campaign is read through its projection: small step, medium confidence, said so", () => {
+  const a = adviceOf([youngWinner], youngWinner.key);
+  assert.equal(a.kpis.projection?.projected, true);
+  assert.equal(a.verdict, "scale");
+  assert.equal(a.budgetChange, SCALE_STEP);
+  assert.notEqual(a.confidence, "high");
+  assert.ok(a.reasons.some((r) => r.includes("projeté")));
+  assert.ok(a.reasons.some((r) => r.includes("encore en cours")));
+  const r = run([youngWinner]);
+  assert.ok(titles(r.insights).includes("Beaucoup de commandes en cours"));
+});
+
+test("no verdict before the evidence: wait, and say how much more to spend", () => {
+  const small = line("test-1", { spend: 30_000, delivered: 1, open: 2 });
+  const a = adviceOf([small], small.key);
+  assert.equal(a.verdict, "wait");
+  assert.equal(a.budgetChange, 0);
+  assert.equal(a.confidence, "low");
+  assert.equal(a.moreSpend, Math.round(2 * a.target! - 30_000));
+  assert.ok(a.reasons.some((r) => r.startsWith("Pas encore assez de données")));
+});
+
+test("no order after twice the max cost: cut; before that: wait, with the spend at which to cut", () => {
+  const dead = line("montre", { spend: 80_000, sessions: 400, formStarts: 30 });
+  const a = adviceOf([dead], dead.key);
+  assert.equal(a.verdict, "cut");
+  assert.equal(a.budgetChange, CUT_STEP);
+  assert.ok(a.probProfitable! < 0.05);
+  assert.ok(a.reasons.some((r) => r.includes("sans commande")));
+  const early = adviceOf([line("montre", { spend: 40_000, sessions: 200 })], "facebook|montre");
+  assert.equal(early.verdict, "wait");
+  assert.ok(early.reasons.some((r) => r.includes("couper")));
+});
+
+test("a loser with one broken stage is fixed when fixing it is enough, cut when it is not", () => {
+  const healthy = line("sain", { spend: 200_000, cancelled: 8, delivered: 24, back: 5, open: 0, sessions: 1_600 });
+  // 2 % of product views start the form, against 12 % elsewhere: the page is the problem.
+  const page = line("page", { spend: 400_000, cancelled: 3, delivered: 6, back: 1, sessions: 3_000, productViews: 2_900, formStarts: 58 });
+  // Same over-cost, but every stage like the rest: nothing to fix, the traffic is just too dear.
+  const dear = line("chere", { spend: 400_000, cancelled: 3, delivered: 6, back: 1, sessions: 400 });
+  const r = run([healthy, page, dear]);
+  const fix = r.rows.find((a) => a.key === page.key)!;
+  assert.equal(fix.verdict, "fix");
+  assert.equal(fix.budgetChange, FIX_STEP);
+  assert.equal(fix.bottleneck?.stage, "formStart");
+  assert.equal(fix.bottleneck?.referenceKind, "account");
+  assert.ok(fix.reasons.some((r) => r.includes("Corrigé, le coût par livrée serait d'environ")));
+  const cut = r.rows.find((a) => a.key === dear.key)!;
+  assert.equal(cut.verdict, "cut");
+  const insight = r.insights.find((i) => i.key === page.key && i.severity === "warning")!;
+  assert.match(insight.evidence, /Formulaire commencé 2 % contre 12 % pour le reste du compte/);
+});
+
+test("money out and no visit counted: the measure is broken, not the ad", () => {
+  const noUtm = line("sans-utm", { spend: 45_000, sessions: 0, impressions: 20_000, clicks: 300 });
+  const a = adviceOf([winner, noUtm], noUtm.key);
+  assert.equal(a.verdict, "tracking");
+  assert.equal(a.budgetChange, null);
+  assert.equal(a.bottleneck, null);
+  const r = run([winner, noUtm]);
+  const i = r.insights.find((x) => x.key === noUtm.key)!;
+  assert.equal(i.severity, "critical");
+  assert.equal(i.fix, "links");
+  assert.match(i.action, /utm_campaign=sans-utm/);
+  // 500 clicks and 40 visits: the link does not carry the campaign.
+  const lost = line("mauvais-lien", { spend: 50_000, sessions: 40, clicks: 500, impressions: 30_000 });
+  assert.equal(adviceOf([lost], lost.key).verdict, "tracking");
+});
+
+test("orders but no visit recorded (ad-level visits before utm_content was captured): judged on the orders, not called broken", () => {
+  const ad = line("video-1", { level: "ad", spend: 120_000, cancelled: 3, delivered: 14, back: 3, open: 2, sessions: 0, productViews: 0, formStarts: 0, impressions: 40_000, clicks: 700 });
+  const a = adviceOf([ad], ad.key);
+  assert.notEqual(a.verdict, "tracking");
+  assert.equal(a.verdict, "scale");
+  assert.notEqual(a.bottleneck?.stage, "landing");
+  assert.ok(a.reasons.some((r) => r.includes("Aucune visite comptée")));
+});
+
+test("orders placed without a form-start event do not make the page look unconvincing", () => {
+  // Quick-buy orders: 30 orders, only 5 form starts recorded.
+  const quick = line("rapide", { spend: 150_000, cancelled: 4, delivered: 20, back: 4, open: 2, sessions: 1_200, productViews: 1_150, formStarts: 5 });
+  const other = line("autre", { spend: 150_000, cancelled: 4, delivered: 20, back: 4, open: 2, sessions: 1_200, productViews: 1_150, formStarts: 140 });
+  assert.equal(adviceOf([quick, other], quick.key).bottleneck, null, "same orders per product view as the other row");
+  // The same row with half the orders per view is still caught, on orders per product view.
+  const weak = line("rapide", { spend: 150_000, cancelled: 2, delivered: 9, back: 2, open: 2, sessions: 1_200, productViews: 1_150, formStarts: 5 });
+  const neck = adviceOf([weak, other], weak.key).bottleneck!;
+  assert.equal(neck.stage, "formStart");
+  assert.match(neck.evidence, /^Commandes par fiche vue 1,3 % contre 2,6 % pour le reste du compte/);
+});
+
+test("a product that loses money before any ad: fix the price first, pause meanwhile", () => {
+  const loss = line("perte", { spend: 100_000, cancelled: 2, delivered: 12, back: 2, unitCost: 62_000 });
+  const r = run([loss], { baseline: { ...baseline, marginPerDelivered: null } });
+  const a = r.rows[0];
+  assert.ok(a.kpis.marginPerDelivered! < 0);
+  assert.equal(a.verdict, "fix");
+  assert.equal(a.budgetChange, CUT_STEP);
+  const i = r.insights.find((x) => x.key === loss.key)!;
+  assert.equal(i.severity, "critical");
+  assert.match(i.title, /perd de l'argent avant la publicité/);
+});
+
+test("without the carrier cost: compared with the account average, low confidence, and the gap named", () => {
+  const noCosts: Costs = { carrierPerParcel: null, returnPerParcel: null };
+  const b = { ...baseline, marginPerDelivered: null };
+  const cheap = line("pas-chere", { spend: 150_000, cancelled: 5, delivered: 30, back: 5 });
+  const dear = line("chere", { spend: 300_000, cancelled: 5, delivered: 10, back: 3 });
+  const r = advise({ rows: [cheap, dear], costs: noCosts, baseline: b, days: 14, tracking: pixels });
+  for (const a of r.rows) {
+    assert.equal(a.targetBasis, "account");
+    assert.equal(a.confidence, "low");
+  }
+  assert.equal(r.rows[0].verdict, "scale");
+  assert.equal(r.total.advice.verdict, "wait");
+  assert.match(r.total.advice.reasons[0], /coût du transporteur non renseigné/);
+  const missing = r.insights.find((i) => i.title === "Coût du transporteur manquant")!;
+  assert.equal(missing.fix, "costs");
+  assert.ok(r.insights.some((i) => i.title === "Coût d'un retour manquant"));
+});
+
+test("no spend entered: nothing to judge, and the missing spend is flagged", () => {
+  const free = line("sans-depense", { spend: null, cancelled: 2, delivered: 10, back: 2 });
+  const r = run([winner, free]);
+  const a = r.rows.find((x) => x.key === free.key)!;
+  assert.equal(a.verdict, "wait");
+  assert.equal(a.budgetChange, null);
+  const i = r.insights.find((x) => x.title === "Dépenses manquantes")!;
+  assert.equal(i.fix, "import");
+  assert.match(i.evidence, /« sans-depense »/);
+});
+
+const day = (i: number, d: Partial<DayPoint>): DayPoint => ({ day: `2026-10-${String(5 + i).padStart(2, "0")}`, spend: 40_000, impressions: 10_000, clicks: 200, sessions: 170, orders: 5, delivered: 0, ...d });
+// 7 days at 2 % CTR and a 4 DT CPM, then 3 days at 1,3 % and 5,2 DT.
+const tiring = Array.from({ length: 10 }, (_, i) => (i < 7 ? day(i, {}) : day(i, { spend: 52_000, clicks: 130, sessions: 110, orders: 3 })));
+
+test("fatigue: CTR falling while CPM rises", () => {
+  const f = fatigue(tiring, 3.1)!;
+  assert.equal(f.level, "clear");
+  assert.equal(f.basis, "platform");
+  assert.ok(Math.abs(f.ctr!.change + 0.35) < 1e-9);
+  assert.ok(Math.abs(f.cpm!.change - 0.3) < 1e-9);
+  assert.match(f.evidence, /CTR 2 % → 1,3 % \(−35 %\)/);
+  // The same drop without a CPM rise or a high frequency: only early.
+  assert.equal(fatigue(tiring.map((p) => ({ ...p, spend: 40_000 })), 1.4)!.level, "early");
+  // Stable: nothing.
+  assert.equal(fatigue(Array.from({ length: 10 }, (_, i) => day(i, {})))!.level, "none");
+  // A dip on small numbers is noise: 2 % → 1,7 % on 1 000 impressions a day.
+  const noise = Array.from({ length: 10 }, (_, i) => day(i, i < 7 ? { impressions: 1_000, clicks: 20 } : { impressions: 1_000, clicks: 17 }));
+  assert.equal(fatigue(noise)!.level, "none");
+  // Too few days to say.
+  assert.equal(fatigue(tiring.slice(0, 5)), null);
+});
+
+test("fatigue without platform figures: the cost per visit, never more than early", () => {
+  const visits = tiring.map((p, i) => ({ ...p, impressions: null, clicks: null, sessions: i < 7 ? 170 : 100 }));
+  const f = fatigue(visits, 4)!;
+  assert.equal(f.basis, "visits");
+  assert.equal(f.level, "early");
+  assert.match(f.evidence, /impossible de dire si c'est le CTR ou le CPM/);
+});
+
+test("a tiring winner is kept, not scaled; so is one whose audience is saturated", () => {
+  const a = adviceOf([winner], winner.key, { daily: { [winner.key]: tiring } });
+  assert.equal(a.verdict, "keep");
+  assert.equal(a.budgetChange, 0);
+  assert.equal(a.fatigue?.level, "clear");
+  assert.ok(run([winner], { daily: { [winner.key]: tiring } }).insights.some((i) => i.title === "« lampe-oct » s'use"));
+  const saturated = line("lampe-oct", { spend: 300_000, cancelled: 10, delivered: 32, back: 6, open: 2, impressions: 120_000, reach: 30_000, clicks: 2_400 });
+  const s = adviceOf([saturated], saturated.key);
+  assert.equal(s.verdict, "keep");
+  assert.ok(s.reasons.some((r) => r.includes("fréquence atteint 4")));
+});
+
+test("a winner whose orders confirm badly only takes the small step", () => {
+  const good = line("bonne", { spend: 200_000, cancelled: 6, delivered: 26, back: 5, open: 0 });
+  // 50 cancelled out of 80: cheap orders, many never confirmed.
+  const fakes = line("promo", { spend: 300_000, cancelled: 50, delivered: 25, back: 5, sessions: 3_000 });
+  const a = adviceOf([good, fakes], fakes.key);
+  assert.equal(a.verdict, "scale");
+  assert.equal(a.bottleneck?.stage, "confirmation");
+  assert.equal(a.budgetChange, SCALE_STEP);
+  assert.ok(a.reasons.some((r) => r.startsWith("À améliorer en même temps : trop de commandes non confirmées")));
+});
+
+test("the platform counting more purchases than the shop has orders", () => {
+  const over = line("promo", { spend: 300_000, cancelled: 20, delivered: 40, back: 8, open: 4, purchases: 130 });
+  const r = run([over]);
+  assert.ok(r.insights.some((i) => i.key === over.key && i.title.includes("la plateforme compte trop d'achats")));
+  assert.ok(r.insights.some((i) => i.key === null && i.title === "La plateforme compte plus d'achats que la boutique"));
+  // Decisions never use the platform's count.
+  assert.equal(r.rows[0].verdict, adviceOf([{ ...over, platform: { ...over.platform, purchases: null } }], over.key).verdict);
+  const under = line("promo", { spend: 300_000, cancelled: 20, delivered: 40, back: 8, open: 4, purchases: 12 });
+  assert.ok(run([under]).insights.some((i) => i.title === "Le pixel ne voit qu'une partie des commandes"));
+});
+
+test("tracking setup: no pixel, no server link while the purchase waits for confirmation, a pixel learning from fake orders", () => {
+  const noPixel = run([winner], { tracking: { ...pixels, metaPixel: false } });
+  const p = noPixel.insights.find((i) => i.title === "Pixel Meta absent")!;
+  assert.equal(p.severity, "critical");
+  assert.equal(p.fix, "tracking");
+  const blind = run([winner], { tracking: { ...pixels, metaCapi: false, purchaseAt: "confirmed" } });
+  assert.equal(blind.insights.find((i) => i.title === "Meta ne reçoit aucun achat")?.severity, "critical");
+  const browserOnly = run([winner], { tracking: { ...pixels, metaCapi: false, purchaseAt: "placed" } });
+  assert.ok(browserOnly.insights.some((i) => i.title === "API Conversions Meta non reliée"));
+  // 40 % of called orders never confirmed, and the pixel is told at "placed".
+  const fakes = line("promo", { spend: 300_000, cancelled: 40, delivered: 45, back: 10, open: 5 });
+  const learning = run([fakes], { tracking: { ...pixels, purchaseAt: "placed" } }).insights.find((i) => i.title === "Le pixel apprend sur des commandes jamais confirmées")!;
+  assert.match(learning.action, /« confirmée »/);
+  // No TikTok spend: no TikTok advice.
+  assert.ok(!noPixel.insights.some((i) => i.title.includes("TikTok")));
+  const tagged = run([winner], { coverage: { orders: 200, tagged: 100 } }).insights.find((i) => i.title === "Commandes sans source")!;
+  assert.equal(tagged.fix, "links");
+  assert.match(tagged.evidence, /50 % des 200 commandes/);
+});
+
+test("one row carrying the account, money to move from losers to winners, budget spread too thin", () => {
+  const dead = line("montre", { spend: 80_000, sessions: 400, formStarts: 30 });
+  const r = run([winner, dead, line("petite", { spend: 50_000, delivered: 2, back: 1, cancelled: 1 })]);
+  assert.ok(r.insights.some((i) => i.title === "Tout repose sur « lampe-oct »"));
+  const move = r.insights.find((i) => i.title === "Déplacer le budget")!;
+  assert.match(move.evidence, /libère environ 5,714 DT par jour/, "80 DT over 14 days, cut entirely");
+  const thin = run([winner, ...[1, 2, 3, 4, 5].map((n) => line(`test-${n}`, { spend: 60_000, delivered: 1, open: 1 }))]);
+  assert.ok(thin.insights.some((i) => i.title === "Budget trop éparpillé"));
+});
+
+const governorates: SegmentRow[] = [
+  { label: "Tunis", orders: 300, confirmed: 230, delivered: 180, back: 30 },
+  { label: "Sfax", orders: 120, confirmed: 85, delivered: 60, back: 12 },
+  { label: "Kasserine", orders: 60, confirmed: 35, delivered: 18, back: 14 },
+  { label: "Ariana", orders: 100, confirmed: 75, delivered: 60, back: 10 },
+  { label: "Tozeur", orders: 8, confirmed: 2, delivered: 1, back: 1 },
+];
+
+test("audience: a governorate that refuses more is flagged, a tiny one is not judged", () => {
+  const read = readSegments(governorates);
+  const k = read.find((r) => r.label === "Kasserine")!;
+  assert.equal(k.deliveryFlag, "worse");
+  assert.equal(k.confirmFlag, "worse");
+  assert.ok(k.deliveryProbWorse! > 0.99);
+  assert.ok(k.deliveryCi!.high < 0.75);
+  const t = read.find((r) => r.label === "Tozeur")!;
+  assert.equal(t.confirmFlag, null, "8 orders say nothing");
+  assert.equal(t.confirmProbWorse, null);
+  const insights = segmentInsights("governorate", governorates);
+  assert.equal(insights[0].title, "Kasserine : moins de confirmations et plus de refus");
+  assert.match(insights[0].evidence, /^Confirmation 58 % sur 60 commandes appelées, contre 74 % ailleurs/);
+  assert.match(insights[0].evidence, /Refus 44 % sur 32 colis, contre 15 % ailleurs/);
+  assert.ok(insights.length <= 3);
+});
+
+test("audience: orders not called yet stay out of the confirmation rate; weekdays and devices as the data layer sends them", () => {
+  // 60 orders, 20 of them placed last night and not called yet: 35 of 40 called is a good rate, not 58 %.
+  const read = readSegments([{ ...governorates[2], pending: 20 }, ...governorates.slice(0, 2)]);
+  assert.ok(Math.abs(read[0].confirmRate! - 35 / 40) < 1e-12);
+  assert.equal(read[0].confirmFlag, null);
+  const days = segmentInsights("weekday", [
+    { label: "5", orders: 120, confirmed: 60, delivered: 40, back: 10 },
+    { label: "1", orders: 300, confirmed: 230, delivered: 160, back: 30 },
+  ]);
+  assert.equal(days[0].title, "Les commandes du vendredi : moins de confirmations");
+  const devices = segmentInsights("device", [
+    { label: "desktop", orders: 100, confirmed: 85, delivered: 70, back: 30 },
+    { label: "mobile", orders: 500, confirmed: 400, delivered: 330, back: 40 },
+  ]);
+  assert.equal(devices[0].title, "Les commandes depuis un ordinateur : plus de refus");
+});
+
+test("audience: many segments do not raise false alarms by chance", () => {
+  // 19 confirmed of 40 (48 %) against 75 % elsewhere: clear when it is one of two segments…
+  const odd = { label: "X", orders: 40, confirmed: 19, delivered: 0, back: 0 };
+  const two = readSegments([odd, { label: "Y", orders: 400, confirmed: 300, delivered: 0, back: 0 }]);
+  assert.equal(two[0].confirmFlag, "worse");
+  // …and still flagged among 24, while ordinary differences of a few points are not.
+  const many = [odd, ...Array.from({ length: 23 }, (_, i) => ({ label: `G${i}`, orders: 40, confirmed: 28 + (i % 5), delivered: 0, back: 0 }))];
+  const read = readSegments(many);
+  assert.equal(read[0].confirmFlag, "worse");
+  assert.equal(read.slice(1).filter((r) => r.confirmFlag != null).length, 0);
+  // A milder gap passes alone but not among 24.
+  const mild = { label: "Z", orders: 60, confirmed: 36, delivered: 0, back: 0 };
+  assert.equal(readSegments([mild, { label: "Y", orders: 600, confirmed: 450, delivered: 0, back: 0 }])[0].confirmFlag, "worse");
+  assert.equal(readSegments([mild, ...many.slice(1)])[0].confirmFlag, null);
+});
+
+test("audience: hours grouped into blocks, a better governorate suggested", () => {
+  const hours = Array.from({ length: 24 }, (_, h) => ({ label: String(h), orders: h < 4 ? 15 : 30, confirmed: h < 4 ? 6 : 23, delivered: h < 4 ? 4 : 16, back: h < 4 ? 2 : 4 }));
+  const blocks = hourBlocks(hours);
+  assert.equal(blocks.length, 6);
+  assert.equal(blocks[0].label, "0 h – 4 h");
+  assert.equal(blocks.reduce((s, b) => s + b.orders, 0), hours.reduce((s, h) => s + h.orders, 0));
+  assert.deepEqual(hourBlocks(governorates), governorates, "not hours: unchanged");
+  const night = segmentInsights("hour", hours);
+  assert.equal(night[0].title, "Les commandes de 0 h à 4 h : moins de confirmations");
+  const best = segmentInsights("governorate", [
+    { label: "Sousse", orders: 200, confirmed: 180, delivered: 150, back: 8 },
+    { label: "Gafsa", orders: 300, confirmed: 200, delivered: 140, back: 40 },
+    { label: "Nabeul", orders: 300, confirmed: 205, delivered: 150, back: 38 },
+  ]).find((i) => i.severity === "good")!;
+  assert.equal(best.title, "Sousse : de meilleurs clients");
+});
+
+const ads = [
+  line("video-ugc", { level: "ad", spend: 220_000, cancelled: 8, delivered: 20, back: 4, open: 8, pending: 2, sessions: 900, impressions: 60_000, clicks: 1_000 }),
+  line("carrousel", { level: "ad", spend: 200_000, cancelled: 4, delivered: 6, back: 2, open: 1, sessions: 700, impressions: 70_000, clicks: 800 }),
+  line("photo", { level: "ad", spend: 30_000, cancelled: 1, open: 1, sessions: 150, impressions: 15_000, clicks: 160 }),
+];
+
+test("ads compared: the probability of being the cheapest per delivered order, with ranges", () => {
+  const c = compareAds(ads, "cost", costs, baseline);
+  const sum = c.reduce((s, x) => s + (x.probBest ?? 0), 0);
+  assert.ok(Math.abs(sum - 1) < 1e-9);
+  assert.ok(c[0].probBest! > 0.9);
+  assert.ok(c[0].low! < c[0].value! && c[0].value! < c[0].high!);
+  assert.equal(c[2].enough, false, "under 3 delivered orders");
+  const ctr = compareAds(ads, "ctr", costs, baseline);
+  assert.ok(Math.abs(ctr[0].value! - 1_000 / 60_000) < 1e-12);
+  assert.ok(ctr[0].probBest! > 0.99);
+  const r = run(ads);
+  assert.ok(r.ads != null && r.ads.length === 3);
+  assert.ok(r.insights.some((i) => i.title === "« video-ugc » est la meilleure publicité" && i.fix === "brief"));
+  assert.equal(run([winner]).ads, null, "campaign rows: no ad comparison");
+});
+
+test("ads without enough data each: say so instead of naming a winner", () => {
+  const thin = [1, 2, 3].map((n) => line(`pub-${n}`, { level: "ad", spend: 20_000, delivered: 1, open: 1 }));
+  const i = creativeInsights(thin, costs, baseline);
+  assert.equal(i.length, 1);
+  assert.equal(i[0].title, "Pas assez de données par publicité");
+});
+
+test("the whole report: critical first, numbers in every evidence, plain text, deterministic", () => {
+  const rows = [
+    winner,
+    youngWinner,
+    line("montre", { spend: 80_000, sessions: 400, formStarts: 30 }),
+    line("sans-utm", { spend: 45_000, sessions: 0 }),
+    line("promo", { spend: 300_000, cancelled: 50, delivered: 25, back: 5, sessions: 3_000, purchases: 130 }),
+  ];
+  const input: AdviseInput = { rows, costs, baseline, days: 14, tracking: { ...pixels, purchaseAt: "placed", metaCapi: false }, coverage: { orders: 200, tagged: 120 }, segments: { governorate: governorates } };
+  const r = advise(input);
+  const rank = { critical: 0, warning: 1, good: 2, info: 3 };
+  for (let i = 1; i < r.insights.length; i++) assert.ok(rank[r.insights[i - 1].severity] <= rank[r.insights[i].severity]);
+  assert.equal(r.insights[0].severity, "critical");
+  const texts = [...r.insights.flatMap((i) => [i.title, i.evidence, i.action]), ...r.rows.flatMap((a) => a.reasons), ...r.total.advice.reasons];
+  for (const t of texts) {
+    assert.ok(!t.includes("!"), t);
+    assert.ok(!/NaN|undefined|Infinity|null|\[object/.test(t), t);
+  }
+  for (const i of r.insights) assert.match(i.evidence, /\d/, i.title);
+  assert.deepEqual(advise(input), r);
+});

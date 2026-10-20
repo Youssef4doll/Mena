@@ -21,6 +21,7 @@ function flush(useBeacon = false) {
     source: s.touch.source,
     medium: s.touch.medium,
     campaign: s.touch.campaign,
+    content: s.touch.content,
     events: queue.splice(0, 20),
   });
   try {
