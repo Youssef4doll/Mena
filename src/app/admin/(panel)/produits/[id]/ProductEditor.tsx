@@ -8,6 +8,8 @@ import { parseTND, toInputTND, formatTND } from "@/lib/money";
 import { offerCompareAt } from "@/lib/offer-display";
 import { slugify } from "@/lib/slug";
 import { parseSpecs, parseVideo } from "@/lib/product-content";
+import { readHex } from "@/lib/color";
+import { VIDEO_MAX_MB, VIDEO_TYPES, VIDEO_UPLOAD_URL, videoPath } from "@/lib/video-upload";
 import { shrinkForUpload } from "@/lib/client/shrink-image";
 import { SEO_DESCRIPTION_MAX, SEO_TITLE_MAX, productDescription, productTitle } from "@/lib/seo";
 import { Badge, Card, btn, input, label } from "@/components/admin/ui";
@@ -24,6 +26,8 @@ const EMPTY: ProductInput = {
 
 type Msg = { ok: boolean; text: string };
 type Props = { id: string | null; version: string; initial: ProductInput | null; images: Img[]; categories: Opt[]; suppliers: Opt[]; shopName: string; siteUrl: string; everywhere: boolean; oldSlugs: string[]; aiReady: boolean;
+  /** A Vercel Blob store is connected: videos can be sent from the computer. */
+  videoReady: boolean;
   /** The product after this one in the list, for "Enregistrer, puis suivant" (null: the last one, or a new product). */
   nextId: string | null;
   /** The customer's delivery fee and what the carrier charges the shop (null: not given), for the margin of each offer. */
@@ -126,7 +130,7 @@ type FormProps = Props & {
   leave: (l: Leave) => void;
 };
 
-function Form({ id, version, nextId, initial, images, categories, suppliers, shopName, siteUrl, everywhere, oldSlugs, aiReady, shipping, msg, setMsg, leaving, drawn, leave, hold }: FormProps) {
+function Form({ id, version, nextId, initial, images, categories, suppliers, shopName, siteUrl, everywhere, oldSlugs, aiReady, videoReady, shipping, msg, setMsg, leaving, drawn, leave, hold }: FormProps) {
   const router = useRouter();
   // A new product opens with what was typed during its first save, if anything was, and the address the server gave it.
   const [first] = useState(() => {
@@ -138,6 +142,8 @@ function Form({ id, version, nextId, initial, images, categories, suppliers, sho
   const [vPrices, setVPrices] = useState<string[]>(first.vPrices);
   const [oPrices, setOPrices] = useState<string[]>(first.oPrices);
   const [oQty, setOQty] = useState<string[]>(first.oQty);
+  // An offer whose price follows the product's: the units given away ("2 + 1" gives 1), or null once its price is typed by hand.
+  const [oFree, setOFree] = useState<(number | null)[]>(() => first.oPrices.map(() => null));
   const [queued, setQueued] = useState<Queued[]>([]);
   // Read once, to tell which end dates have passed.
   const [now] = useState(() => Date.now());
@@ -280,12 +286,24 @@ function Form({ id, version, nextId, initial, images, categories, suppliers, sho
     set("offers", up(p.offers));
     setOPrices(up(oPrices));
     setOQty(up(oQty));
+    setOFree(up(oFree));
   };
   const removeOffer = (i: number) => {
     const rm = <T,>(a: T[]) => a.filter((_, j) => j !== i);
     set("offers", rm(p.offers));
     setOPrices(rm(oPrices));
     setOQty(rm(oQty));
+    setOFree(rm(oFree));
+  };
+  /** The price of an offer that follows the product's: the units paid for, at the product price; empty until there is a price. */
+  const followed = (qty: string | undefined, free: number, unit: number | null) => {
+    const q = offerQty(qty);
+    return unit && q ? toInputTND(Math.max(1, q - free) * unit) : "";
+  };
+  /** The product price changes: so do the offers that follow it. */
+  const setPrice = (value: string) => {
+    setMoney({ ...money, price: value });
+    if (oFree.some((f) => f != null)) setOPrices(oPrices.map((x, i) => (oFree[i] != null ? followed(oQty[i], oFree[i]!, parseTND(value)) : x)));
   };
 
   /** Saves; with "next", then opens the next product of the list (at once when nothing changed). */
@@ -429,7 +447,7 @@ function Form({ id, version, nextId, initial, images, categories, suppliers, sho
               <label className={label}>Description détaillée (français)<textarea rows={7} className={`${input} h-auto py-2`} value={p.description} onChange={(e) => set("description", e.target.value)} /></label>
               <label className={label}>Description détaillée (arabe)<textarea rows={7} dir="rtl" className={`${input} h-auto py-2`} value={p.descriptionAr} onChange={(e) => set("descriptionAr", e.target.value)} /></label>
             </div>
-            <p className="-mt-1 text-xs text-muted">Affichée sous le formulaire de commande, avec les caractéristiques et les images de description. Une ligne vide sépare deux paragraphes.</p>
+            <p className="-mt-1 text-xs text-muted">Affichée sous le formulaire de commande, juste après les images de description. Une ligne vide sépare deux paragraphes.</p>
             <div className="grid gap-3 sm:grid-cols-2">
               <label className={label}>Caractéristiques (français)<textarea rows={5} className={`${input} h-auto py-2`} value={p.specs} onChange={(e) => set("specs", e.target.value)} placeholder={"Matière : inox\nDimensions : 32 × 20 cm\nDans la boîte : 1 lampe, 1 câble USB-C"} /></label>
               <label className={label}>Caractéristiques (arabe)<textarea rows={5} dir="rtl" className={`${input} h-auto py-2`} value={p.specsAr} onChange={(e) => set("specsAr", e.target.value)} placeholder={"المادة: إينوكس\nالقياس: 32 × 20 صم\nفي الكرطونة: لمبة وكابل USB-C"} /></label>
@@ -439,13 +457,14 @@ function Form({ id, version, nextId, initial, images, categories, suppliers, sho
             </p>
             <label className={label}>
               Vidéo (facultatif)
-              <input className={input} value={p.videoUrl} onChange={(e) => set("videoUrl", e.target.value)} placeholder="https://youtu.be/… ou https://…/video.mp4" dir="ltr" />
+              <input className={input} value={p.videoUrl} onChange={(e) => set("videoUrl", e.target.value)} placeholder="https://youtu.be/…, tiktok.com/@…/video/…, instagram.com/reel/…" dir="ltr" />
               <span className={`text-xs font-normal ${p.videoUrl.trim() && !parseVideo(p.videoUrl) ? "text-danger" : "text-muted"}`}>
                 {p.videoUrl.trim() && !parseVideo(p.videoUrl)
-                  ? "Lien non reconnu : un lien YouTube (vidéo ou Short) ou l'adresse https d'un fichier .mp4."
-                  : "Un lien YouTube (vidéo ou Short) ou l'adresse d'un fichier .mp4. Elle s'affiche en 2e position dans les photos, et ne se charge que si le client appuie dessus."}
+                  ? "Lien non reconnu : l'adresse complète d'une vidéo YouTube, Vimeo, TikTok, Instagram ou Facebook (pas un lien court vm.tiktok.com ou fb.watch : ouvrez-le et copiez l'adresse affichée), ou l'adresse https d'un fichier .mp4."
+                  : "Un lien YouTube, Vimeo, TikTok, Instagram ou Facebook, l'adresse d'un fichier .mp4, ou une vidéo envoyée depuis l'ordinateur. Elle s'affiche en 2e position dans les photos, et ne se charge que si le client appuie dessus."}
               </span>
             </label>
+            <VideoUpload ready={videoReady} name={p.slug || p.name} disabled={busy} onSent={(url) => set("videoUrl", url)} />
           </div>
         </Card>
 
@@ -479,10 +498,38 @@ function Form({ id, version, nextId, initial, images, categories, suppliers, sho
                   <div className="grid grid-cols-2 gap-2 sm:grid-cols-[100px_140px_1fr]">
                     <label className={label}>
                       Quantité
-                      <input type="number" min={1} max={50} className={input} aria-invalid={q == null} value={oQty[i] ?? ""} onChange={(e) => setOQty(oQty.map((x, j) => (j === i ? e.target.value : x)))} />
+                      <input
+                        type="number"
+                        min={1}
+                        max={50}
+                        className={input}
+                        aria-invalid={q == null}
+                        value={oQty[i] ?? ""}
+                        onChange={(e) => {
+                          setOQty(oQty.map((x, j) => (j === i ? e.target.value : x)));
+                          if (oFree[i] != null) setOPrices(oPrices.map((x, j) => (j === i ? followed(e.target.value, oFree[i]!, price) : x)));
+                        }}
+                      />
                       {q == null && <span className="text-xs font-normal text-danger">{oQty[i]?.trim() ? "Nombre entier de 1 à 50." : "Obligatoire."}</span>}
                     </label>
-                    <label className={label}>Prix total (DT)<input className={input} inputMode="decimal" placeholder="99,000" value={oPrices[i] ?? ""} onChange={(e) => setOPrices(oPrices.map((x, j) => (j === i ? e.target.value : x)))} /></label>
+                    <label className={label}>
+                      Prix total (DT)
+                      <input
+                        className={input}
+                        inputMode="decimal"
+                        placeholder={oFree[i] != null ? "le prix du produit d'abord" : "99,000"}
+                        value={oPrices[i] ?? ""}
+                        onChange={(e) => {
+                          setOPrices(oPrices.map((x, j) => (j === i ? e.target.value : x)));
+                          setOFree(oFree.map((x, j) => (j === i ? null : x)));
+                        }}
+                      />
+                      {oFree[i] != null && (
+                        <span className="text-xs font-normal text-muted">
+                          Suit le prix du produit{oFree[i] ? ` (${pluralUnits(oFree[i]!)} offerte${oFree[i]! > 1 ? "s" : ""})` : ""} ; tapez un prix pour le fixer.
+                        </span>
+                      )}
+                    </label>
                     <label className={label}>Dernier jour (facultatif)<input type="date" className={input} value={o.endsOn} onChange={(e) => setO({ endsOn: e.target.value })} /></label>
                   </div>
                   <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm">
@@ -513,24 +560,29 @@ function Form({ id, version, nextId, initial, images, categories, suppliers, sho
                 type="button"
                 className={btn.ghost}
                 onClick={() => {
+                  const qty = String(p.offers.length + 1);
                   set("offers", [...p.offers, { label: "", labelAr: "", quantity: p.offers.length + 1, price: 0, freeDelivery: false, endsOn: "", active: true }]);
-                  setOPrices([...oPrices, ""]);
-                  setOQty([...oQty, String(p.offers.length + 1)]);
+                  // Filled with the product price for that quantity, to be lowered by hand for a discount.
+                  setOPrices([...oPrices, followed(qty, 0, price)]);
+                  setOQty([...oQty, qty]);
+                  setOFree([...oFree, 0]);
                 }}
               >
                 + Ajouter une offre
               </button>
-              {p.offers.length === 0 && price ? (
+              {p.offers.length === 0 ? (
                 <button
                   type="button"
                   className={btn.ghost}
                   onClick={() => {
+                    // Names, quantities and prices filled at once; the prices follow the product price until one is typed by hand.
                     set("offers", [
-                      { label: "1 unité", labelAr: "حبة وحدة", quantity: 1, price: 0, freeDelivery: false, endsOn: "", active: true },
-                      { label: "Achetez 2, la 3e offerte", labelAr: "اشري 2 والثالثة هدية", quantity: 3, price: 0, freeDelivery: true, endsOn: "", active: true },
+                      { label: "1 unité", labelAr: "واحدة", quantity: 1, price: 0, freeDelivery: false, endsOn: "", active: true },
+                      { label: "Achetez 2, la 3e offerte", labelAr: "الثانية", quantity: 3, price: 0, freeDelivery: true, endsOn: "", active: true },
                     ]);
-                    setOPrices([toInputTND(price), toInputTND(price * 2)]);
+                    setOPrices([followed("1", 0, price), followed("3", 1, price)]);
                     setOQty(["1", "3"]);
+                    setOFree([0, 1]);
                   }}
                 >
                   Proposer « 1 » et « 2 + 1 offerte »
@@ -543,22 +595,28 @@ function Form({ id, version, nextId, initial, images, categories, suppliers, sho
         <Card title="Variantes" hint="Taille, couleur… Laissez vide si le produit n'a pas d'option. Le prix d'une variante remplace celui du produit s'il est rempli, sur un produit sans offre.">
           <div className="flex flex-col gap-2">
             {p.variants.map((v, i) => (
-              <div key={v.id ?? `n${i}`} className="grid grid-cols-2 gap-2 rounded-xl border border-line p-2 sm:grid-cols-[1fr_1fr_110px_90px_auto_auto]">
-                <input className={input} placeholder="Nom (Noir / M)" value={v.name} onChange={(e) => set("variants", p.variants.map((x, j) => (j === i ? { ...x, name: e.target.value } : x)))} />
-                <input className={input} dir="rtl" placeholder="بالعربي (أكحل)" value={v.nameAr ?? ""} onChange={(e) => set("variants", p.variants.map((x, j) => (j === i ? { ...x, nameAr: e.target.value } : x)))} />
-                <input className={input} placeholder="Prix (option)" inputMode="decimal" value={vPrices[i] ?? ""} onChange={(e) => setVPrices(vPrices.map((x, j) => (j === i ? e.target.value : x)))} />
-                {p.stockMode === "TRACKED" ? (
-                  <input className={input} type="number" min={0} placeholder="Stock" value={v.stockQty} onChange={(e) => set("variants", p.variants.map((x, j) => (j === i ? { ...x, stockQty: Math.max(0, Number(e.target.value) || 0) } : x)))} />
-                ) : (
-                  <label className="flex items-center gap-1.5 text-xs"><input type="checkbox" checked={v.available} onChange={(e) => set("variants", p.variants.map((x, j) => (j === i ? { ...x, available: e.target.checked } : x)))} />Dispo</label>
-                )}
-                <span className="flex gap-1">
-                  <button type="button" className="rounded-lg px-2 text-sm text-muted" onClick={() => { if (i === 0) return; const a = [...p.variants]; [a[i - 1], a[i]] = [a[i], a[i - 1]]; const b = [...vPrices]; [b[i - 1], b[i]] = [b[i], b[i - 1]]; set("variants", a); setVPrices(b); }} aria-label="Monter">↑</button>
-                </span>
-                <button type="button" className="text-sm text-clay" onClick={() => { set("variants", p.variants.filter((_, j) => j !== i)); setVPrices(vPrices.filter((_, j) => j !== i)); }}>Retirer</button>
+              <div key={v.id ?? `n${i}`} className="flex flex-col gap-2 rounded-xl border border-line p-2">
+                {/* The names on their own line, wide enough to read; the colour, price and stock under them. */}
+                <div className="grid grid-cols-2 gap-2">
+                  <input className={input} placeholder="Nom (Noir / M)" value={v.name} onChange={(e) => set("variants", p.variants.map((x, j) => (j === i ? { ...x, name: e.target.value } : x)))} />
+                  <input className={input} dir="rtl" placeholder="بالعربي (أكحل)" value={v.nameAr ?? ""} onChange={(e) => set("variants", p.variants.map((x, j) => (j === i ? { ...x, nameAr: e.target.value } : x)))} />
+                </div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="w-44"><ColorField name={v.name} value={v.colorHex ?? ""} onChange={(hex) => set("variants", p.variants.map((x, j) => (j === i ? { ...x, colorHex: hex } : x)))} /></span>
+                  <input className={input.replace("w-full", "w-32")} placeholder="Prix (option)" inputMode="decimal" value={vPrices[i] ?? ""} onChange={(e) => setVPrices(vPrices.map((x, j) => (j === i ? e.target.value : x)))} aria-label={`Prix de ${v.name.trim() || "cette variante"}`} />
+                  {p.stockMode === "TRACKED" ? (
+                    <input className={input.replace("w-full", "w-24")} type="number" min={0} placeholder="Stock" value={v.stockQty} onChange={(e) => set("variants", p.variants.map((x, j) => (j === i ? { ...x, stockQty: Math.max(0, Number(e.target.value) || 0) } : x)))} aria-label={`Stock de ${v.name.trim() || "cette variante"}`} />
+                  ) : (
+                    <label className="flex items-center gap-1.5 text-xs"><input type="checkbox" checked={v.available} onChange={(e) => set("variants", p.variants.map((x, j) => (j === i ? { ...x, available: e.target.checked } : x)))} />Dispo</label>
+                  )}
+                  <span className="ms-auto flex items-center gap-1">
+                    <button type="button" className="rounded-lg px-2 text-sm text-muted" onClick={() => { if (i === 0) return; const a = [...p.variants]; [a[i - 1], a[i]] = [a[i], a[i - 1]]; const b = [...vPrices]; [b[i - 1], b[i]] = [b[i], b[i - 1]]; set("variants", a); setVPrices(b); }} aria-label="Monter">↑</button>
+                    <button type="button" className="text-sm text-clay" onClick={() => { set("variants", p.variants.filter((_, j) => j !== i)); setVPrices(vPrices.filter((_, j) => j !== i)); }}>Retirer</button>
+                  </span>
+                </div>
               </div>
             ))}
-            <button type="button" className={`${btn.ghost} self-start`} onClick={() => { set("variants", [...p.variants, { name: "", nameAr: "", sku: "", price: null, stockQty: 0, available: true }]); setVPrices([...vPrices, ""]); }}>
+            <button type="button" className={`${btn.ghost} self-start`} onClick={() => { set("variants", [...p.variants, { name: "", nameAr: "", colorHex: "", sku: "", price: null, stockQty: 0, available: true }]); setVPrices([...vPrices, ""]); }}>
               + Ajouter une variante
             </button>
           </div>
@@ -601,7 +659,7 @@ function Form({ id, version, nextId, initial, images, categories, suppliers, sho
 
         <Card title="Prix">
           <div className="grid grid-cols-2 gap-2">
-            <label className={label}><Required empty={!((parseTND(money.price) ?? 0) > 0)}>Prix de vente (DT)</Required><input className={`${input} ${(parseTND(money.price) ?? 0) > 0 ? "" : MISSING}`} inputMode="decimal" placeholder="59,900" value={money.price} onChange={(e) => setMoney({ ...money, price: e.target.value })} /></label>
+            <label className={label}><Required empty={!((parseTND(money.price) ?? 0) > 0)}>Prix de vente (DT)</Required><input className={`${input} ${(parseTND(money.price) ?? 0) > 0 ? "" : MISSING}`} inputMode="decimal" placeholder="59,900" value={money.price} onChange={(e) => setPrice(e.target.value)} /></label>
             <label className={label}>Ancien prix (DT)<input className={input} inputMode="decimal" placeholder="facultatif" value={money.compareAt} onChange={(e) => setMoney({ ...money, compareAt: e.target.value })} /></label>
           </div>
           <p className="mt-1.5 text-xs text-muted">L&apos;ancien prix doit être un prix réellement pratiqué avant. Il est affiché barré.</p>
@@ -1052,5 +1110,91 @@ function Required({ empty, children }: { empty: boolean; children: React.ReactNo
       {children}
       {empty && <span className="text-xs font-normal text-danger">obligatoire</span>}
     </span>
+  );
+}
+
+/**
+ * A variant's colour: the picker, and its code to type or paste (#1f2937).
+ * Empty: no dot in the shop (a size, a model). A code that cannot be read
+ * stays as typed and is refused on save, like every other field.
+ */
+function ColorField({ name, value, onChange }: { name: string; value: string; onChange: (hex: string) => void }) {
+  const hex = readHex(value);
+  return (
+    <span className="flex min-w-0 items-center gap-1.5">
+      <input
+        type="color"
+        value={hex ?? "#ffffff"}
+        onChange={(e) => onChange(e.target.value)}
+        aria-label={`Couleur de ${name.trim() || "cette variante"}`}
+        className={`h-10 w-10 shrink-0 cursor-pointer rounded-lg border bg-white p-1 ${hex ? "border-line" : "border-dashed border-field"}`}
+      />
+      <input
+        className={`${input} min-w-0 font-mono text-xs ${value && !hex ? "!border-danger" : ""}`}
+        dir="ltr"
+        placeholder="Couleur #…"
+        value={value}
+        onChange={(e) => onChange(e.target.value.trim())}
+        onBlur={() => hex && hex !== value && onChange(hex)}
+        aria-label={`Code couleur de ${name.trim() || "cette variante"}`}
+        aria-invalid={Boolean(value && !hex)}
+      />
+    </span>
+  );
+}
+
+/** "1 unité", "2 unités". */
+function pluralUnits(n: number) {
+  return `${n} unité${n > 1 ? "s" : ""}`;
+}
+
+/**
+ * A video from the computer: sent straight to Vercel Blob (see lib/video-upload),
+ * then its address goes in the field above and is saved with the product.
+ * Without a Blob store connected, it says how to connect one.
+ */
+function VideoUpload({ ready, name, disabled, onSent }: { ready: boolean; name: string; disabled: boolean; onSent: (url: string) => void }) {
+  const [state, setState] = useState<{ pct: number } | { error: string } | null>(null);
+  const sending = state != null && "pct" in state;
+  async function send(file: File) {
+    const path = videoPath(name || file.name, file.type);
+    if (!path) return setState({ error: "Vidéo .mp4, .webm ou .mov seulement." });
+    if (file.size > VIDEO_MAX_MB * 1024 * 1024) return setState({ error: `${VIDEO_MAX_MB} Mo au plus : raccourcissez ou compressez la vidéo.` });
+    setState({ pct: 0 });
+    try {
+      const { upload } = await import("@vercel/blob/client");
+      const blob = await upload(path, file, { access: "public", handleUploadUrl: VIDEO_UPLOAD_URL, contentType: file.type, multipart: file.size > 8 * 1024 * 1024, onUploadProgress: ({ percentage }) => setState({ pct: Math.round(percentage) }) });
+      onSent(blob.url);
+      setState(null);
+    } catch (e) {
+      setState({ error: `Envoi impossible : ${e instanceof Error ? e.message : "réessayez."}` });
+    }
+  }
+  if (!ready)
+    return (
+      <p className="-mt-1 text-xs text-muted">
+        Envoyer une vidéo depuis l&apos;ordinateur : connectez d&apos;abord un stockage Vercel Blob au projet (Vercel → projet → Storage → Create → Blob → Connect), puis redéployez. En attendant, collez un lien.
+      </p>
+    );
+  return (
+    <div className="-mt-1 flex flex-wrap items-center gap-2 text-sm">
+      <label className={`${btn.ghost} cursor-pointer ${sending || disabled ? "pointer-events-none opacity-60" : ""}`}>
+        Envoyer une vidéo depuis l&apos;ordinateur
+        <input
+          type="file"
+          accept={VIDEO_TYPES.join(",")}
+          className="sr-only"
+          disabled={sending || disabled}
+          onChange={(e) => {
+            const f = e.target.files?.[0];
+            e.target.value = "";
+            if (f) void send(f);
+          }}
+        />
+      </label>
+      {state && "pct" in state && <span className="text-muted">Envoi… {state.pct} %</span>}
+      {state && "error" in state && <span className="text-danger">{state.error}</span>}
+      {!state && <span className="text-xs text-muted">.mp4 de préférence (les .mov d&apos;iPhone ne passent pas sur tous les téléphones), {VIDEO_MAX_MB} Mo au plus.</span>}
+    </div>
   );
 }

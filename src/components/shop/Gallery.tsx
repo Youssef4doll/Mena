@@ -166,17 +166,25 @@ export function Gallery({ slides, name, productId, badge, lang }: { slides: Slid
   );
 }
 
-/** The video, loaded at the tap: YouTube without its tracking cookies, or the shop's own file. */
+/**
+ * The video, loaded at the tap: YouTube without its tracking cookies, another
+ * platform's own player (Vimeo, TikTok, Instagram, Facebook), or the shop's file.
+ * A vertical player (TikTok, a reel) keeps its shape in the middle of the slide.
+ */
 function VideoPlayer({ video, title }: { video: Video; title: string }) {
-  if (video.kind === "youtube")
-    return (
+  if (video.kind === "file") return <video src={video.src} controls autoPlay playsInline className="absolute inset-0 h-full w-full bg-black object-contain" title={title} />;
+  const src = video.kind === "youtube" ? `https://www.youtube-nocookie.com/embed/${video.id}?autoplay=1&playsinline=1&rel=0&modestbranding=1` : video.src;
+  const vertical = video.kind === "embed" && video.vertical;
+  return (
+    <div className="absolute inset-0 flex justify-center bg-black">
       <iframe
-        src={`https://www.youtube-nocookie.com/embed/${video.id}?autoplay=1&playsinline=1&rel=0&modestbranding=1`}
+        src={src}
         title={title}
-        allow="autoplay; encrypted-media; picture-in-picture; fullscreen"
+        allow="autoplay; encrypted-media; picture-in-picture; fullscreen; clipboard-write"
         allowFullScreen
-        className="absolute inset-0 h-full w-full border-0 bg-black"
+        referrerPolicy="strict-origin-when-cross-origin"
+        className={`h-full border-0 ${vertical ? "aspect-[9/16] max-w-full" : "w-full"}`}
       />
-    );
-  return <video src={video.src} controls autoPlay playsInline className="absolute inset-0 h-full w-full bg-black object-contain" title={title} />;
+    </div>
+  );
 }

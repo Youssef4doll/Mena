@@ -152,6 +152,8 @@ model ProductVariant {
   name       String
   /// The same in Arabic ("أكحل"); the French name is shown when empty.
   nameAr     String?
+  /// The colour shown beside the name in the shop's list ("#1f2937"). Null: no colour (a size).
+  colorHex   String?
   sku        String?
   /// Overrides the product price when set, millimes.
   price      Int?

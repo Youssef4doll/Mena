@@ -26,7 +26,7 @@ export const rowSchema = z.object({
   stockQty: z.number().int().min(0).max(1_000_000).nullable().optional(),
   available: z.boolean().optional(), active: z.boolean().optional(), featured: z.boolean().optional(),
   photos: z.array(z.string().max(2000)).max(30).optional(), detailPhotos: z.array(z.string().max(2000)).max(30).optional(),
-  variants: z.array(z.object({ name: z.string().min(1).max(60), nameAr: text(60), price: money.nullable().optional(), stockQty: z.number().int().min(0).max(1_000_000).optional() })).max(60).optional(),
+  variants: z.array(z.object({ name: z.string().min(1).max(60), nameAr: text(60), colorHex: z.string().regex(/^#[0-9a-f]{6}$/).optional(), price: money.nullable().optional(), stockQty: z.number().int().min(0).max(1_000_000).optional() })).max(60).optional(),
   offers: z.array(z.object({ quantity: z.number().int().min(1).max(50), price: money.min(1), freeDelivery: z.boolean(), label: text(80), labelAr: text(80) })).max(8).optional(),
 }) satisfies z.ZodType<RowData>;
 

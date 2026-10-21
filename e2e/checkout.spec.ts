@@ -40,7 +40,8 @@ test("the basket: two products, one order, every price from the server", async (
   await page.goto(`${FR}/produit/montre-minimaliste`);
   await page.locator("#commander").getByTestId("add-to-cart").click();
   await expect(page.getByText("Choisissez d'abord une option plus haut.")).toBeVisible();
-  await page.getByRole("button", { name: /Doré/ }).click();
+  await page.getByTestId("variant-select").first().click();
+  await page.getByRole("option", { name: /Doré/ }).click();
   await page.locator("#commander").getByTestId("add-to-cart").click();
   await page.getByTestId("go-to-cart").click();
   await expect(page).toHaveURL(/\/fr\/panier$/);
@@ -81,7 +82,8 @@ test("a phone visitor orders a product with options, cash on delivery", async ({
   await fillDetails(page, "Sfax");
   await page.getByTestId("place-order").click();
   await expect(page.getByText("Choisissez d'abord une option plus haut.")).toBeVisible();
-  await page.getByRole("button", { name: /Doré/ }).click();
+  await page.getByTestId("variant-select").first().click();
+  await page.getByRole("option", { name: /Doré/ }).click();
 
   // Doré is 85,000 + 8,000 delivery to Sfax, both from the server.
   await expect(page.getByTestId("total")).toHaveText("93,000 DT");

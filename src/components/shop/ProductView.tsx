@@ -168,20 +168,11 @@ export function ProductView({ p, lang, settings, url }: { p: P; lang: Lang; sett
         </div>
       </div>
 
-      {/* The description as the shop wrote it, then its long pictures one under the other: edge to edge on a phone,
-          wide on a computer (the pictures sell, as on the owner's reference shop), while the text keeps a readable line. */}
+      {/* The long pictures first, one under the other (they sell): edge to edge on a phone, wide on a computer, as on the
+          owner's reference shop; then the description as the shop wrote it, at a readable line length. */}
       {(description || p.detailImages.length > 0) && (
         <section className="mx-auto mt-10 flex max-w-5xl flex-col gap-4 border-t border-line pt-8" aria-labelledby="desc-title">
           <TabTitle id="desc-title">{t.product.description}</TabTitle>
-          {description && (
-            <div className="flex max-w-3xl flex-col gap-3 text-[17px] leading-relaxed text-ink-2">
-              {description.split(/\n{2,}/).map((para, i) => (
-                <p key={i} className="whitespace-pre-line" dir="auto">
-                  {para}
-                </p>
-              ))}
-            </div>
-          )}
           {p.detailImages.length > 0 && (
             <div className="-mx-4 flex flex-col overflow-hidden md:mx-0 md:rounded-2xl">
               {p.detailImages.map((img) => (
@@ -195,6 +186,15 @@ export function ProductView({ p, lang, settings, url }: { p: P; lang: Lang; sett
                   className="block h-auto w-full"
                   {...(img.blur ? { placeholder: "blur" as const, blurDataURL: img.blur } : {})}
                 />
+              ))}
+            </div>
+          )}
+          {description && (
+            <div className="flex max-w-3xl flex-col gap-3 text-[17px] leading-relaxed text-ink-2">
+              {description.split(/\n{2,}/).map((para, i) => (
+                <p key={i} className="whitespace-pre-line" dir="auto">
+                  {para}
+                </p>
               ))}
             </div>
           )}

@@ -12,6 +12,7 @@ import { addToCart, type CartItem } from "@/lib/client/cart";
 import { formatTND } from "@/lib/money";
 import { discountPct, formatDay } from "@/lib/offer-display";
 import { OrderForm } from "./OrderForm";
+import { VariantSelect } from "./VariantSelect";
 import { IconMinus, IconPlus, IconTruck, IconWhatsApp } from "./Icons";
 
 type P = Omit<ProductPage, "related">;
@@ -189,36 +190,25 @@ export function BuyBox({ p, lang, settings, url, choice, idp = "bb", onAdded }: 
       {p.variants.length > 0 && (
         <div id={id("variants")} className="flex scroll-mt-24 flex-col gap-2" role="group" aria-labelledby={id("variants-label")}>
           <p id={id("variants-label")} className={`ps-1 text-[16px] ${variantError && needsVariant ? "font-bold text-danger" : "text-ink-2"}`} aria-live="polite">
+            {/* The choice itself is on the list's button, right under. */}
             {variantError && needsVariant ? t.buy.variantError : t.product.choose}
-            {variant && <span className="font-bold text-ink">{lang === "ar" ? ": " : " : "}{pick(lang, variant.name, variant.nameAr)}</span>}
           </p>
           {/* A pack takes one option for all its pieces: said before the call, not at the door. */}
           {offer && offer.quantity > 1 && <p className="-mt-1 ps-1 text-[15px] text-muted">{t.buy.sameOption(offer.quantity)}</p>}
-          {/* Tiles like the shops customers know: the name, its price when it differs, and whether it is there. */}
-          <div className="grid grid-cols-[repeat(auto-fill,minmax(104px,1fr))] gap-2">
-            {p.variants.map((v) => (
-              <button
-                key={v.id}
-                type="button"
-                disabled={v.soldOut}
-                onClick={() => {
-                  choice.setVariant(v.id);
-                  chose();
-                }}
-                aria-pressed={variant?.id === v.id}
-                className={`flex min-h-[52px] flex-col items-start justify-center rounded-2xl border px-4 py-2 text-start transition ${
-                  variant?.id === v.id ? "border-sea bg-sea-soft/60 ring-1 ring-sea" : "border-field bg-white hover:border-sea/60"
-                } disabled:cursor-not-allowed disabled:border-dashed disabled:border-line disabled:bg-sand/50`}
-              >
-                <span className={`text-[16px] leading-tight ${variant?.id === v.id ? "font-bold text-sea-2" : "text-ink"} ${v.soldOut ? "text-muted line-through" : ""}`}>{pick(lang, v.name, v.nameAr)}</span>
-                {v.soldOut ? (
-                  <span className="text-[14px] text-muted">{t.product.out}</span>
-                ) : (
-                  !hasOffers && v.price !== p.price && <span className="text-[14px] font-bold text-ink-2 price-nums ltr-nums">{formatTND(v.price, lang)}</span>
-                )}
-              </button>
-            ))}
-          </div>
+          <VariantSelect
+            id={id("variant")}
+            labelledBy={id("variants-label")}
+            lang={lang}
+            options={p.variants.map((v) => ({ id: v.id, label: pick(lang, v.name, v.nameAr), colorHex: v.colorHex ?? null, price: !hasOffers && v.price !== p.price ? v.price : null, soldOut: v.soldOut }))}
+            value={variant?.id ?? null}
+            placeholder={t.product.chooseFirst}
+            soldOutText={t.product.out}
+            invalid={variantError && needsVariant}
+            onChange={(v) => {
+              choice.setVariant(v);
+              chose();
+            }}
+          />
         </div>
       )}
 

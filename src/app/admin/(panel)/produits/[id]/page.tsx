@@ -68,6 +68,7 @@ export default async function ProductEditPage({ params }: PageProps<"/admin/prod
         everywhere={deliversEverywhere(settings.delivery.zones)}
         shipping={{ fee: settings.delivery.fee, carrier: settings.costs.carrierPerParcel }}
         aiReady={translationReady()}
+        videoReady={Boolean(process.env.BLOB_READ_WRITE_TOKEN)}
         siteUrl={SITE_URL}
         oldSlugs={p?.oldSlugs ?? []}
         suppliers={suppliers}

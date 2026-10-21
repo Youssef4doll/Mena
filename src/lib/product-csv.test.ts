@@ -159,3 +159,14 @@ test("a cell that looks like a formula is neutralised on export and read back as
   assert.equal(d.name, p.name);
   assert.equal(d.description, p.description);
 });
+
+test("reads each option's colour code, keeps the old one when the column is left out, and exports it", () => {
+  const s = readSheet('nom;prix;variantes;variantes_couleurs\nA;10;"Noir ; Blanc ; Rouge";"#1F2937 ; fff ; "').rows[0];
+  assert.deepEqual(s.errors, []);
+  assert.deepEqual(s.data.variants?.map((v) => v.colorHex), ["#1f2937", "#ffffff", undefined]);
+  assert.ok(readSheet('nom;prix;variantes;variantes_couleurs\nA;10;Noir;bleu').rows[0].errors.some((e) => e.includes("#1f2937")));
+  const base = { ...EMPTY_PRODUCT, name: "A", slug: "a", price: 10_000, variants: [{ id: "v1", name: "Noir", nameAr: "", colorHex: "#000000", sku: "", price: null, stockQty: 0, available: true }] };
+  assert.equal(mergeRow(base, readSheet("adresse;variantes\na;Noir").rows[0].data, {}).variants[0].colorHex, "#000000");
+  const p: ExportProduct = { ...EMPTY_PRODUCT, name: "A", slug: "a", price: 10_000, variants: [{ name: "Noir", nameAr: "", colorHex: "#1f2937", sku: "", price: null, stockQty: 0, available: true }], category: null, supplier: null, photos: [], detailPhotos: [] };
+  assert.equal(readSheet(productsToCsv([p])).rows[0].data.variants?.[0].colorHex, "#1f2937");
+});

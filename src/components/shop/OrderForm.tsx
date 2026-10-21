@@ -355,10 +355,11 @@ export function OrderForm(props: Props) {
           Where the form already sits in a sheet (quick buy) or a framed panel (the basket from tablet width), the card does not draw a second frame. */}
       <section className={origin === "quick" ? "border-t border-line pt-5" : origin === "cart" ? `${CARD} md:rounded-none md:border-0 md:p-0 md:shadow-none` : `${CARD} @md:p-5`} aria-labelledby={id("info-title")}>
         <h3 id={id("info-title")} className="text-[17px] font-bold leading-tight text-ink">{t.buy.deliveryInfo}</h3>
-        {/* The second column (phone, address) a little wider: the eight digits after +216 fit on a 360 px phone. */}
-        <fieldset className="mt-3 grid min-w-0 items-start gap-x-2.5 gap-y-3 @2xs:grid-cols-[minmax(0,1fr)_minmax(0,1.15fr)]" onClick={start} onKeyDown={start}>
+        {/* On a phone: the name and the address, long, each on its own line; the phone and the governorate, short, side by side
+            (the phone's column a little wider, so the eight digits after +216 fit on a 360 px screen). Two by two once the form is wide. */}
+        <fieldset className="mt-3 grid min-w-0 items-start gap-x-2.5 gap-y-3 @2xs:grid-cols-[minmax(0,1.15fr)_minmax(0,1fr)]" onClick={start} onKeyDown={start}>
           <legend className="sr-only">{t.buy.step2}</legend>
-          <Field id={id("name")} label={t.buy.name} required={t.buy.required} error={show("name") ? t.buy.nameError : null}>
+          <Field id={id("name")} className={WIDE} label={t.buy.name} required={t.buy.required} error={show("name") ? t.buy.nameError : null}>
             <Boxed>
               <input id={id("name")} value={f.name} onChange={(e) => update("name", e.target.value)} onBlur={blur("name")} onKeyDown={next(id("phone"))} enterKeyHint="next" autoComplete="name" autoCapitalize="words" autoCorrect="off" spellCheck={false} className={`${inputCls(show("name"), good("name"))} pe-3.5`} aria-required="true" aria-invalid={show("name")} aria-describedby={show("name") ? id("name-msg") : undefined} data-testid="name" />
             </Boxed>
@@ -383,7 +384,7 @@ export function OrderForm(props: Props) {
               </select>
             </Boxed>
           </Field>
-          <Field id={id("address")} label={t.buy.address} required={t.buy.required} error={show("address") ? t.buy.addressError : null}>
+          <Field id={id("address")} className={WIDE} label={t.buy.address} required={t.buy.required} error={show("address") ? t.buy.addressError : null}>
             {/* One line like the others, growing with what is typed so the whole address can be read again. Block, so no gap is left under it. */}
             <Boxed>
               <textarea id={id("address")} value={f.address} onChange={(e) => update("address", e.target.value)} onBlur={blur("address")} onKeyDown={next(id("submit"))} enterKeyHint="done" autoComplete="street-address" spellCheck={false} rows={1} maxLength={ADDRESS_MAX} placeholder={t.buy.addressPh} className={`${inputCls(show("address"), good("address"))} pe-3.5 block h-auto max-h-40 min-h-[48px] resize-none py-[11px] leading-snug [field-sizing:content]`} aria-required="true" aria-invalid={show("address")} aria-describedby={show("address") ? id("address-msg") : undefined} data-testid="address" />
@@ -543,9 +544,9 @@ export function OrderForm(props: Props) {
 }
 
 /** A field's name, with a red star when it must be filled (its word for screen readers), then the field and its error. */
-export function Field({ id, label, required, error, children }: { id: string; label: string; required?: string; error?: string | null; children: React.ReactNode }) {
+export function Field({ id, label, required, error, className = "", children }: { id: string; label: string; required?: string; error?: string | null; className?: string; children: React.ReactNode }) {
   return (
-    <div className="flex min-w-0 flex-col gap-1">
+    <div className={`flex min-w-0 flex-col gap-1 ${className}`}>
       <label htmlFor={id} className="ps-1 text-[14px] font-semibold text-ink">
         {label}
         {required && (
@@ -565,6 +566,8 @@ export function Field({ id, label, required, error, children }: { id: string; la
   );
 }
 
+/** A long field (name, address): the whole line on a phone, half of it once the form is wide. */
+const WIDE = "@2xs:col-span-2 @lg:col-span-1";
 /** The white card around the fields, as in the owner's example. */
 const CARD = "rounded-[24px] border border-line bg-white p-4 shadow-[0_10px_30px_-22px_rgb(15_23_42/.45)]";
 /** The white field of the order form, as on the owner's reference shop; a blue ring while typing in it, pink with a red border when it is wrong.

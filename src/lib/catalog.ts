@@ -336,7 +336,7 @@ export const getProduct = unstable_cache(
         updatedAt: true,
         category: { select: { slug: true, name: true, nameAr: true } },
         images: { orderBy: { sort: "asc" }, select: { mediaId: true, alt: true, kind: true, media: { select: { width: true, height: true, blur: true } } } },
-        variants: { orderBy: { sort: "asc" }, select: { id: true, name: true, nameAr: true, price: true, stockQty: true, available: true } },
+        variants: { orderBy: { sort: "asc" }, select: { id: true, name: true, nameAr: true, colorHex: true, price: true, stockQty: true, available: true } },
         offers: {
           where: { active: true, OR: [{ endsAt: null }, { endsAt: { gt: new Date() } }] },
           orderBy: [{ sort: "asc" }, { quantity: "asc" }],
@@ -372,6 +372,8 @@ export const getProduct = unstable_cache(
       id: v.id,
       name: v.name,
       nameAr: v.nameAr,
+      /** A dot beside the name in the list; null for an option without a colour. */
+      colorHex: v.colorHex,
       price: v.price ?? p.price,
       soldOut: tracked ? v.stockQty <= 0 : !v.available || !p.available,
       lowQty: tracked && v.stockQty > 0 && v.stockQty <= 5 ? v.stockQty : null,
@@ -413,7 +415,7 @@ export const getProduct = unstable_cache(
       related,
     };
   },
-  ["product-v6"],
+  ["product-v7"],
   { tags: [CATALOG_TAG], revalidate: TTL },
 );
 export type ProductPage = NonNullable<Awaited<ReturnType<typeof getProduct>>>;

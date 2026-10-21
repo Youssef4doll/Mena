@@ -10,12 +10,13 @@
 import { parseTND } from "./money";
 import { slugify } from "./slug";
 import type { ProductInput } from "./product-write";
+import { readHex } from "./color";
 
 export type ColumnKey =
   | "slug" | "name" | "nameAr" | "summary" | "summaryAr" | "description" | "descriptionAr" | "specs" | "specsAr" | "keywords"
   | "price" | "compareAt" | "cost" | "category" | "categoryAr" | "supplier" | "supplierRef" | "supplierUrl"
   | "stock" | "available" | "active" | "featured" | "photos" | "detailPhotos" | "videoUrl"
-  | "variants" | "variantsAr" | "variantPrices" | "variantStock" | "offers" | "offerLabels" | "offerLabelsAr"
+  | "variants" | "variantsAr" | "variantColors" | "variantPrices" | "variantStock" | "offers" | "offerLabels" | "offerLabelsAr"
   | "seoTitle" | "seoTitleAr" | "seoDescription" | "seoDescriptionAr";
 
 type Column = { key: ColumnKey; header: string; aliases: string[]; help: string; example: string; group: string };
@@ -40,6 +41,7 @@ export const COLUMNS: Column[] = [
   { key: "keywords", header: "mots_cles", aliases: ["mots cles", "keywords", "tags", "mots cles recherche"], group: "Texte", help: "Autres noms que les clients tapent, séparés par des virgules. Jamais affichés.", example: "veilleuse, lampe de nuit, lamba" },
   { key: "variants", header: "variantes", aliases: ["options", "couleurs", "tailles", "variants"], group: "Options", help: "Noms des options, séparés par ; ou par des virgules : Noir ; Blanc.", example: "Noir ; Blanc" },
   { key: "variantsAr", header: "variantes_ar", aliases: ["options ar", "variantes arabe"], group: "Options", help: "Les mêmes noms en arabe, dans le même ordre.", example: "أكحل ; أبيض" },
+  { key: "variantColors", header: "variantes_couleurs", aliases: ["couleurs hex", "codes couleur", "variantes hex", "hex"], group: "Options", help: "Couleur de chaque option en code hex, dans le même ordre : #1f2937 ; #ffffff (vide : pas de pastille).", example: "#1f2937 ; #ffffff" },
   { key: "variantPrices", header: "variantes_prix", aliases: ["prix variantes", "prix options"], group: "Options", help: "Prix propre de chaque option, dans le même ordre (vide : le prix du produit). Pas avec des offres.", example: "" },
   { key: "variantStock", header: "variantes_stock", aliases: ["stock variantes", "stock options"], group: "Options", help: "Quantité de chaque option, si vous comptez le stock.", example: "" },
   { key: "offers", header: "offres", aliases: ["lots", "offers", "packs"], group: "Offres", help: "« quantité = prix total », séparées par ; et « livraison offerte » à la fin si elle l'est : 1 = 59,900 ; 3 = 119,800 livraison offerte.", example: "1 = 59,900 ; 3 = 119,800 livraison offerte" },
@@ -52,7 +54,7 @@ export const COLUMNS: Column[] = [
   { key: "supplier", header: "fournisseur", aliases: ["supplier", "nom fournisseur"], group: "Fournisseur", help: "Nom du fournisseur. Créé s'il n'existe pas encore.", example: "" },
   { key: "supplierRef", header: "ref_fournisseur", aliases: ["reference fournisseur", "ref", "reference", "sku"], group: "Fournisseur", help: "Sa référence du produit.", example: "" },
   { key: "supplierUrl", header: "lien_fournisseur", aliases: ["url fournisseur", "lien", "supplier url"], group: "Fournisseur", help: "Lien du produit chez le fournisseur (https://…).", example: "" },
-  { key: "videoUrl", header: "video", aliases: ["lien video", "youtube", "video url"], group: "Texte", help: "Un lien YouTube ou l'adresse https d'un fichier .mp4.", example: "" },
+  { key: "videoUrl", header: "video", aliases: ["lien video", "youtube", "video url"], group: "Texte", help: "Un lien YouTube, Vimeo, TikTok, Instagram ou Facebook, ou l'adresse https d'un fichier .mp4.", example: "" },
   { key: "slug", header: "adresse", aliases: ["slug", "url", "lien produit", "adresse page", "identifiant"], group: "Adresse", help: "L'adresse de la page (/produit/…). Vide : faite à partir du nom. Une adresse qui existe déjà met ce produit à jour.", example: "" },
   { key: "seoTitle", header: "titre_google", aliases: ["seo title", "titre seo"], group: "Google", help: "Vide : composé à partir du nom.", example: "" },
   { key: "seoTitleAr", header: "titre_google_ar", aliases: ["seo title ar", "titre seo ar"], group: "Google", help: "", example: "" },
@@ -217,7 +219,7 @@ export function autoOfferLabel(q: number): { label: string; labelAr: string } {
 /* ------------------------------------------------------------------ */
 
 export type OfferCell = { quantity: number; price: number; freeDelivery: boolean; label?: string; labelAr?: string };
-export type VariantCell = { name: string; nameAr?: string; price?: number | null; stockQty?: number };
+export type VariantCell = { name: string; nameAr?: string; colorHex?: string; price?: number | null; stockQty?: number };
 
 /**
  * What a row says. A field left out means "not in the file, or empty":
@@ -350,6 +352,7 @@ export function readRow(cell: Partial<Record<ColumnKey, string>>, line: number):
     const ar = splitPlaces(cell.variantsAr ?? "", true);
     const prices = splitPlaces(cell.variantPrices ?? "", false);
     const stocks = splitPlaces(cell.variantStock ?? "", true);
+    const colors = splitPlaces(cell.variantColors ?? "", true);
     if (ar.length && ar.length !== names.length) warnings.push(`« variantes_ar » : ${ar.length} noms pour ${names.length} options.`);
     if (prices.length && prices.length !== names.length) warnings.push(`« variantes_prix » : ${prices.length} prix pour ${names.length} options.`);
     if (names.length > 60) errors.push("60 options au plus.");
@@ -360,6 +363,11 @@ export function readRow(cell: Partial<Record<ColumnKey, string>>, line: number):
       seen.add(name.toLowerCase());
       const v: VariantCell = { name: name.slice(0, 60) };
       if (ar[i]) v.nameAr = ar[i].slice(0, 60);
+      if (colors[i]) {
+        const hex = readHex(colors[i]);
+        if (hex) v.colorHex = hex;
+        else errors.push(`Couleur de l'option « ${name} » : un code comme #1f2937 (pas « ${colors[i]} »).`);
+      }
       if (cell.variantPrices?.trim()) {
         const p = prices[i] ? parseTND(prices[i]) : null;
         if (prices[i] && p == null) errors.push(`Prix de l'option « ${name} » illisible : « ${prices[i]} ».`);
@@ -371,7 +379,7 @@ export function readRow(cell: Partial<Record<ColumnKey, string>>, line: number):
       }
       return v;
     });
-  } else if (cell.variantsAr?.trim() || cell.variantPrices?.trim()) warnings.push("Noms arabes ou prix d'options sans « variantes » : ignorés.");
+  } else if (cell.variantsAr?.trim() || cell.variantPrices?.trim() || cell.variantColors?.trim()) warnings.push("Noms arabes, couleurs ou prix d'options sans « variantes » : ignorés.");
 
   if (cell.offers?.trim()) {
     const r = readOffers(cell.offers);
@@ -435,6 +443,7 @@ export function mergeRow(base: ProductInput | null, d: RowData, refs: { category
         ...(was?.id ? { id: was.id } : {}),
         name: v.name,
         nameAr: v.nameAr ?? was?.nameAr ?? "",
+        colorHex: v.colorHex ?? was?.colorHex ?? "",
         sku: was?.sku ?? "",
         price: v.price !== undefined ? v.price : (was?.price ?? null),
         stockQty: v.stockQty ?? was?.stockQty ?? 0,
@@ -496,6 +505,7 @@ export function productsToCsv(products: ExportProduct[], sep = ";"): string {
       stock: counted ? String(p.stockQty) : "fournisseur", available: yesNo(p.available), active: yesNo(p.active), featured: yesNo(p.featured),
       photos: p.photos.join(" ; "), detailPhotos: p.detailPhotos.join(" ; "), videoUrl: p.videoUrl,
       variants: p.variants.map((v) => v.name).join(" ; "), variantsAr: p.variants.some((v) => v.nameAr) ? p.variants.map((v) => v.nameAr ?? "").join(" ; ") : "",
+      variantColors: p.variants.some((v) => v.colorHex) ? p.variants.map((v) => v.colorHex ?? "").join(" ; ") : "",
       variantPrices: ownPrices ? p.variants.map((v) => money(v.price)).join(" ; ") : "",
       variantStock: counted && p.variants.length ? p.variants.map((v) => String(v.stockQty)).join(" ; ") : "",
       offers: p.offers.map((o) => `${o.quantity} = ${money(o.price)}${o.freeDelivery ? " livraison offerte" : ""}`).join(" ; "),

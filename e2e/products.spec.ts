@@ -53,7 +53,9 @@ test("a pasted sheet becomes products with their pictures, once", async ({ page 
     await page.goto(`/fr/produit/lampe-import-${run}`);
     await expect(page.getByRole("heading", { name: `Lampe import ${run}` })).toBeVisible();
     await expect(page.getByText("2 unités").first()).toBeVisible();
-    await expect(page.getByText("Blanc").first()).toBeVisible();
+    // The options are in the list under the offers.
+    await page.getByTestId("variant-select").first().click();
+    await expect(page.getByRole("option", { name: /Blanc/ })).toBeVisible();
 
     // The same rows again: two updates, no new product, no picture fetched again.
     const before = served;
