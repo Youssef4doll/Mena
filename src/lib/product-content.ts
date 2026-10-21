@@ -29,12 +29,14 @@ export type Video =
   | { kind: "youtube"; id: string }
   /** Another platform's player, built from the video's own id (never from the link as typed). */
   | { kind: "embed"; provider: "vimeo" | "tiktok" | "instagram" | "facebook"; src: string; vertical: boolean }
-  | { kind: "file"; src: string };
+  | { kind: "file"; src: string }
+  /** A streamed video (.m3u8), such as the one on an Amazon listing. */
+  | { kind: "hls"; src: string };
 
 /**
  * A product video: a YouTube, Vimeo, TikTok, Instagram or Facebook link, or a
  * direct https video file (.mp4, .webm, .mov), such as one sent from the
- * computer. Anything else is refused. Short share links (vm.tiktok.com,
+ * computer, or a stream (.m3u8, the format of Amazon's product videos). Anything else is refused. Short share links (vm.tiktok.com,
  * fb.watch) are refused too: they hide the video's id behind a redirect.
  */
 export function parseVideo(url: string | null | undefined): Video | null {
@@ -88,6 +90,7 @@ export function parseVideo(url: string | null | undefined): Video | null {
     return { kind: "embed", provider: "facebook", src: `https://www.facebook.com/plugins/video.php?href=${encodeURIComponent(page)}&show_text=false&autoplay=true`, vertical: parts[0] === "reel" };
   }
   if (/\.(mp4|webm|mov)$/i.test(u.pathname)) return { kind: "file", src: u.toString() };
+  if (/\.m3u8$/i.test(u.pathname)) return { kind: "hls", src: u.toString() };
   return null;
 }
 

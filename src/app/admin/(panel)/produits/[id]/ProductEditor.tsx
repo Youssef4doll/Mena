@@ -460,8 +460,8 @@ function Form({ id, version, nextId, initial, images, categories, suppliers, sho
               <input className={input} value={p.videoUrl} onChange={(e) => set("videoUrl", e.target.value)} placeholder="https://youtu.be/…, tiktok.com/@…/video/…, instagram.com/reel/…" dir="ltr" />
               <span className={`text-xs font-normal ${p.videoUrl.trim() && !parseVideo(p.videoUrl) ? "text-danger" : "text-muted"}`}>
                 {p.videoUrl.trim() && !parseVideo(p.videoUrl)
-                  ? "Lien non reconnu : l'adresse complète d'une vidéo YouTube, Vimeo, TikTok, Instagram ou Facebook (pas un lien court vm.tiktok.com ou fb.watch : ouvrez-le et copiez l'adresse affichée), ou l'adresse https d'un fichier .mp4."
-                  : "Un lien YouTube, Vimeo, TikTok, Instagram ou Facebook, l'adresse d'un fichier .mp4, ou une vidéo envoyée depuis l'ordinateur. Elle s'affiche en 2e position dans les photos, et ne se charge que si le client appuie dessus."}
+                  ? "Lien non reconnu : l'adresse complète d'une vidéo YouTube, Vimeo, TikTok, Instagram ou Facebook (pas un lien court vm.tiktok.com ou fb.watch : ouvrez-le et copiez l'adresse affichée), ou l'adresse https d'un fichier .mp4 ou .m3u8."
+                  : "Un lien YouTube, Vimeo, TikTok, Instagram ou Facebook, l'adresse d'un fichier .mp4 ou d'une vidéo .m3u8 (comme sur Amazon), ou une vidéo envoyée depuis l'ordinateur. Elle s'affiche en 2e position dans les photos, et ne se charge que si le client appuie dessus."}
               </span>
             </label>
             <VideoUpload ready={videoReady} name={p.slug || p.name} disabled={busy} onSent={(url) => set("videoUrl", url)} />

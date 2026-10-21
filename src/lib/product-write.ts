@@ -112,7 +112,7 @@ export async function writeProduct(id: string | null, raw: unknown, loadedAt?: n
   if (d.offers.length > 0 && d.variants.some((v) => v.price != null && v.price !== d.price)) {
     return { ok: false, error: "Les offres utilisent le prix du produit : retirez le prix propre des variantes, ou retirez les offres." };
   }
-  if (d.videoUrl && !parseVideo(d.videoUrl)) return { ok: false, error: "Vidéo : collez l'adresse complète d'une vidéo YouTube, Vimeo, TikTok, Instagram ou Facebook, ou l'adresse https d'un fichier .mp4." };
+  if (d.videoUrl && !parseVideo(d.videoUrl)) return { ok: false, error: "Vidéo : collez l'adresse complète d'une vidéo YouTube, Vimeo, TikTok, Instagram ou Facebook, ou l'adresse https d'un fichier .mp4 ou d'une vidéo .m3u8 (Amazon)." };
   const slug = slugify(d.slug || d.name);
   if (!slug) return { ok: false, error: "Adresse (slug) invalide." };
 

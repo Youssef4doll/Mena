@@ -35,6 +35,8 @@ test("YouTube, Vimeo, TikTok, Instagram, Facebook and direct video files are acc
   assert.equal(parseVideo("https://www.facebook.com/mena.tn"), null);
   assert.deepEqual(parseVideo("https://abc.public.blob.vercel-storage.com/videos/lampe-x1.mov"), { kind: "file", src: "https://abc.public.blob.vercel-storage.com/videos/lampe-x1.mov" });
   assert.equal(parseVideo("https://evil.example/x.mp4.html"), null);
+  const amazon = "https://m.media-amazon.com/images/S/vse-vms-transcoding-artifact-eu-west-1-prod/509fe136-e89e-4466-bae0-e944275969d3/default.jobtemplate.hls360.m3u8";
+  assert.deepEqual(parseVideo(amazon), { kind: "hls", src: amazon });
 });
 
 test("the orders line is rounded down, and silent under 10", () => {

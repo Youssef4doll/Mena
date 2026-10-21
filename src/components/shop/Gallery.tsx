@@ -3,7 +3,7 @@
 import dynamic from "next/dynamic";
 import { createPortal } from "react-dom";
 import Image from "next/image";
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { dict, type Lang } from "@/i18n";
 import type { ImageRef } from "@/lib/catalog";
 import type { Video } from "@/lib/product-content";
@@ -173,6 +173,7 @@ export function Gallery({ slides, name, productId, badge, lang }: { slides: Slid
  */
 function VideoPlayer({ video, title }: { video: Video; title: string }) {
   if (video.kind === "file") return <video src={video.src} controls autoPlay playsInline className="absolute inset-0 h-full w-full bg-black object-contain" title={title} />;
+  if (video.kind === "hls") return <StreamPlayer src={video.src} title={title} />;
   const src = video.kind === "youtube" ? `https://www.youtube-nocookie.com/embed/${video.id}?autoplay=1&playsinline=1&rel=0&modestbranding=1` : video.src;
   const vertical = video.kind === "embed" && video.vertical;
   return (
@@ -187,4 +188,36 @@ function VideoPlayer({ video, title }: { video: Video; title: string }) {
       />
     </div>
   );
+}
+
+/**
+ * A stream (.m3u8): played by the phone itself where it can (iPhone, most
+ * Android phones), otherwise by hls.js, loaded only then.
+ */
+function StreamPlayer({ src, title }: { src: string; title: string }) {
+  const ref = useRef<HTMLVideoElement>(null);
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    if (el.canPlayType("application/vnd.apple.mpegurl")) {
+      el.src = src;
+      void el.play().catch(() => {});
+      return;
+    }
+    let hls: { destroy: () => void } | null = null;
+    let gone = false;
+    void import("hls.js").then(({ default: Hls }) => {
+      if (gone || !Hls.isSupported()) return;
+      const h = new Hls();
+      h.loadSource(src);
+      h.attachMedia(el);
+      h.on(Hls.Events.MANIFEST_PARSED, () => void el.play().catch(() => {}));
+      hls = h;
+    });
+    return () => {
+      gone = true;
+      hls?.destroy();
+    };
+  }, [src]);
+  return <video ref={ref} controls playsInline className="absolute inset-0 h-full w-full bg-black object-contain" title={title} />;
 }
