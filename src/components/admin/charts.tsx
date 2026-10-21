@@ -227,7 +227,7 @@ export function BarList({ rows, unit, max: maxIn }: { rows: { label: string; val
 export function TableView({ head, rows }: { head: string[]; rows: (string | number)[][] }) {
   return (
     <details className="mt-3 text-sm">
-      <summary className="cursor-pointer text-xs text-muted">Voir le tableau</summary>
+      <summary className="flex min-h-10 cursor-pointer items-center text-xs text-muted">Voir le tableau</summary>
       <div className="mt-2 max-h-72 overflow-auto">
         <table className="w-full text-[13px]">
           <thead className="sticky top-0 bg-white text-xs text-muted">

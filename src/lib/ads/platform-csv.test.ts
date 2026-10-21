@@ -1,6 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { readPlatformExport } from "./platform-csv";
+import { dayShares, importKeyText, planImport, readPlatformExport, type SavedSpend } from "./platform-csv";
+import { spendInRange } from "../profit";
 import { normName, normSource, parseRowKey, rowKey } from "./match";
 
 // Ads Manager's English CSV as downloaded: BOM, every cell quoted, the summary row first.
@@ -19,7 +20,7 @@ test("reads Meta's English export: BOM, quotes, summary row, thousands and decim
   assert.equal(r.currency, "TND");
   assert.deepEqual(r.skipped, [{ line: 2, reason: "Ligne de total (sans nom de campagne)" }]);
   assert.equal(r.rows.length, 2);
-  assert.deepEqual(r.rows[0], { day: "2026-10-01", days: 1, source: "facebook", campaign: "Lampe Oct", adSet: "Large 18-45", ad: "Video 1", amount: 85_500, impressions: 5200, clicks: 120, reach: 3000, purchases: 4, line: 3, lines: 1 });
+  assert.deepEqual(r.rows[0], { day: "2026-10-01", days: 1, source: "facebook", campaign: "Lampe Oct", adSet: "Large 18-45", ad: "Video 1", account: null, amount: 85_500, impressions: 5200, clicks: 120, reach: 3000, purchases: 4, line: 3, lines: 1 });
   assert.equal(r.rows[1].amount, 1_049_060);
   assert.equal(r.rows[1].clicks, 340, "link clicks, not all clicks");
   assert.equal(r.rows[1].purchases, 0, "Meta leaves zeros blank");
@@ -172,4 +173,87 @@ test("a key survives names that contain the separator", () => {
   assert.deepEqual(parseRowKey(key), { level: "ad", source: "facebook", campaign: "lampe | oct", ad: "50%|off" });
   assert.deepEqual(parseRowKey("facebook||video-1"), { level: "ad", source: "facebook", campaign: null, ad: "video-1" });
   assert.deepEqual(parseRowKey("facebook"), { level: "source", source: "facebook", campaign: null, ad: null });
+});
+
+test("the ad account is part of the import key when the export has it; older files keep their keys", () => {
+  const csv = [
+    "Account ID,Account name,Campaign name,Ad name,Day,Amount spent (TND)",
+    "1111,Boutique,Lampe,V1,2026-10-12,10",
+    "2222,Boutique 2,Lampe,V1,2026-10-12,4",
+    "2222,Boutique 2,Lampe,V1,2026-10-12,1",
+  ].join("\n");
+  const r = readPlatformExport(csv);
+  assert.deepEqual(r.rows.map((x) => [x.account, x.amount, x.lines]), [["1111", 10_000, 1], ["2222", 5_000, 2]], "two accounts stay two rows; one account's lines are added up");
+  assert.notEqual(importKeyText(r.rows[0]), importKeyText(r.rows[1]));
+
+  // The key every import made before the account was read: re-importing an old file must still find its rows.
+  const old = readPlatformExport("Campaign name,Ad name,Day,Amount spent (TND)\nLampe,V1,2026-10-12,10").rows[0];
+  assert.equal(old.account, null);
+  assert.equal(importKeyText(old), JSON.stringify(["facebook", "lampe", null, "v1", "2026-10-12", 1]));
+  assert.equal(importKeyText({ ...old, account: "1111" }), JSON.stringify(["facebook", "lampe", null, "v1", "2026-10-12", 1, "1111"]));
+  assert.equal(importKeyText({ ...old, campaign: " LAMPE ", account: "  " }), importKeyText(old), "case, spaces and a blank account do not change the key");
+
+  const fr = readPlatformExport("Nom du compte;Nom de la campagne;Jour;Montant dépensé (TND)\nMa Boutique;Lampe;12/10/2026;10");
+  assert.equal(fr.rows[0].account, "Ma Boutique", "the name when there is no ID");
+  const tt = readPlatformExport("Advertiser ID,Advertiser name,Campaign name,Date,Cost (TND)\n7001,Mena,ugc,2026-10-12,3");
+  assert.equal(tt.rows[0].account, "7001");
+  assert.equal(tt.columns.accountId, "Advertiser ID");
+});
+
+const saved = (id: string, day: string, days: number, campaign: string | null, more: Partial<SavedSpend> = {}): SavedSpend => ({ id, day, days, source: "facebook", campaign, adSet: null, ad: null, imported: true, ...more });
+const row = (day: string, days: number, campaign: string | null, ad: string | null = null) => ({ day, days, source: "facebook", campaign, adSet: null, ad });
+
+test("a newer export replaces the earlier import of the same campaign and days, whatever its grain", () => {
+  // Campaign totals first, then the same day by ad.
+  const byAd = [row("2026-10-12", 1, "Lampe", "V1"), row("2026-10-12", 1, "lampe", "V2")];
+  assert.deepEqual(planImport(byAd, [saved("a", "2026-10-12", 1, "Lampe")]), { replaced: ["a"], overlaps: { imported: 0, typed: 0 } });
+
+  // Seven daily rows, then one weekly total (and back).
+  const week = Array.from({ length: 7 }, (_, i) => saved(`d${i}`, `2026-10-0${i + 1}`, 1, "Lampe"));
+  assert.deepEqual(planImport([row("2026-10-01", 7, "Lampe")], week).replaced, ["d0", "d1", "d2", "d3", "d4", "d5", "d6"]);
+  const daily = Array.from({ length: 7 }, (_, i) => row(`2026-10-0${i + 1}`, 1, "Lampe"));
+  assert.deepEqual(planImport(daily, [saved("w", "2026-10-01", 7, "Lampe")]).replaced, ["w"], "days covered by several rows of the file count together");
+
+  // Another campaign, another source, or rows typed by hand: untouched.
+  const others = [saved("x", "2026-10-12", 1, "Autre"), saved("t", "2026-10-12", 1, "Lampe", { source: "tiktok" }), saved("h", "2026-10-12", 1, "Lampe", { imported: false })];
+  assert.deepEqual(planImport(byAd, others), { replaced: [], overlaps: { imported: 0, typed: 1 } });
+});
+
+test("an earlier import only partly in the new file is kept and reported; another ad's days are not an overlap", () => {
+  const plan = planImport([row("2026-10-05", 1, "Lampe"), row("2026-10-06", 1, "Lampe")], [saved("w", "2026-10-01", 7, "Lampe"), saved("n", "2026-10-06", 1, null)]);
+  assert.deepEqual(plan, { replaced: [], overlaps: { imported: 2, typed: 0 } }, "a weekly row with two of its days in the file; a row without a campaign on the same day");
+
+  const plan2 = planImport([row("2026-10-12", 1, "Lampe", "V1")], [saved("v2", "2026-10-11", 3, "Lampe", { ad: "V2" })]);
+  assert.deepEqual(plan2, { replaced: [], overlaps: { imported: 0, typed: 0 } });
+  const gap = planImport([row("2026-10-01", 1, "Lampe"), row("2026-10-03", 1, "Lampe")], [saved("w", "2026-10-01", 3, "Lampe")]);
+  assert.deepEqual(gap, { replaced: [], overlaps: { imported: 1, typed: 0 } }, "a missing day in the file: the earlier row is not fully covered");
+});
+
+test("an export filtered to some ads replaces only those ads", () => {
+  const byAd = [saved("v1", "2026-10-10", 1, "Lampe", { ad: "Video-1" }), saved("c2", "2026-10-10", 1, "Lampe", { ad: "Carrousel-2" }), saved("c2b", "2026-10-11", 1, "Lampe", { ad: "Carrousel-2" })];
+  const file = [row("2026-10-10", 1, "lampe", "video-1"), row("2026-10-11", 1, "Lampe", "Video-1")];
+  assert.deepEqual(planImport(file, byAd), { replaced: ["v1"], overlaps: { imported: 0, typed: 0 } }, "Carrousel-2 is not in the file: its spend stays, and does not meet Video-1's");
+
+  // A file without ads is a total of all of them; an ad set the file does not name stays.
+  assert.deepEqual(planImport([row("2026-10-10", 1, "Lampe")], byAd).replaced, ["v1", "c2"]);
+  const sets = [saved("s1", "2026-10-10", 1, "Lampe", { adSet: "Large" }), saved("s2", "2026-10-10", 1, "Lampe", { adSet: "Femmes 25-45" })];
+  assert.deepEqual(planImport([{ ...row("2026-10-10", 1, "Lampe"), adSet: "large" }], sets).replaced, ["s1"]);
+});
+
+test("a total spread over days adds up to the period's share of it", () => {
+  const sum = (xs: { value: number }[]) => xs.reduce((s, x) => s + x.value, 0);
+  const week = { day: "2026-10-05", days: 7 };
+  const all = dayShares(12_345, week, "2026-09-21", "2026-10-21");
+  assert.deepEqual(all.map((x) => x.value), [1764, 1763, 1764, 1763, 1764, 1763, 1764]);
+  assert.deepEqual([all[0].day, all[6].day], ["2026-10-05", "2026-10-11"]);
+  assert.equal(sum(all), 12_345);
+
+  // A row cut by the period's edges: the days inside add up to spendInRange, rounded once.
+  for (const [from, to] of [["2026-10-07", "2026-10-21"], ["2026-09-21", "2026-10-08"], ["2026-10-06", "2026-10-09"]]) {
+    assert.equal(sum(dayShares(12_345, week, from, to)), spendInRange({ ...week, amount: 12_345 }, from, to), `${from} → ${to}`);
+  }
+  assert.deepEqual(dayShares(2_001, { day: "2026-09-20", days: 2 }, "2026-09-21", "2026-10-21"), [{ day: "2026-09-21", value: 1001 }]);
+  assert.deepEqual(dayShares(5, { day: "2026-10-01", days: 1 }, "2026-10-02", "2026-10-21"), [], "a row before the period");
+  assert.deepEqual(dayShares(2, { day: "2026-10-01", days: 3 }, "2026-09-21", "2026-10-21").map((x) => x.value), [1, 0, 1]);
+  assert.equal(sum(dayShares(1_000_001, { day: "2026-07-01", days: 92 }, "2026-01-01", "2026-12-31")), 1_000_001);
 });

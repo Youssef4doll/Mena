@@ -12,8 +12,15 @@ const body = z.object({
   source: z.string().max(60).optional(),
   medium: z.string().max(60).optional(),
   campaign: z.string().max(120).nullish(),
-  /** utm_content: the ad that brought the visit. */
-  content: z.string().max(120).nullish(),
+  /**
+   * utm_content: the ad that brought the visit. A longer one is cut to the
+   * 120 characters an order and the spend import keep, so the names still
+   * match, instead of refusing the whole batch for one long link.
+   */
+  content: z
+    .string()
+    .nullish()
+    .transform((s) => s?.slice(0, 120)),
   events: z
     .array(
       z.object({

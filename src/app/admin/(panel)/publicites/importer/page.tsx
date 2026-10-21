@@ -17,7 +17,7 @@ export default async function ImportPage() {
   return (
     <div className="flex flex-col gap-4">
       <p className="max-w-3xl text-sm text-ink-2">
-        Déposez l&apos;export du gestionnaire de publicités : les dépenses, impressions, clics et achats arrivent ici sans rien retaper. Importer deux fois le même export remplace ses lignes, sans compter deux fois. Pour saisir un montant à la main : <Link href="/admin/depenses" className="text-sea underline">Dépenses pub</Link>.
+        Déposez l&apos;export du gestionnaire de publicités : les dépenses, impressions, clics et achats arrivent ici sans rien retaper. Un nouvel export d&apos;une campagne remplace les lignes déjà importées pour les mêmes jours, même par publicité au lieu de par campagne, ou en un total au lieu de jour par jour : rien n&apos;est compté deux fois. Pour saisir un montant à la main : <Link href="/admin/depenses" className="text-sea underline">Dépenses pub</Link>.
       </p>
       <ExportImport />
       <Card title="Quel export télécharger">

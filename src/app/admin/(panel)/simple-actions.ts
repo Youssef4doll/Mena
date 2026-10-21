@@ -201,9 +201,12 @@ export async function saveAdSpend(_: unknown, f: FormData): Promise<Result> {
   return { ok: true, message: "Dépense enregistrée." };
 }
 
+/** Deleting a row already gone (a second tap, another tab) is done, not an error. */
 export async function deleteAdSpend(id: string): Promise<Result> {
   await requireAdmin();
-  await prisma.adSpend.delete({ where: { id } });
+  const parsed = z.string().regex(/^[a-z0-9]{20,40}$/).safeParse(id);
+  if (!parsed.success) return { ok: false, error: "Dépense introuvable." };
+  await prisma.adSpend.deleteMany({ where: { id: parsed.data } });
   revalidatePath("/admin/depenses");
   revalidatePath("/admin/analytics");
   revalidatePath("/admin/publicites", "layout");

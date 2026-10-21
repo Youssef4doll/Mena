@@ -1,11 +1,11 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
-  BIG_SCALE_STEP, CUT_STEP, FIX_STEP, MIN_SCALE_DAYS, SCALE_STEP,
-  advise, compareAds, creativeInsights, fatigue, hourBlocks, readSegments, segmentInsights,
-  type AdviseInput, type SegmentRow, type TrackingSetup,
+  BIG_SCALE_STEP, CUT_STEP, FIX_STEP, LOSE_PROB, MIN_SCALE_DAYS, SCALE_STEP, TREND_RECENT_DAYS, WIN_PROB,
+  advise, callDelayInsight, compareAds, costTrend, creativeInsights, fatigue, hourBlocks, readSegments, segmentInsights,
+  type AdviseInput, type Report, type SegmentRow, type TrackingSetup,
 } from "./advisor";
-import type { AdRow, Baseline, Costs, DayPoint, Insight, Level } from "./types";
+import type { AdRow, Baseline, CallDelayRow, Costs, DayPoint, Insight, Level } from "./types";
 
 // A 59,900 DT lamp + 8 DT delivery = 67,900 DT a delivered order, bought 20 DT. Carrier 7 DT a parcel, 3 DT for one back.
 const PRICE = 67_900;
@@ -62,6 +62,7 @@ function line(name: string, s: Spec): AdRow {
   };
 }
 
+const totalOf = (rows: AdRow[]) => advise({ rows, costs, baseline, days: 14 }).total.row;
 const run = (rows: AdRow[], extra: Partial<AdviseInput> = {}) => advise({ rows, costs, baseline, days: 14, tracking: pixels, ...extra });
 const adviceOf = (rows: AdRow[], key: string, extra: Partial<AdviseInput> = {}) => run(rows, extra).rows.find((a) => a.key === key)!;
 const titles = (xs: Insight[]) => xs.map((i) => i.title);
@@ -304,7 +305,7 @@ test("tracking setup: no pixel, no server link while the purchase waits for conf
   // 40 % of called orders never confirmed, and the pixel is told at "placed".
   const fakes = line("promo", { spend: 300_000, cancelled: 40, delivered: 45, back: 10, open: 5 });
   const learning = run([fakes], { tracking: { ...pixels, purchaseAt: "placed" } }).insights.find((i) => i.title === "Le pixel apprend sur des commandes jamais confirmées")!;
-  assert.match(learning.action, /« confirmée »/);
+  assert.match(learning.action, /« quand la commande est confirmée par téléphone »/);
   // No TikTok spend: no TikTok advice.
   assert.ok(!noPixel.insights.some((i) => i.title.includes("TikTok")));
   const tagged = run([winner], { coverage: { orders: 200, tagged: 100 } }).insights.find((i) => i.title === "Commandes sans source")!;
@@ -550,7 +551,7 @@ test("purchases sent at delivery that arrive after the 7 days in which an ad is 
   const late = run([winner], { baseline: slow, tracking: { ...pixels, purchaseAt: "delivered" } }).insights.find((i) => i.title === "L'achat arrive trop tard pour les publicités")!;
   assert.equal(late.severity, "warning");
   assert.match(late.evidence, /en moyenne 6 jours/);
-  assert.match(late.action, /confirmation/);
+  assert.match(late.action, /quand la commande est confirmée par téléphone/);
   assert.ok(!run([winner], { tracking: { ...pixels, purchaseAt: "delivered" } }).insights.some((i) => i.title === "L'achat arrive trop tard pour les publicités"), "3 days to deliver: in time");
 });
 
@@ -574,4 +575,175 @@ test("forms started and not finished: call them back, the numbers are kept", () 
   assert.equal(i.title, "Monter « fuite »");
   assert.equal(i.fix, "carts");
   assert.match(i.action, /En même temps, le formulaire perd des clients : appeler dans la journée les formulaires commencés sans commande \(leur numéro est gardé dans Commandes non terminées\)/);
+});
+
+/** Every sentence of a report: titles, evidence, actions, and every reason of every row and of the account. */
+const allTexts = (r: Report) => [...r.insights.flatMap((i) => [i.title, i.evidence, i.action]), ...r.rows.flatMap((a) => a.reasons), ...r.total.advice.reasons];
+
+test("texts send the owner to places that exist: Paramètres (Livraison, Pixels publicitaires) and Produits", () => {
+  const unknownCost = { ...winner, funnel: { ...winner.funnel, costUnknownDelivered: 3 } };
+  const r = advise({ rows: [unknownCost], costs: { carrierPerParcel: null, returnPerParcel: null }, baseline: { ...baseline, marginPerDelivered: null }, days: 14, tracking: { ...pixels, metaPixel: false } });
+  for (const t of allTexts(r)) assert.doesNotMatch(t, /Réglages|rubrique/, t);
+  assert.match(r.insights.find((i) => i.title === "Coût du transporteur manquant")!.action, /Paramètres, carte « Livraison »/);
+  assert.match(r.insights.find((i) => i.title === "Coût d'un retour manquant")!.action, /Paramètres, carte « Livraison »/);
+  assert.match(r.insights.find((i) => i.title === "Coût fournisseur manquant")!.action, /dans Produits/);
+  assert.match(r.insights.find((i) => i.title === "Pixel Meta absent")!.action, /Paramètres, carte « Pixels publicitaires »/);
+  const capi = run([winner], { tracking: { ...pixels, metaCapi: false, purchaseAt: "placed" } }).insights.find((i) => i.title === "API Conversions Meta non reliée")!;
+  assert.match(capi.action, /Paramètres, carte « Pixels publicitaires »/);
+});
+
+test("close to the max: the action follows what the lines are", () => {
+  const near = line("a", { spend: 420_000, cancelled: 6, delivered: 14, back: 3 });
+  const headline = (r: Report) => r.insights.find((i) => i.key == null && i.title.startsWith("Le compte "))!;
+  // A line marked "cut": named.
+  const withCut = run([near, line("b", { spend: 100_000, sessions: 500 })]);
+  assert.equal(withCut.rows[1].verdict, "cut");
+  assert.equal(headline(withCut).title, "Le compte est proche du coût max");
+  assert.equal(headline(withCut).action, "Couper « b » avant de monter quoi que ce soit.");
+  // Nothing to cut: no "couper" at all, the account's weakest stage instead.
+  const noCut = run([near, line("c", { spend: 400_000, cancelled: 6, delivered: 13, back: 3 })]);
+  assert.ok(!noCut.rows.some((a) => a.verdict === "cut"));
+  assert.equal(headline(noCut).title, "Le compte est proche du coût max");
+  assert.doesNotMatch(headline(noCut).action, /[Cc]ouper/);
+  assert.match(headline(noCut).action, /^Corriger le point faible du compte/);
+  // A line whose measure is broken comes before the stage.
+  const broken = run([near, line("c", { spend: 400_000, cancelled: 6, delivered: 13, back: 3 }), line("sans-utm", { spend: 45_000, sessions: 0 })]);
+  assert.match(headline(broken).action, /^Réparer d'abord le lien de « sans-utm »/);
+  assert.equal(headline(broken).fix, "links");
+});
+
+test("the account's own reasons speak of the account, not of a line", () => {
+  const free = line("sans-depense", { spend: null, cancelled: 2, delivered: 10, back: 2 });
+  const r = run([free]);
+  assert.match(r.rows[0].reasons[0], /pour cette ligne/);
+  assert.match(r.total.advice.reasons[0], /pour le compte/);
+  const noVisit = line("video-1", { level: "ad", spend: 120_000, cancelled: 3, delivered: 14, back: 3, open: 2, sessions: 0, productViews: 0, formStarts: 0 });
+  const t = run([noVisit]).total.advice.reasons;
+  assert.ok(t.some((x) => x.startsWith("Aucune visite comptée pour le compte") && x.includes("jugé sur ses commandes")));
+  for (const x of [...t, ...r.total.advice.reasons]) assert.doesNotMatch(x, /cette ligne/, x);
+});
+
+test("one of something reads in the singular, everywhere", () => {
+  // One parcel back, one delivered order without a supplier cost, one visit for 500 clicks.
+  const one = line("une", { spend: 60_000, delivered: 1, back: 1, cancelled: 1, open: 1, pending: 1, sessions: 1, clicks: 500, impressions: 20_000, purchases: 1 });
+  const r = advise({ rows: [{ ...one, funnel: { ...one.funnel, costUnknownDelivered: 1 } }], costs: { carrierPerParcel: 7_000, returnPerParcel: null }, baseline, days: 14, tracking: pixels });
+  assert.match(r.insights.find((i) => i.title === "Coût d'un retour manquant")!.evidence, /^1 colis est revenu sur la période ; son coût/);
+  assert.match(r.insights.find((i) => i.title === "Coût fournisseur manquant")!.evidence, /^1 commande livrée n'a pas de coût fournisseur : sa marge/);
+  assert.match(r.rows[0].reasons[0], /^500 clics comptés par la plateforme, 1 visite dans la boutique/);
+  for (const t of allTexts(r)) assert.doesNotMatch(t, /\(s\)|\b1 (commandes|livrées|visites|clics|achats|jours|colis sont|colis envoyés)\b/, t);
+});
+
+test("a broken ad link names its utm_content, a campaign's its utm_campaign", () => {
+  const ad = line("video-2", { level: "ad", spend: 45_000, sessions: 0 });
+  const i = run([ad]).insights.find((x) => x.key === ad.key)!;
+  assert.equal(i.action, "Vérifier que le lien de la publicité contient utm_source=facebook, utm_campaign=lampe et utm_content=video-2, exactement comme la dépense saisie ; le recréer avec le générateur de liens.");
+  const campaign = run([line("sans-utm", { spend: 45_000, sessions: 0 })]).insights.find((x) => x.key === "facebook|sans-utm")!;
+  assert.match(campaign.action, /contient utm_source=facebook et utm_campaign=sans-utm,/);
+  assert.doesNotMatch(campaign.action, /utm_content/);
+});
+
+test("orders confirmed then cancelled are reported apart when they matter", () => {
+  const row = line("promo", { spend: 300_000, cancelled: 20, delivered: 40, back: 8, open: 4 });
+  // 8 of the 20 cancellations came after the call had confirmed the order.
+  const late = { ...row, funnel: { ...row.funnel, confirmed: row.funnel.confirmed + 8 } };
+  const r = run([late]);
+  const k = r.rows[0].kpis;
+  assert.ok(k.confirmRate! + k.cancelRate! <= 1 + 1e-12);
+  const i = r.insights.find((x) => x.title === "Des commandes annulées après confirmation")!;
+  assert.match(i.evidence, /^8 commandes confirmées au téléphone ont été annulées avant l'envoi : 13 % des confirmées\./);
+  assert.ok(!run([row]).insights.some((x) => x.title === "Des commandes annulées après confirmation"));
+});
+
+test("account-wide spend statements use the source rows when given, as the overview's tile does", () => {
+  // 300 DT typed on the campaign, 150 DT more typed for Facebook without a campaign.
+  const source = { ...totalOf([winner]), level: "source" as const, key: "facebook", source: "facebook" };
+  const sources = [{ ...source, platform: { ...source.platform, spend: 450_000 } }];
+  const noPixel = { ...pixels, metaPixel: false };
+  assert.match(run([winner], { tracking: noPixel }).insights.find((i) => i.title === "Pixel Meta absent")!.evidence, /^300,000 DT dépensés sur Meta/);
+  assert.match(run([winner], { tracking: noPixel, sources }).insights.find((i) => i.title === "Pixel Meta absent")!.evidence, /^450,000 DT dépensés sur Meta/);
+  // A campaign without spend of its own, while Facebook has spend typed without a campaign: entered, not missing.
+  const unpaid = line("sans-depense", { spend: null, cancelled: 2, delivered: 10, back: 2 });
+  assert.ok(run([winner, unpaid]).insights.some((i) => i.title === "Dépenses manquantes"));
+  assert.ok(!run([winner, unpaid], { sources }).insights.some((i) => i.title === "Dépenses manquantes"));
+});
+
+test("the account's verdict and its headline follow one rule", () => {
+  const heavy = line("appels", { spend: 60_000, cancelled: 1, delivered: 6, back: 1, open: 75, pending: 70, sessions: 900 });
+  const cases: AdRow[][] = [
+    [winner],
+    [winner, heavy],
+    [winner, line("montre", { spend: 80_000, sessions: 400, formStarts: 30 })],
+    [line("a", { spend: 420_000, cancelled: 6, delivered: 14, back: 3 })],
+    [line("chere", { spend: 400_000, cancelled: 3, delivered: 6, back: 1, sessions: 400 })],
+    [line("montre", { spend: 80_000, sessions: 400, formStarts: 30 }), line("chere", { spend: 400_000, cancelled: 3, delivered: 6, back: 1, sessions: 400 })],
+    [youngWinner],
+  ];
+  for (const rows of cases) {
+    const r = run(rows);
+    const a = r.total.advice;
+    const h = r.insights.find((i) => i.key == null && i.title.startsWith("Le compte "));
+    const label = rows.map((x) => x.key).join(", ");
+    if (a.verdict === "scale" || (a.verdict === "keep" && a.probProfitable! >= WIN_PROB)) assert.equal(h?.title, "Le compte est rentable", label);
+    else if ((a.verdict === "cut" || a.verdict === "fix") && a.probProfitable! <= LOSE_PROB) assert.equal(h?.title, "Le compte perd de l'argent", label);
+    else assert.match(h?.title ?? "", /^Le compte est (proche du|au-dessus du) coût max$/, label);
+    assert.equal(a.verdict === "scale", r.rows.some((x) => x.verdict === "scale"), label);
+  }
+  // A winner next to a line whose orders are mostly not called yet: the account goes up through its winner,
+  // and the headline names it, instead of saying "scale" while the verdict says "wait for the calls".
+  const r = run([winner, heavy]);
+  assert.equal(r.total.advice.verdict, "scale");
+  assert.match(r.insights.find((i) => i.title === "Le compte est rentable")!.action, /^Monter seulement « lampe-oct »/);
+});
+
+// 23 days at 8 DT an order (5 orders for 40 DT), then 7 days at 13,333 DT (3 orders for 40 DT).
+const trendDays = (recentOrders: number, recentDays = TREND_RECENT_DAYS) =>
+  Array.from({ length: 30 }, (_, i) => ({ day: `2026-09-${String(i + 1).padStart(2, "0")}`, spend: 40_000, impressions: null, clicks: null, sessions: 200, orders: i >= 30 - recentDays ? recentOrders : 5, delivered: 0 }));
+
+test("a winner whose last 7 days cost clearly more per order is held, with both figures", () => {
+  const t = costTrend(trendDays(3))!;
+  assert.equal(t.recent.orders, 21);
+  assert.equal(t.base.orders, 115);
+  assert.ok(Math.abs(t.change - (40_000 / 3 / 8_000 - 1)) < 1e-9);
+  assert.equal(t.worse, true);
+  const r = run([winner], { daily: { [winner.key]: trendDays(3) } });
+  const a = r.rows[0];
+  assert.equal(a.verdict, "keep");
+  assert.equal(a.budgetChange, 0);
+  assert.match(a.decision!, /^Rentable sur la période, mais les 7 derniers jours coûtent 13,333 DT par commande contre 8,000 DT avant \(\+67 %\)/);
+  const i = r.insights.find((x) => x.title === "« lampe-oct » coûte plus cher depuis 7 jours")!;
+  assert.equal(i.severity, "warning");
+  assert.match(i.evidence, /^13,333 DT par commande sur les 7 derniers jours \(21 commandes\), contre 8,000 DT avant \(23 jours, 115 commandes\) : \+67 %\./);
+  // A small rise, or too few recent orders to say, does not hold it.
+  assert.equal(costTrend(trendDays(4.6))!.worse, false);
+  assert.equal(costTrend(trendDays(1)), null);
+  assert.equal(run([winner], { daily: { [winner.key]: trendDays(5) } }).rows[0].verdict, "scale");
+});
+
+test("orders waiting for a call for more than 48 h get their own insight, with the shop's measured rate", () => {
+  const stale = (n: number) => ({ ...youngWinner, funnel: { ...youngWinner.funnel, pendingStale: n } });
+  const r = run([stale(6)], { baseline: { ...baseline, staleDeliveredRate: 0.22 } });
+  const i = r.insights.find((x) => x.title === "6 commandes attendent un appel depuis plus de 48 h")!;
+  assert.equal(i.fix, "orders");
+  assert.match(i.evidence, /^6 commandes sur 10 en attente d'appel ont été passées il y a plus de 48 h\. Dans la boutique, 22 % des commandes restées sans appel aussi longtemps finissent livrées, contre 55 % de toutes les commandes\.$/);
+  assert.ok(!run([stale(4)]).insights.some((x) => x.title.includes("attendent un appel")), "4 orders: not yet worth an alert");
+  // Without the measured rate they are left out of the projection, which says it is a minimum.
+  assert.equal(run([stale(6)]).rows[0].kpis.projection!.floor, true);
+});
+
+const delays = (fast: [number, number], slow: [number, number]): CallDelayRow[] => [
+  { bucket: "1h", label: "moins d'1 h", orders: fast[0], confirmed: fast[1] },
+  { bucket: "4h", label: "1 à 4 h", orders: 40, confirmed: 30 },
+  { bucket: "24h", label: "4 à 24 h", orders: slow[0], confirmed: slow[1] },
+  { bucket: "later", label: "plus de 24 h", orders: 10, confirmed: 4 },
+  { bucket: "never", label: "sans appel noté", orders: 30, confirmed: 2 },
+];
+
+test("calling late costs confirmations: said when the data is clear, silent when it is thin", () => {
+  const i = callDelayInsight(delays([120, 100], [40, 26]))!;
+  assert.equal(i.action, "Appeler dans l'heure qui suit chaque commande.");
+  assert.equal(i.fix, "orders");
+  assert.match(i.evidence, /^Confirmation 83 % sur 120 commandes appelées en moins d'1 h, contre 60 % sur 50 commandes appelées après plus de 4 h\./);
+  assert.equal(callDelayInsight(delays([12, 11], [40, 26])), null, "12 fast calls say nothing");
+  assert.equal(callDelayInsight(delays([120, 90], [40, 30])), null, "75 % against 68 %: no clear gap");
+  assert.ok(run([winner], { callDelay: delays([120, 100], [40, 26]) }).insights.some((x) => x.title === "Les commandes appelées tard se confirment moins"));
 });

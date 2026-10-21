@@ -4,7 +4,7 @@ import Link from "next/link";
 import { formatTND } from "@/lib/money";
 import { fmt } from "@/lib/viz";
 import type { RowAdvice, Stage } from "@/lib/ads/advisor";
-import { funnelSteps, kpiValue, type KpiKey } from "@/lib/ads/kpis";
+import { funnelSteps, kpiValue, plural, type KpiKey } from "@/lib/ads/kpis";
 import type { AdRow } from "@/lib/ads/types";
 import { AD_VERDICTS, CONFIDENCE, kpiText, rowId, rowLabel, sourceLabel, STAGE_STEP, VERDICTS } from "../_ui/format";
 import { SortTable, type SortCell, type SortCol, type SortRow } from "../_ui/SortTable";
@@ -36,7 +36,7 @@ const MONEY: KpiKey[] = ["breakEvenCpd", "roasDelivered", "poas", "contribution"
 const EXTRA: KpiKey[] = [
   "projectedCpd", "cpaPlaced", "breakEvenCpa", "costPerConfirmed", "projectedContribution", "profitBeforeAds", "marginPerDelivered", "breakEvenRoas",
   "cpm", "ctr", "cpc", "frequency", "landingRate", "costPerVisit", "viewRate", "formStartRate", "formCompletion",
-  "cancelRate", "netDeliveryRate", "openShare", "aov", "unitsPerOrder", "multiUnitShare", "newCustomerShare", "overReporting",
+  "cancelRate", "lateCancelRate", "netDeliveryRate", "openShare", "aov", "unitsPerOrder", "multiUnitShare", "newCustomerShare", "overReporting",
 ];
 
 const COLS: SortCol[] = [
@@ -102,6 +102,11 @@ function tableRow({ row, advice: a }: Line, period: string, level: "campaign" | 
         ) : (
           a.verdict !== "wait" && <span className={`whitespace-nowrap text-[11px] ${a.confidence === "low" ? "text-[#8a5a00]" : "text-muted"}`}>{CONFIDENCE[a.confidence]}</span>
         )}
+        {a.trend?.worse && (
+          <span className="whitespace-nowrap text-[11px] text-[#8a5a00]" title={trendText(a.trend)}>
+            plus cher ces derniers jours
+          </span>
+        )}
       </span>
     )),
     spend: cell(row.platform.spend, row.platform.spend == null ? <span className="text-muted" title="Aucune dépense saisie ou importée pour cette ligne">—</span> : <span className="whitespace-nowrap">{formatTND(row.platform.spend)}</span>),
@@ -143,6 +148,11 @@ function tableRow({ row, advice: a }: Line, period: string, level: "campaign" | 
     ));
   }
   return { key: row.key, id: rowId(row.key), cells, detail: <RowDetail row={row} a={a} period={period} level={level} /> };
+}
+
+/** The advisor's recent-cost check in figures: cost per placed order of the last days against the days before. */
+function trendText(t: NonNullable<RowAdvice["trend"]>): string {
+  return `Coût par commande passée : ${formatTND(t.recent.cpa)} sur les derniers jours (${plural(t.recent.orders, "commande", "commandes")}), contre ${formatTND(t.base.cpa)} avant (${plural(t.base.orders, "commande", "commandes")}).`;
 }
 
 /** A stage's rate in its unit: the CPM in money, every other stage in percent. */

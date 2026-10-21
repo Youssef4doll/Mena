@@ -2,15 +2,14 @@ import Link from "next/link";
 import { requireAdmin } from "@/lib/admin-auth";
 import { formatTND } from "@/lib/money";
 import { fmt } from "@/lib/viz";
-import { adRows, dailyByRow } from "@/lib/ads/data";
+import { adRows, callDelay, dailyByRow } from "@/lib/ads/data";
 import { advise, bottleneck, reference, type RowAdvice } from "@/lib/ads/advisor";
-import type { Insight } from "@/lib/ads/types";
-import { funnelSteps, kpis, kpiValue, totalRow } from "@/lib/ads/kpis";
-import type { AdRow } from "@/lib/ads/types";
+import { funnelSteps, kpis, kpiValue, plural, totalRow } from "@/lib/ads/kpis";
+import { STALE_PENDING_HOURS, type AdRow, type Insight } from "@/lib/ads/types";
 import { Badge, Card, Empty } from "@/components/admin/ui";
 import { adRange, periodText, rangeQuery, withPeriod } from "./_ui/range";
 import { adsBasics } from "./_ui/server";
-import { change, coverage, kpiText, rowId, rowLabel, SEVERITIES, sourceLabel, STAGE_STEP, VERDICTS, FIX_LINKS } from "./_ui/format";
+import { change, coverage, fixHref, kpiText, rowId, rowLabel, SEVERITIES, sourceLabel, STAGE_STEP, VERDICTS, FIX_LINKS } from "./_ui/format";
 import { KpiTile, Tile, TileGrid } from "./_ui/Kpi";
 import { Budget, VerdictBadge } from "./_ui/Verdict";
 import { FunnelBars } from "./_ui/Funnel";
@@ -36,8 +35,6 @@ const urgency = (a: RowAdvice) => Math.min(VERDICTS[a.verdict].rank, VERDICTS.wa
 /** Insights in full at the top; the rest fold under them, so the tiles stay near on a phone. */
 const TOP_ACTIONS = 3;
 
-const plural = (n: number, word: string) => `${fmt(n, "int")} ${word}${n > 1 ? "s" : ""}`;
-
 /**
  * Vue d'ensemble: the whole ad account for the period, read on the traffic
  * that came from an ad link (utm_campaign or a paid medium; orders typed in
@@ -51,12 +48,13 @@ export default async function AdsOverview({ searchParams }: PageProps<"/admin/pu
   await requireAdmin();
   const r = adRange(await searchParams);
   const q = rangeQuery(r);
-  const [paid, prevPaid, all, campaigns, daily, { costs, baseline, tracking }] = await Promise.all([
+  const [paid, prevPaid, all, campaigns, daily, calls, { costs, baseline, tracking }] = await Promise.all([
     adRows(r.from, r.to, "source", { paidOnly: true }),
     adRows(r.prevFrom, r.prevTo, "source", { paidOnly: true }),
     adRows(r.from, r.to, "source"),
     adRows(r.from, r.to, "campaign"),
     dailyByRow(r.from, r.to, "campaign"),
+    callDelay(r.from, r.to),
     adsBasics(r.to),
   ]);
 
@@ -69,10 +67,11 @@ export default async function AdsOverview({ searchParams }: PageProps<"/admin/pu
   const campaignSpend = totalRow(campaigns).platform.spend ?? 0;
   const byCampaign = campaigns.length > 0 && (!spend || campaignSpend >= CAMPAIGN_SHARE * spend);
   const rows = byCampaign ? campaigns : paid.filter((x) => x.source !== "direct" || x.platform.spend != null);
-  const report = advise({ rows, costs, baseline, days: r.days, daily: byCampaign ? daily : undefined, tracking, coverage: coverage(all) });
+  // The source rows give the account's spend as the tile counts it (spend typed without a campaign included).
+  const report = advise({ rows, costs, baseline, days: r.days, daily: byCampaign ? daily : undefined, tracking, coverage: coverage(all), sources: paid, callDelay: calls });
   const account = report.total.advice;
-  // The advisor's sentence about the whole account weighs every row (a winner that wears out is not
-  // scaled); the summed row's own verdict does not, so the sentence leads and no account budget step is shown.
+  // The advisor's sentence about the whole account is read off the account's verdict and names the lines
+  // to act on; it leads, and no account budget step is shown: budgets are set line by line.
   const headline = report.insights.find((i) => i.key == null && i.title.startsWith("Le compte ")) ?? null;
   const insights = headline ? report.insights.filter((i) => i !== headline) : report.insights;
   const weak = bottleneck(total, reference(null, baseline));
@@ -84,7 +83,7 @@ export default async function AdsOverview({ searchParams }: PageProps<"/admin/pu
   if (hasMeta && !tracking.metaPixel) extra.push({ label: "Pixel Meta absent", href: FIX_LINKS.tracking.href, cta: "Ajouter le pixel" });
   else if (hasMeta && !tracking.metaCapi) extra.push({ label: "Jeton de l'API Conversions Meta absent", href: FIX_LINKS.tracking.href, cta: "Ajouter le jeton" });
   if (hasTiktok && !tracking.tiktokPixel) extra.push({ label: "Pixel TikTok absent", href: FIX_LINKS.tracking.href, cta: "Ajouter le pixel" });
-  else if (hasTiktok && !tracking.tiktokEvents) extra.push({ label: "Jeton de l'API Événements TikTok absent", href: FIX_LINKS.tracking.href, cta: "Ajouter le jeton" });
+  else if (hasTiktok && !tracking.tiktokEvents) extra.push({ label: "Jeton Events API TikTok absent", href: FIX_LINKS.tracking.href, cta: "Ajouter le jeton" });
 
   const nothing = f.sessions === 0 && f.orders === 0 && spend == null;
   const hint = `Période ${periodText(r)}, comparée aux ${r.days} jours d'avant. Seulement les visites et les commandes venues d'un lien de publicité (avec ses UTM) ; les commandes saisies dans l'admin n'y sont pas.`;
@@ -93,7 +92,7 @@ export default async function AdsOverview({ searchParams }: PageProps<"/admin/pu
   const judged = report.total.row;
   const scope =
     rows.length > 0 && ((judged.platform.spend ?? 0) !== (spend ?? 0) || judged.funnel.orders !== f.orders)
-      ? `Ce verdict lit les ${byCampaign ? "campagnes" : "sources"} une à une (${judged.platform.spend != null ? `${formatTND(judged.platform.spend)}, ` : ""}${plural(judged.funnel.orders, "commande")}) ; les chiffres plus bas comptent tout le trafic venu des publicités (${spend != null ? `${formatTND(spend)}, ` : ""}${plural(f.orders, "commande")}).`
+      ? `Ce verdict lit les ${byCampaign ? "campagnes" : "sources"} une à une (${judged.platform.spend != null ? `${formatTND(judged.platform.spend)}, ` : ""}${plural(judged.funnel.orders, "commande", "commandes")}) ; les chiffres plus bas comptent tout le trafic venu des publicités (${spend != null ? `${formatTND(spend)}, ` : ""}${plural(f.orders, "commande", "commandes")}).`
       : null;
 
   if (nothing) {
@@ -118,12 +117,16 @@ export default async function AdsOverview({ searchParams }: PageProps<"/admin/pu
     );
   }
 
+  // Orders left out of the projection (waiting too long for a call, no measured rate for them) make its
+  // deliveries a minimum: the projected cost is then at most that, the projected result at least that.
+  const floor = k.projection?.floor ?? false;
   const cpdSub = [
-    k.projection?.projected && kpiValue(k, "projectedCpd") != null ? `projection ${kpiText(k, "projectedCpd")}` : null,
+    k.projection?.projected && kpiValue(k, "projectedCpd") != null ? `projection ${floor ? "au plus " : ""}${kpiText(k, "projectedCpd")}` : null,
     k.breakEvenCpd != null ? `maximum ${kpiText(k, "breakEvenCpd")}` : null,
     k.cpaPlaced != null ? `${kpiText(k, "cpaPlaced")} par commande passée` : null,
   ].filter(Boolean);
   const units = kpiValue(k, "unitsPerOrder");
+  const stale = f.pendingStale ?? 0;
 
   return (
     <div className="flex flex-col gap-4">
@@ -176,15 +179,32 @@ export default async function AdsOverview({ searchParams }: PageProps<"/admin/pu
             label="Commandes"
             value={fmt(f.orders, "int")}
             change={change(f.orders, prevTotal.funnel.orders, "number", "higher")}
-            sub={`${f.delivered} livrée${f.delivered > 1 ? "s" : ""} · ${f.open} en cours`}
+            sub={
+              <>
+                {plural(f.delivered, "livrée", "livrées")} · {f.open} en cours
+                {stale > 0 && <span className="block text-[#8a5a00]">dont {stale} en attente d&apos;appel depuis plus de {STALE_PENDING_HOURS} h</span>}
+              </>
+            }
             help="Commandes passées depuis un lien de publicité, tous statuts."
           />
           <KpiTile k={k} prev={kp} kpi="costPerDelivered" period={q} sub={cpdSub.length ? cpdSub.join(" · ") : undefined} empty={spend != null ? "Aucune commande livrée pour l'instant." : undefined} />
           <KpiTile k={k} prev={kp} kpi="roasDelivered" period={q} sub={k.breakEvenRoas != null ? `minimum ${kpiText(k, "breakEvenRoas")}` : undefined} />
           <KpiTile k={k} prev={kp} kpi="poas" period={q} />
-          <KpiTile k={k} prev={kp} kpi="contribution" period={q} sub={k.projection?.projected && k.projection.contribution != null ? `projection ${kpiText(k, "projectedContribution")}` : undefined} />
-          <KpiTile k={k} prev={kp} kpi="orderRate" period={q} sub={`${fmt(f.sessions, "int")} visites`} empty="Aucune visite comptée." />
-          <KpiTile k={k} prev={kp} kpi="confirmRate" period={q} sub={`${f.confirmed} sur ${k.decided} appelée${k.decided > 1 ? "s" : ""}`} empty="Aucune commande appelée." />
+          <KpiTile k={k} prev={kp} kpi="contribution" period={q} sub={k.projection?.projected && k.projection.contribution != null ? `projection ${floor && (k.marginPerDelivered ?? 0) > 0 ? "au moins " : ""}${kpiText(k, "projectedContribution")}` : undefined} />
+          <KpiTile k={k} prev={kp} kpi="orderRate" period={q} sub={plural(f.sessions, "visite", "visites")} empty="Aucune visite comptée." />
+          <KpiTile
+            k={k}
+            prev={kp}
+            kpi="confirmRate"
+            period={q}
+            sub={
+              <>
+                {f.confirmed} sur {plural(k.decided, "appelée", "appelées")}
+                {k.lateCancelled > 0 && <span className="block">dont {plural(k.lateCancelled, "annulée", "annulées")} après confirmation</span>}
+              </>
+            }
+            empty="Aucune commande appelée."
+          />
           <KpiTile k={k} prev={kp} kpi="deliveryRate" period={q} sub={`${f.delivered} livrée${f.delivered > 1 ? "s" : ""}, ${f.back} revenue${f.back > 1 ? "s" : ""}`} empty="Aucun colis arrivé au bout." />
           <KpiTile k={k} prev={kp} kpi="aov" period={q} sub={units != null ? `${kpiText(k, "unitsPerOrder")} article${units >= 2 ? "s" : ""} par commande` : undefined} empty="Aucune commande." />
         </TileGrid>
@@ -210,7 +230,8 @@ export default async function AdsOverview({ searchParams }: PageProps<"/admin/pu
 
 /**
  * The account in one box: the advisor's sentence about it when the money can
- * be judged (with its evidence and what to do), else the account's verdict
+ * be judged (with its evidence, what to do and the page where it is done),
+ * else the account's verdict
  * and its reasons (waiting for data, a broken measure, no margin). `scope`
  * says when it reads less than the tiles do.
  */
@@ -231,6 +252,11 @@ function AccountVerdict({ advice, headline, rowsCount, byCampaign, scope, q }: {
               <span className="font-medium">À faire : </span>
               {headline.action}
             </p>
+            {headline.fix && (
+              <Link href={fixHref(headline.fix, q)} className="inline-flex min-h-10 items-center text-[13px] font-medium text-sea underline">
+                {FIX_LINKS[headline.fix].label}
+              </Link>
+            )}
           </>
         ) : (
           <>

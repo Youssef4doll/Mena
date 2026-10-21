@@ -2,12 +2,13 @@
 
 import { createHash } from "node:crypto";
 import { z } from "zod";
+import { Prisma } from "@prisma/client";
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { requireAdmin } from "@/lib/admin-auth";
 import { tunisDay } from "@/lib/analytics-range";
-import { normName, normSource } from "@/lib/ads/match";
-import { MAX_EXPORT_ROWS, MAX_ROW_DAYS, type SpendRow } from "@/lib/ads/platform-csv";
+import { normSource } from "@/lib/ads/match";
+import { MAX_EXPORT_ROWS, MAX_ROW_DAYS, importKeyText, planImport, type ImportPlan, type SpendRow } from "@/lib/ads/platform-csv";
 
 const DAY = 86_400_000;
 
@@ -29,6 +30,8 @@ const rowSchema = z.object({
   campaign: name,
   adSet: name,
   ad: name,
+  /** Optional: a page loaded before the account was read sends none. */
+  account: name.optional().transform((s) => s ?? null),
   /** Millimes. The column is a 32-bit integer: two million dinars a row at most. */
   amount: z.number().int().min(1).max(2_000_000_000),
   impressions: count,
@@ -38,35 +41,25 @@ const rowSchema = z.object({
 });
 const importSchema = z.object({ rows: z.array(rowSchema).min(1).max(MAX_EXPORT_ROWS), note: z.string().trim().max(200).optional() });
 
-const FIELD_LABELS: Record<string, string> = { day: "date", days: "nombre de jours", source: "source", amount: "montant", campaign: "nom de campagne", adSet: "nom d'ensemble", ad: "nom de publicité" };
+const FIELD_LABELS: Record<string, string> = { day: "date", days: "nombre de jours", source: "source", amount: "montant", campaign: "nom de campagne", adSet: "nom d'ensemble", ad: "nom de publicité", account: "compte" };
 
-export type ImportResult = { ok: true; imported: number; replaced: number; overlaps: number; message: string } | { ok: false; error: string };
+/** `replaced`: earlier imported rows deleted; `overlaps`: rows kept that share days with the new ones (see planImport). */
+export type ImportResult = { ok: true; imported: number; replaced: number; overlaps: ImportPlan["overlaps"]; message: string } | { ok: false; error: string };
+/** `warning`: the rows kept on some of the same days, in words (null when none). */
+export type ImportPreview = { ok: true; replaced: number; overlaps: ImportPlan["overlaps"]; warning: string | null } | { ok: false; error: string };
 
-type Row = z.output<typeof rowSchema>;
-
-/**
- * Same source, campaign, ad set, ad and days → same key, whatever the case
- * or the amounts: importing an export again (Meta revises yesterday's
- * figures) replaces its rows instead of adding them a second time.
- */
-function importKey(r: Row): string {
-  return createHash("sha256")
-    .update(JSON.stringify([r.source, normName(r.campaign), normName(r.adSet), normName(r.ad), r.day, r.days]))
-    .digest("hex");
-}
-
-/** Two names may describe the same spend when one is missing (a total) or both match. */
-const compatible = (a: string | null, b: string | null) => a == null || b == null || normName(a) === normName(b);
+type Row = z.output<typeof rowSchema> & { importKey: string };
+type Db = Prisma.TransactionClient | typeof prisma;
 
 /**
- * Saves the rows of a Meta or TikTok export read by readPlatformExport. The
- * rows come from the browser, so they are checked again here. Rows already
- * imported from the same export are replaced; rows typed by hand are never
- * touched, but the answer says how many imported rows cover the same days as
- * another spend of the same campaign, which would count twice.
+ * Same source, campaign, ad set, ad, days and ad account → same key, whatever
+ * the case or the amounts: importing an export again (Meta revises
+ * yesterday's figures) replaces its rows instead of adding them a second time.
  */
-export async function importAdSpend(data: { rows: SpendRow[]; note?: string }): Promise<ImportResult> {
-  await requireAdmin();
+const importKey = (r: z.output<typeof rowSchema>) => createHash("sha256").update(importKeyText(r)).digest("hex");
+
+/** The rows from the browser, checked again, with the lines of one key (an export broken down by age or placement) added up. */
+function readRows(data: unknown): { ok: true; rows: Row[]; note: string | undefined } | { ok: false; error: string } {
   const parsed = importSchema.safeParse(data);
   if (!parsed.success) {
     const issue = parsed.error.issues[0];
@@ -78,8 +71,7 @@ export async function importAdSpend(data: { rows: SpendRow[]; note?: string }): 
   const future = parsed.data.rows.find((r) => r.day > today);
   if (future) return { ok: false, error: `Une ligne commence le ${future.day}, après aujourd'hui : vérifiez les dates du fichier.` };
 
-  // Lines with the same key (an export broken down by age or placement) are added up.
-  const rows = new Map<string, Row & { importKey: string }>();
+  const rows = new Map<string, Row>();
   for (const raw of parsed.data.rows) {
     const r = { ...raw, source: normSource(raw.source) };
     const key = importKey(r);
@@ -97,60 +89,124 @@ export async function importAdSpend(data: { rows: SpendRow[]; note?: string }): 
   }
   const list = [...rows.values()];
   if (list.some((r) => r.amount > 2_000_000_000)) return { ok: false, error: "Montant trop grand sur une ligne." };
-  const keys = list.map((r) => r.importKey);
+  return { ok: true, rows: list, note: parsed.data.note };
+}
 
-  // Other spend of the same campaign (typed by hand, or another export) on the same days.
+/**
+ * What saving the rows does to the spend already saved (planImport): the
+ * earlier imported rows they replace, and the rows kept on some of the same
+ * days. A row with one of the new keys is always replaced.
+ */
+async function planFor(db: Db, list: Row[]): Promise<{ replaced: string[]; overlaps: ImportPlan["overlaps"] }> {
   const start = (r: { day: string }) => Date.parse(`${r.day}T00:00:00Z`);
-  const end = (r: { day: string; days: number }) => start(r) + r.days * DAY;
   const first = Math.min(...list.map(start));
-  const last = Math.max(...list.map(end));
-  const others = await prisma.adSpend.findMany({
-    where: { day: { gte: new Date(first - MAX_ROW_DAYS * DAY), lt: new Date(last) }, OR: [{ importKey: null }, { importKey: { notIn: keys } }] },
-    select: { day: true, days: true, source: true, campaign: true, adSet: true, ad: true },
+  const last = Math.max(...list.map((r) => start(r) + r.days * DAY));
+  // A saved row covers at most MAX_ROW_DAYS: one starting earlier cannot reach the file's days.
+  const saved = await db.adSpend.findMany({
+    where: { day: { gte: new Date(first - MAX_ROW_DAYS * DAY), lt: new Date(last) } },
+    select: { id: true, day: true, days: true, source: true, campaign: true, adSet: true, ad: true, importKey: true },
   });
-  const overlaps = list.filter((r) =>
-    others.some((o) => {
-      const od = { day: o.day.toISOString().slice(0, 10), days: o.days };
-      return normSource(o.source) === r.source && start(od) < end(r) && start(r) < end(od) && compatible(o.campaign, r.campaign) && compatible(o.adSet, r.adSet) && compatible(o.ad, r.ad);
-    }),
-  ).length;
-
-  const note = parsed.data.note || "Import";
-  const replaced = await prisma.$transaction(
-    async (tx) => {
-      const gone = await tx.adSpend.deleteMany({ where: { importKey: { in: keys } } });
-      for (let i = 0; i < list.length; i += 1000) {
-        await tx.adSpend.createMany({
-          data: list.slice(i, i + 1000).map((r) => ({
-            day: new Date(`${r.day}T00:00:00Z`),
-            days: r.days,
-            source: r.source,
-            campaign: r.campaign,
-            adSet: r.adSet,
-            ad: r.ad,
-            amount: r.amount,
-            impressions: r.impressions,
-            clicks: r.clicks,
-            reach: r.reach,
-            purchases: r.purchases,
-            note,
-            importKey: r.importKey,
-          })),
-        });
-      }
-      return gone.count;
-    },
-    { timeout: 30_000 },
+  const plan = planImport(
+    list,
+    saved.map((s) => ({ ...s, day: s.day.toISOString().slice(0, 10), imported: s.importKey != null })),
   );
+  const keys = new Set(list.map((r) => r.importKey));
+  const sameKey = saved.filter((s) => s.importKey != null && keys.has(s.importKey)).map((s) => s.id);
+  return { replaced: [...new Set([...plan.replaced, ...sameKey])], overlaps: plan.overlaps };
+}
+
+/**
+ * The preview's side of the import: how many rows already imported the file
+ * would replace, and how many rows it would leave on some of the same days.
+ * Nothing is written.
+ */
+export async function previewImport(data: { rows: SpendRow[] }): Promise<ImportPreview> {
+  await requireAdmin();
+  const read = readRows(data);
+  if (!read.ok) return read;
+  const plan = await planFor(prisma, read.rows);
+  return { ok: true, replaced: plan.replaced.length, overlaps: plan.overlaps, warning: overlapText(plan.overlaps) };
+}
+
+/** Two imports at once: the same keys inserted twice, or the database ending one transaction to let the other through. */
+const clash = (e: unknown) => e instanceof Prisma.PrismaClientKnownRequestError && (e.code === "P2002" || e.code === "P2034");
+
+/**
+ * Saves the rows of a Meta or TikTok export read by readPlatformExport. The
+ * rows come from the browser, so they are checked again here. In one
+ * transaction, the earlier imported rows the file supersedes (planImport) are
+ * deleted and the new ones written; rows typed by hand are never touched, but
+ * the answer says how many rows still share days with the new ones, which
+ * would count twice.
+ */
+export async function importAdSpend(data: { rows: SpendRow[]; note?: string }): Promise<ImportResult> {
+  await requireAdmin();
+  const read = readRows(data);
+  if (!read.ok) return read;
+  const list = read.rows;
+  const keys = list.map((r) => r.importKey);
+  const note = read.note || "Import";
+
+  const save = () =>
+    prisma.$transaction(
+      async (tx) => {
+        const plan = await planFor(tx, list);
+        const gone = await tx.adSpend.deleteMany({ where: { OR: [{ id: { in: plan.replaced } }, { importKey: { in: keys } }] } });
+        for (let i = 0; i < list.length; i += 1000) {
+          await tx.adSpend.createMany({
+            data: list.slice(i, i + 1000).map((r) => ({
+              day: new Date(`${r.day}T00:00:00Z`),
+              days: r.days,
+              source: r.source,
+              campaign: r.campaign,
+              adSet: r.adSet,
+              ad: r.ad,
+              amount: r.amount,
+              impressions: r.impressions,
+              clicks: r.clicks,
+              reach: r.reach,
+              purchases: r.purchases,
+              note,
+              importKey: r.importKey,
+            })),
+          });
+        }
+        return { replaced: gone.count, overlaps: plan.overlaps };
+      },
+      { timeout: 30_000 },
+    );
+  let done: Awaited<ReturnType<typeof save>>;
+  try {
+    done = await save();
+  } catch (e) {
+    if (!clash(e)) throw e;
+    // The same file sent twice at once: the other import is saved now, and this one replaces it.
+    try {
+      done = await save();
+    } catch (again) {
+      if (!clash(again)) throw again;
+      return { ok: false, error: "Un autre import des mêmes lignes est en cours. Attendez quelques secondes, puis vérifiez « Dépenses pub » avant de réessayer." };
+    }
+  }
 
   revalidatePath("/admin/publicites", "layout");
   revalidatePath("/admin/analytics");
   revalidatePath("/admin/depenses");
-  const parts = [`${list.length} ligne${list.length > 1 ? "s" : ""} importée${list.length > 1 ? "s" : ""}`];
-  if (replaced > 0) parts.push(`${replaced} remplaçai${replaced > 1 ? "ent" : "t"} un import précédent`);
-  let message = `${parts.join(", dont ")}.`;
-  if (overlaps > 0) {
-    message += ` ${overlaps > 1 ? `${overlaps} de ces lignes couvrent` : "Une de ces lignes couvre"} des jours déjà comptés par une autre dépense de la même campagne : vérifiez « Dépenses pub » pour ne pas compter deux fois.`;
-  }
+  const { replaced, overlaps } = done;
+  let message = `${list.length} ligne${list.length > 1 ? "s" : ""} importée${list.length > 1 ? "s" : ""}.`;
+  if (replaced > 0) message += ` ${replaced} ligne${replaced > 1 ? "s" : ""} d'un import précédent ${replaced > 1 ? "remplacées" : "remplacée"} (même campagne, mêmes jours).`;
+  const warning = overlapText(overlaps);
+  if (warning) message += ` ${warning}`;
   return { ok: true, imported: list.length, replaced, overlaps, message };
+}
+
+/** The warning for rows kept on some of the imported days, or null. Shown by the preview and after the import. */
+function overlapText(o: ImportPlan["overlaps"]): string | null {
+  const parts: string[] = [];
+  if (o.imported > 0) parts.push(o.imported > 1 ? `${o.imported} lignes d'un import précédent` : "une ligne d'un import précédent");
+  if (o.typed > 0) parts.push(o.typed > 1 ? `${o.typed} dépenses saisies à la main` : "une dépense saisie à la main");
+  if (parts.length === 0) return null;
+  const many = o.imported + o.typed > 1;
+  const who = parts.join(" et ");
+  return `${who.charAt(0).toUpperCase()}${who.slice(1)} ${many ? "couvrent" : "couvre"} aussi certains de ces jours et ${many ? "restent comptées" : "reste comptée"} : vérifiez « Dépenses pub » pour ne pas compter deux fois.`;
 }

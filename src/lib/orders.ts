@@ -21,6 +21,10 @@ import { TRANSITIONS } from "./order-status";
 import { href, orderLang } from "@/i18n/lang";
 
 const text = (max: number) => z.string().trim().max(max);
+/** Where the visit came from: cut to its length, never a reason to refuse an order. */
+const cut = (max: number) => z.string().trim().transform((s) => s.slice(0, max));
+/** An ad click id: kept whole or dropped, since a cut one would match no click. */
+const clickId = (max: number) => z.string().trim().transform((s) => (s.length <= max ? s : undefined));
 
 /** Turn on together with a payment choice in BuyBox. */
 const CARD_IN_FORM = false;
@@ -51,16 +55,16 @@ export const placeOrderSchema = z.object({
   sessionId: z.string().max(64).optional(),
   attribution: z
     .object({
-      source: text(60).optional(),
-      medium: text(60).optional(),
-      campaign: text(120).optional(),
-      content: text(120).optional(),
-      landing: text(200).optional(),
+      source: cut(60).optional(),
+      medium: cut(60).optional(),
+      campaign: cut(120).optional(),
+      content: cut(120).optional(),
+      landing: cut(200).optional(),
     })
     .optional(),
   consentAds: z.boolean().optional(),
   ad: z
-    .object({ fbp: text(120).optional(), fbc: text(200).optional(), ttp: text(120).optional(), ttclid: text(200).optional(), gaClientId: text(60).optional() })
+    .object({ fbp: clickId(120).optional(), fbc: clickId(300).optional(), ttp: clickId(120).optional(), ttclid: clickId(300).optional(), gaClientId: clickId(60).optional() })
     .optional(),
   locale: z.enum(["fr", "ar"]).default("ar"),
   /** Where the order was placed: the product page's form, the quick form on a card, the basket, or typed in the back office. Analytics only. */

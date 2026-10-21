@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { KPI_DEFS, funnelSteps, kpiValue, kpis, pendingOf, totalRow, whyMissing, type KpiKey } from "./kpis";
+import { KPI_DEFS, calledOf, funnelSteps, kpiValue, kpis, pendingOf, plural, pluralWord, totalRow, whyMissing, type KpiKey } from "./kpis";
 import { profit } from "../profit";
 import type { AdRow, Baseline, Costs, Funnel, Platform } from "./types";
 
@@ -48,7 +48,10 @@ test("cash-on-delivery quality and money KPIs of a mature campaign", () => {
   assert.equal(k.decided, 60);
   assert.equal(k.final, 60);
   near(k.confirmRate, 50 / 60);
-  near(k.cancelRate, 0.2);
+  // 12 cancelled, but only 10 of the called orders were never confirmed: 2 were confirmed first.
+  near(k.cancelRate, 10 / 60);
+  assert.equal(k.lateCancelled, 2);
+  near(k.lateCancelRate, 2 / 50);
   near(k.deliveryRate, 40 / 48);
   near(k.netDeliveryRate, 40 / 60);
   near(k.openShare, 0);
@@ -105,6 +108,54 @@ test("a young campaign with many open orders gets a projection, labelled as one"
   assert.match(pr.note, /^Projection : 0 livrée \+ 18 en cours, dont environ 12 devraient être livrées/);
   assert.equal(k.marginBasis, "shop", "no delivered order of its own: the shop's margin");
   assert.equal(k.breakEvenCpa, Math.round(35_000 * (expected / 20)));
+});
+
+test("confirmation and cancellation share one base and never add up to more than 100 %", () => {
+  // 40 orders, 5 still pending: 35 called, 30 confirmed, 9 cancelled, of which 4 after being confirmed.
+  const f = funnel({ orders: 40, pending: 5, confirmed: 30, cancelled: 9, open: 5, delivered: 20, back: 6, shipped: 26 });
+  assert.deepEqual(calledOf(f), { decided: 35, confirmed: 30, cancelledAtCall: 5, cancelledLater: 4 });
+  const k = kpis(row(f), costs, baseline);
+  near(k.confirmRate, 30 / 35);
+  near(k.cancelRate, 5 / 35);
+  assert.ok(k.confirmRate! + k.cancelRate! <= 1 + 1e-12);
+  near(k.lateCancelRate, 4 / 30);
+  // Without the pending count, nothing tells a late cancellation apart: all count at the call, still one base.
+  const { pending, ...rest } = f;
+  void pending;
+  const est = kpis(row(rest), costs, baseline);
+  assert.equal(est.lateCancelled, 0);
+  assert.ok(est.confirmRate! + est.cancelRate! <= 1 + 1e-12);
+  assert.ok(KPI_DEFS.cancelRate.help.includes("à part"));
+});
+
+test("orders waiting for a call for more than 48 h: the shop's measured rate, or left out and said so", () => {
+  // The young campaign's 10 pending orders, 4 of them placed more than 48 h ago.
+  const stale = { ...young, funnel: { ...young.funnel, pendingStale: 4 } };
+  const cr = (8 + 14.4) / 30;
+  const measured = kpis(stale, costs, { ...baseline, staleDeliveredRate: 0.2 }).projection!;
+  near(measured.delivered, 8 * 0.8 + 6 * cr * 0.8 + 4 * 0.2, 1e-9);
+  assert.equal(measured.floor, false);
+  assert.match(measured.note, /4 commandes attendent un appel depuis plus de 48 h, comptées à 20 % de livrées/);
+  // No measured rate: they are not counted as fresh orders, the projection is a floor.
+  const unknown = kpis(stale, costs, baseline).projection!;
+  near(unknown.delivered, 8 * 0.8 + 6 * cr * 0.8, 1e-9);
+  assert.equal(unknown.floor, true);
+  assert.match(unknown.note, /laissées hors de la projection faute de taux mesuré pour elles : la projection est un minimum\.$/);
+  // One stale order reads in the singular; without the field every pending order counts as fresh.
+  assert.match(kpis({ ...young, funnel: { ...young.funnel, pendingStale: 1 } }, costs, baseline).projection!.note, /1 commande attend un appel depuis plus de 48 h, laissée hors/);
+  assert.equal(kpis(young, costs, baseline).projection!.floor, false);
+  // The account line sums them only when every row has the count.
+  assert.equal(totalRow([stale, { ...mature, funnel: { ...mature.funnel, pendingStale: 0 } }]).funnel.pendingStale, 4);
+  assert.equal(totalRow([stale, mature]).funnel.pendingStale, undefined);
+});
+
+test("French plurals: the singular under 2", () => {
+  assert.equal(plural(0, "commande", "commandes"), "0 commande");
+  assert.equal(plural(1, "livrée", "livrées"), "1 livrée");
+  assert.equal(plural(1.4, "livrée", "livrées"), "1 livrée");
+  assert.equal(plural(2, "colis est revenu", "colis sont revenus"), "2 colis sont revenus");
+  assert.equal(plural(1234, "commande", "commandes"), `${(1234).toLocaleString("fr-FR")} commandes`);
+  assert.equal(pluralWord(1, "a", "ont"), "a");
 });
 
 test("pending orders are estimated when the field is absent", () => {

@@ -4,7 +4,7 @@ import { deliveryRangeLabel } from "../delivery";
 import { TZ } from "../analytics-range";
 import { JUDGE_MIN_ORDERS, JUDGE_SPEND_MULTIPLE } from "./advisor";
 import { productBreakEvens, type BreakEvenInput } from "./breakeven";
-import { CONFIRM_PRIOR_ORDERS, DELIVERY_PRIOR_PARCELS } from "./kpis";
+import { CONFIRM_PRIOR_ORDERS, DELIVERY_PRIOR_PARCELS, plural } from "./kpis";
 import { shrink, wilson } from "./stats";
 import { suggestAdName } from "./utm";
 
@@ -496,7 +496,7 @@ function focusOf(input: BriefInput): Focus[] {
     out.push({
       key: "confirmation",
       title: "Commandes de ce produit peu confirmées",
-      evidence: `${f.confirmed} confirmées sur ${f.decided} (${pct(confirm.rate)}) contre ${pct(b.confirmRate)} pour la boutique, sur ${f.days} jours.`,
+      evidence: `${plural(f.confirmed, "confirmée", "confirmées")} sur ${f.decided} (${pct(confirm.rate)}) contre ${pct(b.confirmRate)} pour la boutique, sur ${plural(f.days, "jour", "jours")}.`,
       action: "Dites le prix, les frais de livraison et l'appel de confirmation dans la publicité : ceux qui commandent sans intention se retirent d'eux-mêmes.",
     });
   }
@@ -507,7 +507,7 @@ function focusOf(input: BriefInput): Focus[] {
     out.push({
       key: "delivery",
       title: "Beaucoup de colis refusés",
-      evidence: `${f.back} colis revenus sur ${parcels} (${pct(delivered.rate)} livrés) contre ${pct(b.deliveryRate)} pour la boutique.${top ? ` Premier motif : « ${top.reason} » (${top.count}).` : ""}`,
+      evidence: `${plural(f.back, "colis revenu", "colis revenus")} sur ${parcels} (${pct(delivered.rate)} livrés) contre ${pct(b.deliveryRate)} pour la boutique.${top ? ` Premier motif : « ${top.reason} » (${top.count}).` : ""}`,
       action: "La publicité promet sans doute plus que le colis : filmez le vrai produit, sa taille en main et le contenu du colis, et dites le prix livraison comprise.",
     });
   }
@@ -517,7 +517,7 @@ function focusOf(input: BriefInput): Focus[] {
     out.push({
       key: "page",
       title: "La fiche convainc peu",
-      evidence: `${f.formStarts} formulaires commencés pour ${f.visits} visites de la fiche (${pct(page.rate)}), contre ${pct(shopPage)} sur l'ensemble des fiches.`,
+      evidence: `${plural(f.formStarts, "formulaire commencé", "formulaires commencés")} pour ${plural(f.visits, "visite", "visites")} de la fiche (${pct(page.rate)}), contre ${pct(shopPage)} sur l'ensemble des fiches.`,
       action: "Ceux qui cliquent ne s'attendaient pas à ce prix ou à cette offre : annoncez le prix dans la publicité, et testez un pack.",
     });
   }
@@ -525,7 +525,7 @@ function focusOf(input: BriefInput): Focus[] {
     out.push({
       key: "pack",
       title: "Les clients prennent souvent plusieurs articles",
-      evidence: `${f.multiUnitOrders} commandes sur ${f.orders} (${pct(f.multiUnitOrders / f.orders)}) avec 2 articles ou plus.`,
+      evidence: `${plural(f.multiUnitOrders, "commande", "commandes")} sur ${f.orders} (${pct(f.multiUnitOrders / f.orders)}) avec 2 articles ou plus.`,
       action: p.offers.some((o) => o.quantity >= 2) ? "Mettez le pack en avant dans la publicité." : "Créez un pack (2 articles à prix réduit) dans la fiche, puis testez-le en publicité.",
     });
   }
@@ -534,7 +534,7 @@ function focusOf(input: BriefInput): Focus[] {
     out.push({
       key: "control",
       title: "Publicité témoin",
-      evidence: `« ${adLabel(control)} » : ${control.orders} commandes pour ${control.visits} visites de la fiche (${pct(control.orders / control.visits)})${control.delivered ? `, ${control.delivered} livrées` : ""}, sur ${f.days} jours.`,
+      evidence: `« ${adLabel(control)} » : ${plural(control.orders, "commande", "commandes")} pour ${plural(control.visits, "visite", "visites")} de la fiche (${pct(control.orders / control.visits)})${control.delivered ? `, ${plural(control.delivered, "livrée", "livrées")}` : ""}, sur ${plural(f.days, "jour", "jours")}.`,
       action: "Gardez-la active et comparez chaque nouvelle publicité à elle, avec le même budget.",
     });
   }
@@ -542,7 +542,7 @@ function focusOf(input: BriefInput): Focus[] {
     out.push({
       key: "new",
       title: "Pas encore de résultats pour ce produit",
-      evidence: `Aucune visite de la fiche en ${f.days} jours.`,
+      evidence: `Aucune visite de la fiche en ${plural(f.days, "jour", "jours")}.`,
       action: "Lancez 3 angles différents (démonstration, offre, problème) avec le même budget, puis gardez le meilleur.",
     });
   }
@@ -624,12 +624,12 @@ function compliance(input: BriefInput, sh: Shared): string[] {
     "Parlez du produit, pas de la personne : « Vous avez mal au dos ? », « Vous êtes endetté ? » sont refusés par Meta.",
     sh.compare ? `Prix : ${tnd(p.price)}. Prix barré : seulement l'ancien prix réel, ${tnd(sh.compare)}.` : `Prix : ${tnd(p.price)}, sans prix barré (la fiche n'a pas d'ancien prix).`,
     s.delivery
-      ? `Délai : ${deliveryRangeLabel(s.delivery.minDays, s.delivery.maxDays, "fr")}, comme dans les réglages. Jamais « 24 h » si ce n'est pas le délai réel.`
-      : "Aucune zone de livraison active dans les réglages : ne promettez pas de délai.",
+      ? `Délai : ${deliveryRangeLabel(s.delivery.minDays, s.delivery.maxDays, "fr")}, comme dans Paramètres, carte « Livraison ». Jamais « 24 h » si ce n'est pas le délai réel.`
+      : "Aucune zone de livraison active dans Paramètres, carte « Livraison » : ne promettez pas de délai.",
     s.deliveryFee === 0
       ? "Livraison offerte : oui, pour toutes les commandes."
       : `Livraison : ${tnd(s.deliveryFee)}. « Livraison offerte » seulement ${[freeOffer ? `avec l'offre « ${freeOffer.label} »` : null, s.freeThreshold != null ? `dès ${tnd(s.freeThreshold)} d'achat` : null].filter(Boolean).join(" ou ") || "jamais : elle est payante"}.`,
-    s.openBeforePaying ? "Paiement à la livraison, et le client ouvre le colis avant de payer : les deux peuvent être dits." : "Paiement à la livraison : oui. « Ouvrir avant de payer » : non, les réglages ne le permettent pas.",
+    s.openBeforePaying ? "Paiement à la livraison, et le client ouvre le colis avant de payer : les deux peuvent être dits." : "Paiement à la livraison : oui. « Ouvrir avant de payer » : non, ce n'est pas coché dans Paramètres, carte « Livraison ».",
     "Le produit filmé est celui qui part dans le colis : même couleur, même taille, même contenu.",
     "Musique : celle de la bibliothèque commerciale de la plateforme.",
   ];
@@ -665,9 +665,9 @@ function facts(input: BriefInput, sh: Shared, specs: { label: string; value: str
 }
 
 const MISSING_INPUT: Partial<Record<BreakEvenInput, string>> = {
-  unitCost: "le coût fournisseur du produit",
-  carrierCost: "le coût du transporteur par colis (Paramètres)",
-  returnCost: "le coût d'un colis qui revient (Paramètres)",
+  unitCost: "le coût fournisseur du produit (sa fiche, dans Produits)",
+  carrierCost: "le coût du transporteur par colis (Paramètres, carte « Livraison »)",
+  returnCost: "le coût d'un colis qui revient (Paramètres, carte « Livraison »)",
   confirmRate: "un taux de confirmation (aucune commande décidée)",
   deliveryRate: "un taux de livraison (aucun colis livré ou revenu)",
 };
@@ -699,7 +699,7 @@ function tests(input: BriefInput, list: Angle[], c: Ceilings, hero: BriefOffer |
   const unit = c.rows[0];
   const pack = hero ? c.rows.find((r) => r.key === hero.id) : null;
   const out: string[] = [];
-  if (control) out.push(`Témoin : « ${adLabel(control)} » (${control.orders} commandes pour ${control.visits} visites de la fiche). Chaque nouvelle publicité se compare à elle.`);
+  if (control) out.push(`Témoin : « ${adLabel(control)} » (${plural(control.orders, "commande", "commandes")} pour ${plural(control.visits, "visite", "visites")} de la fiche). Chaque nouvelle publicité se compare à elle.`);
   out.push("3 à 5 publicités dans un même ensemble de test, une seule différence chacune. L'accroche d'abord : ce sont les 3 premières secondes qui décident. La plateforme donne plus de budget à celle qu'elle préfère : jugez chacune sur son coût par livrée, pas sur sa part du budget.");
   out.push(`Nommez chaque publicité comme son angle (${list.slice(0, 3).map((a) => a.adName).join(", ")}) et utilisez le lien avec le code du nom de la publicité : l'onglet Créatives les compare tout seul.`);
   if (unit?.maxCostPerDelivered != null && unit.maxCpa != null) {
@@ -748,21 +748,21 @@ export function buildBrief(input: BriefInput): Brief {
     extra.push({ angle: null, visual: "Tous les choix côte à côte ; la main passe de l'un à l'autre.", text: { fr: `Au choix : ${p.variants.map((v) => v.name).join(", ")}`, ar: `متوفّر في: ${ar}` } });
   }
   for (const s of i.performance.searches.slice(0, 2)) {
-    extra.push({ angle: null, visual: `Le mot que tapent les clients (« ${s.q} », ${s.count} recherches), écrit à l'écran, puis le produit.`, text: { fr: s.q, ar: s.q } });
+    extra.push({ angle: null, visual: `Le mot que tapent les clients (« ${s.q} », ${plural(s.count, "recherche", "recherches")}), écrit à l'écran, puis le produit.`, text: { fr: s.q, ar: s.q } });
   }
   extra.push({ angle: null, visual: "« Paiement à la livraison » à l'écran pendant qu'on déballe.", text: { fr: "Vous payez à la réception", ar: "ما تخلّص كان كي يوصلك" } });
 
   const assets: string[] = [];
   if (p.hasVideo) assets.push("Une vidéo est déjà sur la fiche : ses plans peuvent servir de base.");
   if (p.photos >= 3) assets.push(`${p.photos} photos sur la fiche : assez pour un premier carrousel.`);
-  else assets.push(`${p.photos} photo${p.photos > 1 ? "s" : ""} sur la fiche : filmez ou photographiez le produit avant de lancer.`);
+  else assets.push(`${plural(p.photos, "photo", "photos")} sur la fiche : filmez ou photographiez le produit avant de lancer.`);
 
   const missing: string[] = [];
   if (!p.summary.trim()) missing.push("Pas de description courte en français : les textes reprennent seulement le nom et le prix.");
   if (!p.nameAr?.trim() || !p.summaryAr?.trim()) missing.push("Nom ou description courte en arabe manquants : traduisez la fiche, sinon la version derja reprend le nom français.");
   if (c.missing.length) missing.push(`Plafonds de coût incomplets : il manque ${c.missing.join(", ")}.`);
   if (input.reviews.count === 0) missing.push("Aucun avis publié : pas d'angle témoignage pour l'instant.");
-  if (i.performance.visits === 0) missing.push(`Aucune visite de la fiche en ${i.performance.days} jours : le brief ne s'appuie pas encore sur des résultats.`);
+  if (i.performance.visits === 0) missing.push(`Aucune visite de la fiche en ${plural(i.performance.days, "jour", "jours")} : le brief ne s'appuie pas encore sur des résultats.`);
   if (!p.active) missing.push("Le produit n'est pas en ligne : la publicité mènerait à une page introuvable.");
   else if (!p.available) missing.push("Le produit est marqué indisponible : ne lancez pas de publicité avant son retour.");
 

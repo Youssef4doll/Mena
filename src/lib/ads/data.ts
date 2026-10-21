@@ -6,7 +6,8 @@ import { spendInRange } from "../profit";
 import { TZ, tunisDay } from "../analytics-range";
 import { SOURCE_ALIASES, normName, normSource, parseRowKey, rowKey } from "./match";
 import { unitMargin } from "./breakeven";
-import type { AdRow, Baseline, Costs, DayPoint, Funnel, Level, Platform } from "./types";
+import { dayShares } from "./platform-csv";
+import { STALE_PENDING_HOURS, type AdRow, type Baseline, type CallDelayRow, type Costs, type DayPoint, type Funnel, type Level, type Platform } from "./types";
 
 /**
  * What the "Publicités" pages read: the shop's own visits and orders per
@@ -26,6 +27,7 @@ import type { AdRow, Baseline, Costs, DayPoint, Funnel, Level, Platform } from "
  *   dailyByRow(from: Date, to: Date, level: Level, filter?: AdFilter): Promise<Record<string, DayPoint[]>>
  *   daily(from: Date, to: Date, key: string): Promise<DayPoint[]>
  *   breakdowns(from: Date, to: Date, filter?: AdFilter): Promise<Breakdowns>
+ *   callDelay(from: Date, to: Date, filter?: AdFilter): Promise<CallDelayRow[]>   (paid traffic unless filter.paidOnly is false)
  *   customerGrowth(from: Date, to: Date, filter?: AdFilter, now?: Date): Promise<CustomerGrowth>
  *   knownKeys(from: Date, to: Date): Promise<{ campaigns: string[]; ads: string[] }>
  *
@@ -52,6 +54,8 @@ const PAID_MEDIA = ["paid", "cpc", "ppc", "cpm", "cpv", "paid_social", "paidsoci
 const BASELINE_DAYS = 180;
 /** An order this old has had time to be confirmed, shipped and delivered or refused. */
 const MATURE_DAYS = 14;
+/** Below this many orders left waiting that long, the share of them delivered is too unsteady to lean on (one order moves it by 5 points). */
+const STALE_MIN_ORDERS = 20;
 /** Horizons of the revenue per customer (LTV). */
 export const LTV_DAYS = [30, 60, 90] as const;
 
@@ -73,6 +77,17 @@ const CONFIRMED_SQL = `("confirmedAt" IS NOT NULL OR status IN ('CONFIRMED','SUP
 const NOT_ADMIN_SQL = `device IS DISTINCT FROM 'admin'`;
 /** No earlier order (not cancelled) from the same phone: a new customer. Uses the phone index. */
 const NEW_CUSTOMER_SQL = `NOT EXISTS (SELECT 1 FROM "Order" p WHERE p.phone = o.phone AND p.status <> 'CANCELLED' AND (p."createdAt" < o."createdAt" OR (p."createdAt" = o."createdAt" AND p.id < o.id)))`;
+/**
+ * Still waiting for its confirmation STALE_PENDING_HOURS after it was placed:
+ * confirmed later than that, or never confirmed and either still pending or
+ * cancelled later than that. Every way out of PENDING stamps confirmedAt or
+ * cancelledAt, so an order past the confirmation without confirmedAt, or
+ * cancelled without cancelledAt (older rows), is left out: nothing says when.
+ */
+const STALE_AT_SQL = (() => {
+  const late = (col: string) => `"${col}" > "createdAt" + interval '${STALE_PENDING_HOURS} hours'`;
+  return `(${late("confirmedAt")} OR ("confirmedAt" IS NULL AND (status = 'PENDING' OR (status = 'CANCELLED' AND ${late("cancelledAt")}))))`;
+})();
 
 /** The source / campaign / ad columns of a level, as `src, camp, ad` (unused parts are NULL), and the GROUP BY positions. */
 function dimsSql(level: Level, t: string, contentCol = "content") {
@@ -139,17 +154,22 @@ type SpendEntry = {
   purchases: number | null;
   /** Campaign and ad as typed in Ads Manager: the spelling the owner recognises. */
   spelling: { campaign: string | null; ad: string | null };
+  /** Read from an export (it has an import key), and when it was saved: the latest import's spelling is shown. */
+  imported: boolean;
+  savedAt: number;
 };
 
 /** Spend rows that may overlap [from, to) (a row covers at most 92 days), with matched names. */
 async function spendRows(from: Date, to: Date): Promise<SpendEntry[]> {
   const rows = await prisma.adSpend.findMany({
     where: { day: { lt: new Date(`${tunisDay(to)}T00:00:00Z`), gte: new Date(Date.parse(`${tunisDay(from)}T00:00:00Z`) - 92 * DAY) } },
-    select: { day: true, days: true, source: true, campaign: true, ad: true, amount: true, impressions: true, clicks: true, reach: true, purchases: true },
+    select: { day: true, days: true, source: true, campaign: true, ad: true, amount: true, impressions: true, clicks: true, reach: true, purchases: true, importKey: true, createdAt: true },
   });
-  return rows.map((r) => ({
+  return rows.map(({ importKey, createdAt, ...r }) => ({
     ...r,
     day: r.day.toISOString().slice(0, 10),
+    imported: importKey != null,
+    savedAt: createdAt.getTime(),
     source: normSource(r.source),
     campaign: normName(r.campaign),
     ad: normName(r.ad),
@@ -216,7 +236,7 @@ function spendKey(r: SpendEntry, level: Level): string | null {
 // pending is counted, not left to the engine's estimate (orders − confirmed − cancelled), which
 // misses an order confirmed then cancelled and so reads the confirmation rate too low.
 const emptyFunnel = (): Funnel => ({
-  sessions: 0, visitors: 0, productViews: 0, formStarts: 0, orders: 0, confirmed: 0, cancelled: 0, shipped: 0, delivered: 0, back: 0, open: 0, pending: 0,
+  sessions: 0, visitors: 0, productViews: 0, formStarts: 0, orders: 0, confirmed: 0, cancelled: 0, shipped: 0, delivered: 0, back: 0, open: 0, pending: 0, pendingStale: 0,
   revenuePlaced: 0, revenueDelivered: 0, productCostDelivered: 0, costUnknownDelivered: 0, units: 0, multiUnitOrders: 0, newCustomers: 0,
 });
 
@@ -240,10 +260,16 @@ type OrderCounts = { orders: bigint; confirmed: bigint; pending: bigint; cancell
  * attribution, and the platform's figures from the spend rows whose source,
  * campaign and ad match (case does not matter). A campaign that spent with no
  * visit carrying its name is still a row: that is a tracking problem to show.
+ *
+ * pendingStale: orders still PENDING now that were placed more than
+ * STALE_PENDING_HOURS ago. Statuses are today's, so the wait is counted to
+ * now, also for a period that ended earlier: an order of last month still
+ * pending has waited weeks, not hours.
  */
 export async function adRows(from: Date, to: Date, level: Level, filter?: AdFilter): Promise<AdRow[]> {
   const ed = dimsSql(level, "s");
   const od = dimsSql(level, "o");
+  const staleBefore = new Date(Date.now() - STALE_PENDING_HOURS * 3_600_000);
   type Dims = { src: string; camp: string | null; ad: string | null; camp_name: string | null; ad_name: string | null };
   const [visits, orders, spend] = await Promise.all([
     prisma.$queryRaw<(Dims & { sessions: bigint; visitors: bigint; views: bigint; starts: bigint })[]>`
@@ -255,8 +281,9 @@ export async function adRows(from: Date, to: Date, level: Level, filter?: AdFilt
       WHERE true ${ed.need} ${filterSql(filter, "s")}
       GROUP BY ${ed.group}
       LIMIT 2000`,
-    prisma.$queryRaw<(Dims & OrderCounts & { rev_placed: bigint; cost_delivered: bigint; cost_unknown: bigint; units: bigint; multi: bigint; new_customers: bigint })[]>`
+    prisma.$queryRaw<(Dims & OrderCounts & { pending_stale: bigint; rev_placed: bigint; cost_delivered: bigint; cost_unknown: bigint; units: bigint; multi: bigint; new_customers: bigint })[]>`
       SELECT ${od.select}, MIN(btrim(o.campaign)) AS camp_name, MIN(btrim(o.content)) AS ad_name, ${ORDER_COUNTS_SQL},
+        COUNT(*) FILTER (WHERE o.status = 'PENDING' AND o."createdAt" < ${staleBefore}) AS pending_stale,
         COALESCE(SUM(o.total) FILTER (WHERE o.status <> 'CANCELLED'), 0) AS rev_placed,
         COALESCE(SUM(o."costTotal") FILTER (WHERE o.status = 'DELIVERED' AND o."costTotal" IS NOT NULL), 0) AS cost_delivered,
         COUNT(*) FILTER (WHERE o.status = 'DELIVERED' AND o."costTotal" IS NULL) AS cost_unknown,
@@ -302,6 +329,7 @@ export async function adRows(from: Date, to: Date, level: Level, filter?: AdFilt
     f.confirmed += n(o.confirmed);
     f.cancelled += n(o.cancelled);
     f.pending = (f.pending ?? 0) + n(o.pending);
+    f.pendingStale = (f.pendingStale ?? 0) + n(o.pending_stale);
     f.shipped += n(o.shipped);
     f.delivered += n(o.delivered);
     f.back += n(o.back);
@@ -327,10 +355,11 @@ export async function adRows(from: Date, to: Date, level: Level, filter?: AdFilt
     byKey.set(key, [...(byKey.get(key) ?? []), s]);
   }
   for (const list of byKey.values()) {
-    const first = list[0];
-    const r = rowFor(first.source, first.campaign, first.ad);
+    // The spelling of the latest import, over a name typed by hand (often in another case, or with a typo).
+    const named = list.reduce((a, b) => (Number(b.imported) - Number(a.imported) || b.savedAt - a.savedAt) > 0 ? b : a);
+    const r = rowFor(named.source, named.campaign, named.ad);
     r.platform = platformOf(list, fromDay, toDay);
-    r.names.spend = first.spelling;
+    r.names.spend = named.spelling;
   }
 
   return [...rows.values()]
@@ -356,13 +385,19 @@ export async function adRows(from: Date, to: Date, level: Level, filter?: AdFilt
  * order whose product cost is known, minus the carrier and return costs of
  * the parcels sent per delivered one. A row with no delivered order yet is
  * then judged on this margin instead of the account's average cost.
+ *
+ * staleDeliveredRate: over the same orders as the net delivery rate (placed
+ * at least 14 days before `to`), those still waiting for their confirmation
+ * STALE_PENDING_HOURS after being placed (STALE_AT_SQL), and the share of
+ * them now DELIVERED; one still open counts as not delivered, as in the net
+ * rate. Null below STALE_MIN_ORDERS such orders.
  */
 export async function baseline(to: Date = new Date(), costs?: Costs): Promise<Baseline> {
   const since = new Date(to.getTime() - BASELINE_DAYS * DAY);
   const mature = new Date(to.getTime() - MATURE_DAYS * DAY);
   const [b] = await prisma.$queryRaw<
     {
-      orders: bigint; confirmed: bigint; decided: bigint; delivered: bigint; back: bigint; mature: bigint; mature_delivered: bigint; placed: bigint; not_cancelled: bigint; days_to_deliver: number | null;
+      orders: bigint; confirmed: bigint; decided: bigint; delivered: bigint; back: bigint; mature: bigint; mature_delivered: bigint; stale: bigint; stale_delivered: bigint; placed: bigint; not_cancelled: bigint; days_to_deliver: number | null;
       costed: bigint; costed_revenue: bigint; costed_cost: bigint;
     }[]
   >`
@@ -373,6 +408,8 @@ export async function baseline(to: Date = new Date(), costs?: Costs): Promise<Ba
       COUNT(*) FILTER (WHERE status IN ('REFUSED','RETURNED')) AS back,
       COUNT(*) FILTER (WHERE "createdAt" < ${mature}) AS mature,
       COUNT(*) FILTER (WHERE "createdAt" < ${mature} AND status = 'DELIVERED') AS mature_delivered,
+      COUNT(*) FILTER (WHERE "createdAt" < ${mature} AND ${Prisma.raw(STALE_AT_SQL)}) AS stale,
+      COUNT(*) FILTER (WHERE "createdAt" < ${mature} AND ${Prisma.raw(STALE_AT_SQL)} AND status = 'DELIVERED') AS stale_delivered,
       COALESCE(SUM(total) FILTER (WHERE status <> 'CANCELLED'), 0) AS placed,
       COUNT(*) FILTER (WHERE status <> 'CANCELLED') AS not_cancelled,
       AVG(EXTRACT(EPOCH FROM ("deliveredAt" - "createdAt")) / 86400) FILTER (WHERE "deliveredAt" IS NOT NULL) AS days_to_deliver,
@@ -389,6 +426,7 @@ export async function baseline(to: Date = new Date(), costs?: Costs): Promise<Ba
     confirmRate: rate(b.confirmed, b.decided),
     deliveryRate,
     netDeliveryRate: rate(b.mature_delivered, b.mature),
+    staleDeliveredRate: n(b.stale) >= STALE_MIN_ORDERS ? n(b.stale_delivered) / n(b.stale) : null,
     aov: n(b.not_cancelled) > 0 ? Math.round(n(b.placed) / n(b.not_cancelled)) : null,
     daysToDeliver: b.days_to_deliver == null ? null : Math.round(Number(b.days_to_deliver) * 10) / 10,
     // Null: no delivered order with a known product cost, or a carrier or return cost not given.
@@ -460,27 +498,30 @@ export async function dailyByRow(from: Date, to: Date, level: Level, filter?: Ad
     p.orders += n(o.orders);
     p.delivered += n(o.delivered);
   }
-  // Per day and key: the covering rows' share of that day; a count is null when one covering row lacks it.
+  // Per day and key: the covering rows' share of that day (spread so a row's days add up to what adRows
+  // counts for it in the period); a count is null when one covering row lacks it.
+  const fromDay = tunisDay(from);
+  const toDay = tunisDay(to);
   const missing = new Map<string, Set<"impressions" | "clicks">>();
   for (const s of spend) {
     if (!spendMatches(s, filter)) continue;
     const key = spendKey(s, level);
     if (!key) continue;
-    for (let k = 0; k < s.days; k++) {
-      const d = new Date(Date.parse(`${s.day}T00:00:00Z`) + k * DAY).toISOString().slice(0, 10);
+    const share = (v: number | null) => (v == null ? null : new Map(dayShares(v, s, fromDay, toDay).map((x) => [x.day, x.value])));
+    const shares = { impressions: share(s.impressions), clicks: share(s.clicks) };
+    for (const { day: d, value } of dayShares(s.amount, s, fromDay, toDay)) {
       const i = index.get(d);
       if (i == null) continue;
-      const next = new Date(Date.parse(`${d}T00:00:00Z`) + DAY).toISOString().slice(0, 10);
       const p = seriesFor(key)[i];
-      p.spend = (p.spend ?? 0) + spendInRange(s, d, next);
+      p.spend = (p.spend ?? 0) + value;
       for (const m of ["impressions", "clicks"] as const) {
-        const v = s[m];
+        const v = shares[m]?.get(d);
         const gap = `${key}\u0000${d}`;
         if (v == null) {
           missing.set(gap, (missing.get(gap) ?? new Set()).add(m));
           p[m] = null;
         } else if (!missing.get(gap)?.has(m)) {
-          p[m] = (p[m] ?? 0) + spendInRange({ day: s.day, days: s.days, amount: v }, d, next);
+          p[m] = (p[m] ?? 0) + v;
         }
       }
     }
@@ -585,6 +626,45 @@ export async function breakdowns(from: Date, to: Date, filter?: AdFilter): Promi
       return { hour: h, calls: n(c?.calls), reached: n(c?.reached), confirmed: n(c?.confirmed) };
     }),
   };
+}
+
+/** The delay buckets of callDelay, in order, with what the owner reads. */
+const CALL_DELAYS: { bucket: CallDelayRow["bucket"]; label: string }[] = [
+  { bucket: "1h", label: "moins d'1 h" },
+  { bucket: "4h", label: "1 à 4 h" },
+  { bucket: "24h", label: "4 à 24 h" },
+  { bucket: "later", label: "plus de 24 h" },
+  { bucket: "never", label: "sans appel noté" },
+];
+
+/**
+ * Confirmation by how soon the first call came: orders of the period that
+ * are no longer pending, by the time from the order to its first logged call
+ * (under 1 h, 1 to 4 h, 4 to 24 h, over 24 h, or no call logged), with how
+ * many were confirmed. Only calls made by the time the order was confirmed
+ * or cancelled count: an order confirmed without a logged call, then called a
+ * day later about its delivery, was decided without a call. Ad traffic only
+ * (as adRows counts it, back-office orders left out) unless the filter says
+ * paidOnly: false. The five buckets always come back, in that order, with
+ * their measured zero.
+ */
+export async function callDelay(from: Date, to: Date, filter?: AdFilter): Promise<CallDelayRow[]> {
+  const rows = await prisma.$queryRaw<{ bucket: CallDelayRow["bucket"]; orders: bigint; confirmed: bigint }[]>`
+    SELECT CASE WHEN c.first_at IS NULL THEN 'never'
+        WHEN c.first_at < o."createdAt" + interval '1 hour' THEN '1h'
+        WHEN c.first_at < o."createdAt" + interval '4 hours' THEN '4h'
+        WHEN c.first_at < o."createdAt" + interval '24 hours' THEN '24h'
+        ELSE 'later' END AS bucket,
+      COUNT(*) AS orders, COUNT(*) FILTER (WHERE ${Prisma.raw(CONFIRMED_SQL)}) AS confirmed
+    FROM "Order" o
+    LEFT JOIN LATERAL (
+      SELECT MIN(oc."createdAt") AS first_at FROM "OrderCall" oc
+      WHERE oc."orderId" = o.id AND oc."createdAt" <= COALESCE(o."confirmedAt", o."cancelledAt", 'infinity')
+    ) c ON true
+    WHERE o."createdAt" >= ${from} AND o."createdAt" < ${to} AND o.status <> 'PENDING' AND ${Prisma.raw(`o.${NOT_ADMIN_SQL}`)} ${filterSql({ ...filter, paidOnly: filter?.paidOnly ?? true }, "o")}
+    GROUP BY 1`;
+  const by = new Map(rows.map((r) => [r.bucket, r]));
+  return CALL_DELAYS.map(({ bucket, label }) => ({ bucket, label, orders: n(by.get(bucket)?.orders), confirmed: n(by.get(bucket)?.confirmed) }));
 }
 
 // ------------------------------------------------------------------ customers

@@ -156,7 +156,7 @@ test("ceilings from the product's rates pulled toward the shop's, labelled as an
   assert.equal(b.ceilings.rows[1].label, "2 lampes");
   assert.ok(b.tests.some((t) => t.includes("estimation")));
   const noCost = buildBrief({ ...lamp, product: { ...lamp.product, cost: null }, shop: { ...lamp.shop, carrierPerParcel: null } });
-  assert.deepEqual(noCost.ceilings.missing, ["le coût fournisseur du produit", "le coût du transporteur par colis (Paramètres)"]);
+  assert.deepEqual(noCost.ceilings.missing, ["le coût fournisseur du produit (sa fiche, dans Produits)", "le coût du transporteur par colis (Paramètres, carte « Livraison »)"]);
   assert.ok(noCost.tests.some((t) => t.startsWith("Plafond de coût inconnu")));
 });
 
@@ -207,6 +207,19 @@ test("copyWarnings catches what an ad must not say", () => {
   assert.deepEqual(w("Livraison gratuite, ouvrez avant de payer", strict), ["« Gratuit » ou « offert » sans offre réelle.", "« Ouvrir avant de payer » alors que les réglages ne le permettent pas."]);
   assert.deepEqual(w("التوصيل بلاش", strict), ["« Gratuit » ou « offert » sans offre réelle."]);
   assert.deepEqual(w("-30 % aujourd'hui"), ["Pourcentage que la fiche ne donne pas."]);
+});
+
+test("counts of one read in the singular, and the settings are named where they are typed", () => {
+  // One confirmed order out of 20 called, one parcel back, one photo, one day.
+  const one = buildBrief({ ...lamp, product: { ...lamp.product, photos: 1 }, performance: { ...lamp.performance, days: 1, confirmed: 1, decided: 20, delivered: 1, back: 14 } });
+  const confirm = one.focus.find((f) => f.key === "confirmation")!;
+  assert.match(confirm.evidence, /^1 confirmée sur 20 \(5 %\) contre 75 % pour la boutique, sur 1 jour\.$/);
+  assert.match(one.focus.find((f) => f.key === "delivery")!.evidence, /^14 colis revenus sur 15/);
+  assert.ok(one.assets.includes("1 photo sur la fiche : filmez ou photographiez le produit avant de lancer."));
+  const strict = buildBrief({ ...lamp, shop: { ...lamp.shop, openBeforePaying: false } });
+  assert.ok(strict.compliance.some((c) => c.includes("Paramètres, carte « Livraison »")));
+  const texts = [...one.focus.flatMap((f) => [f.evidence, f.action]), ...one.tests, ...one.missing, ...one.assets, ...strict.compliance];
+  for (const t of texts) assert.doesNotMatch(t, /\(s\)|\b1 (commandes|livrées|visites|jours|confirmées|recherches)\b|Réglages|rubrique/, t);
 });
 
 test("text helpers", () => {

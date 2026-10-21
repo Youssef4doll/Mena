@@ -5,15 +5,16 @@ import { useEffect, useMemo, useState, useTransition } from "react";
 import { formatTND } from "@/lib/money";
 import { decodeText, readPlatformExport, type ExportOptions, type ExportRow, type PlatformExport } from "@/lib/ads/platform-csv";
 import { rowKey } from "@/lib/ads/match";
-import { importAdSpend, type ImportResult } from "../import-actions";
+import { importAdSpend, previewImport, type ImportResult } from "../import-actions";
 import { exportKnownKeys } from "./actions";
 import { Badge, Card, btn, input, label } from "@/components/admin/ui";
 
 /**
  * The import, step by step: a file (or text pasted from the export), the
  * preview read in the browser with what was skipped and why, which
- * campaigns and ads the site already saw on those days, then the import and
- * its result. Nothing is saved before the button.
+ * campaigns and ads the site already saw on those days and which rows
+ * already imported the file replaces, then the import and its result.
+ * Nothing is saved before the button.
  */
 
 /** Rows shown in the preview table; the import takes them all. */
@@ -23,11 +24,16 @@ const CURRENCIES = ["TND", "EUR", "USD"];
 const PLATFORM_LABEL = { meta: "Meta", tiktok: "TikTok" } as const;
 
 type Known = { range: string; campaigns: Set<string>; ads: Set<string> } | { range: string; error: string };
+/** What the import would do to the spend already saved, for one reading of the file. */
+type Plan = { exp: PlatformExport; replaced: number; warning: string | null } | { exp: PlatformExport; error: string };
 
 const int = (v: number | null) => (v == null ? "—" : v.toLocaleString("fr-FR"));
 /** "2026-09-03" → "3/9/2026", the way the rest of the back office writes a day. */
 const dayText = (d: string | null) => (d ? d.split("-").reverse().map((x, i) => (i < 2 ? String(Number(x)) : x)).join("/") : "—");
 const plural = (n: number, one: string, many: string) => `${n.toLocaleString("fr-FR")} ${n > 1 ? many : one}`;
+/** The rows as the server takes them (the preview's line numbers stay here). */
+const spendRows = (exp: PlatformExport) =>
+  exp.rows.map((r) => ({ day: r.day, days: r.days, source: r.source, campaign: r.campaign, adSet: r.adSet, ad: r.ad, account: r.account, amount: r.amount, impressions: r.impressions, clicks: r.clicks, reach: r.reach, purchases: r.purchases }));
 
 export function ExportImport() {
   const [text, setText] = useState<string | null>(null);
@@ -37,6 +43,7 @@ export function ExportImport() {
   const [currency, setCurrency] = useState("");
   const [rate, setRate] = useState("");
   const [known, setKnown] = useState<Known | null>(null);
+  const [plan, setPlan] = useState<Plan | null>(null);
   const [result, setResult] = useState<ImportResult | null>(null);
   const [saving, start] = useTransition();
 
@@ -61,6 +68,19 @@ export function ExportImport() {
   }, [range]);
   const knownNow = known && known.range === range ? known : null;
 
+  // Rows already imported that this file would replace, or leave on the same days: asked again for each reading.
+  useEffect(() => {
+    if (!exp || exp.error || exp.rows.length === 0) return;
+    let live = true;
+    previewImport({ rows: spendRows(exp) })
+      .then((r) => live && setPlan(r.ok ? { exp, replaced: r.replaced, warning: r.warning } : { exp, error: r.error }))
+      .catch(() => live && setPlan({ exp, error: "Lignes déjà importées introuvables : vérifiez la connexion." }));
+    return () => {
+      live = false;
+    };
+  }, [exp]);
+  const planNow = plan && plan.exp === exp ? plan : null;
+
   async function pick(file: File | undefined) {
     if (!file) return;
     setResult(null);
@@ -70,7 +90,7 @@ export function ExportImport() {
 
   function save() {
     if (!exp || exp.error || exp.rows.length === 0) return;
-    const rows = exp.rows.map((r) => ({ day: r.day, days: r.days, source: r.source, campaign: r.campaign, adSet: r.adSet, ad: r.ad, amount: r.amount, impressions: r.impressions, clicks: r.clicks, reach: r.reach, purchases: r.purchases }));
+    const rows = spendRows(exp);
     const note = `Import ${exp.platform ? PLATFORM_LABEL[exp.platform] : ""} ${fileName || "texte collé"}`.replace(/\s+/g, " ").trim().slice(0, 200);
     start(async () => {
       try {
@@ -153,7 +173,7 @@ export function ExportImport() {
         </details>
       </Card>
 
-      {exp && <Preview exp={exp} known={knownNow} loadingKnown={range != null && knownNow == null} saved={result?.ok === true} />}
+      {exp && <Preview exp={exp} known={knownNow} loadingKnown={range != null && knownNow == null} plan={planNow} saved={result?.ok === true} />}
 
       {exp && !exp.error && exp.rows.length > 0 && (
         <Card title="3. Importer">
@@ -192,8 +212,8 @@ export function ExportImport() {
   );
 }
 
-/** What the file says, before anything is saved: totals, what was skipped and why, and the rows with their match. */
-function Preview({ exp, known, loadingKnown, saved }: { exp: PlatformExport; known: Known | null; loadingKnown: boolean; saved: boolean }) {
+/** What the file says, before anything is saved: totals, the rows it replaces, what was skipped and why, and the rows with their match. */
+function Preview({ exp, known, loadingKnown, plan, saved }: { exp: PlatformExport; known: Known | null; loadingKnown: boolean; plan: Plan | null; saved: boolean }) {
   if (exp.error) {
     return (
       <Card title="2. Aperçu">
@@ -227,6 +247,25 @@ function Preview({ exp, known, loadingKnown, saved }: { exp: PlatformExport; kno
         <div><dt className="text-xs text-muted">Dépense</dt><dd className="font-semibold tabular-nums text-ink">{formatTND(exp.total.amount)}</dd><dd className="text-xs text-muted">{exp.currency !== "TND" ? `converti de ${exp.currency}` : "TND"}</dd></div>
         <div><dt className="text-xs text-muted">Jours couverts</dt><dd className="font-semibold tabular-nums text-ink">{exp.total.from === exp.total.to ? dayText(exp.total.from) : `${dayText(exp.total.from)} → ${dayText(exp.total.to)}`}</dd><dd className="text-xs text-muted">{plural(exp.rows.length, "ligne", "lignes")}</dd></div>
       </dl>
+
+      {!saved && (
+        <div className="mt-3 text-sm" role="status">
+          {plan == null ? (
+            <p className="text-muted">Recherche des lignes déjà importées sur ces jours…</p>
+          ) : "error" in plan ? (
+            <p className="text-danger">{plan.error}</p>
+          ) : (
+            <>
+              <p className="text-ink-2">
+                {plan.replaced > 0
+                  ? `${plural(plan.replaced, "ligne", "lignes")} d'un import précédent ${plan.replaced > 1 ? "seront remplacées" : "sera remplacée"} : même campagne, et tous leurs jours sont dans ce fichier.`
+                  : "Aucune ligne déjà importée ne sera remplacée."}
+              </p>
+              {plan.warning && <p className="mt-1 text-[#8a5a00]">{plan.warning}</p>}
+            </>
+          )}
+        </div>
+      )}
 
       {exp.warnings.length > 0 && (
         <ul className="mt-3 flex flex-col gap-1 text-sm text-[#8a5a00]">
@@ -316,6 +355,8 @@ function Preview({ exp, known, loadingKnown, saved }: { exp: PlatformExport; kno
 }
 
 const FIELD_LABEL: Record<string, string> = {
+  accountId: "Compte (identifiant)",
+  accountName: "Compte",
   day: "Jour",
   starts: "Début",
   ends: "Fin",

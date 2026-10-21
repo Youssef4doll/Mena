@@ -1,7 +1,7 @@
 import { profit } from "../profit";
 import { unitMargin } from "./breakeven";
 import { shrink } from "./stats";
-import type { AdRow, Baseline, Costs, Funnel, Level, Platform } from "./types";
+import { STALE_PENDING_HOURS, type AdRow, type Baseline, type Costs, type Funnel, type Level, type Platform } from "./types";
 
 /**
  * Every number a media buyer reads for one row (a source, a campaign or an
@@ -18,10 +18,12 @@ import type { AdRow, Baseline, Costs, Funnel, Level, Platform } from "./types";
  *   kpis(row, costs, baseline, opts?) → Kpis
  *   totalRow(rows, key?)         → AdRow       sum of rows (a platform count only when every row that spent has it)
  *   pendingOf(funnel)            → number      orders still waiting for their call
+ *   calledOf(funnel)             → { decided, confirmed, cancelledAtCall, cancelledLater }   one base for confirmation and cancellation
  *   funnelSteps(row)             → FunnelStep[] impressions → … → delivered, with the rate from the step before
  *   kpiValue(k, key)             → number | null
  *   whyMissing(k, key)           → Input[]     the missing inputs that leave this KPI empty
  *   KPI_DEFS, INPUT_LABELS       French labels, one-line explanations, units
+ *   plural(n, one, many)         → "0 commande", "1 livrée", "12 commandes"   (pluralWord: the word alone)
  */
 
 /** Virtual called orders a row's confirmation rate is pulled toward the shop's with: under ~20 calls the shop's rate weighs more. */
@@ -30,6 +32,11 @@ export const CONFIRM_PRIOR_ORDERS = 20;
 export const DELIVERY_PRIOR_PARCELS = 20;
 /** Delivered orders a row's own margin needs before it outweighs the shop's margin. */
 export const MARGIN_PRIOR_DELIVERED = 5;
+
+/** The French form for a count: the singular under 2 ("0 commande", "1 livrée"), the plural from 2. */
+export const pluralWord = (n: number, one: string, many: string): string => (Math.abs(Math.round(n)) < 2 ? one : many);
+/** A count and its noun, rounded and spaced the French way: "0 commande", "1 livrée", "1 234 commandes". */
+export const plural = (n: number, one: string, many: string): string => `${Math.round(n).toLocaleString("fr-FR")} ${pluralWord(n, one, many)}`;
 
 /** Inputs whose absence leaves a KPI empty. */
 export type Input = "spend" | "impressions" | "clicks" | "reach" | "purchases" | "productCost" | "carrierCost" | "returnCost" | "baseline";
@@ -49,6 +56,12 @@ export const INPUT_LABELS: Record<Input, string> = {
 export type Projection = {
   /** Delivered + open orders × their chance of ending delivered. Not an integer. */
   delivered: number;
+  /**
+   * True when orders pending for more than STALE_PENDING_HOURS were left out
+   * because the shop has no measured rate for them: the projected deliveries
+   * are a minimum.
+   */
+  floor: boolean;
   costPerDelivered: number | null;
   /** Projected delivered / placed orders. */
   netDeliveryRate: number | null;
@@ -85,9 +98,18 @@ export type Kpis = {
   pending: number;
   decided: number;
   final: number;
-  /** Over the orders whose call is done. */
+  /** Orders confirmed by phone and cancelled afterwards, before shipping. */
+  lateCancelled: number;
+  /**
+   * Over the orders whose call is done, one base for both: confirmed, or
+   * cancelled without ever being confirmed. They add up to at most 100 %; an
+   * order confirmed then cancelled counts in the confirmation only, and again
+   * in lateCancelRate.
+   */
   confirmRate: number | null;
   cancelRate: number | null;
+  /** Confirmed orders cancelled before shipping, over the confirmed orders. */
+  lateCancelRate: number | null;
   /** Delivered / (delivered + back). */
   deliveryRate: number | null;
   /** Delivered / final orders (cancelled, delivered or back). */
@@ -129,6 +151,19 @@ export function pendingOf(f: Funnel): number {
   return Math.max(0, Math.min(f.open, f.orders - f.confirmed - f.cancelled));
 }
 
+/**
+ * The orders whose call is done, split once: confirmed, or cancelled at the
+ * call (never confirmed). A called order that was not confirmed was cancelled,
+ * so cancellations beyond those were confirmed first and cancelled later.
+ * Without the pending count none can be told apart: all count at the call.
+ */
+export function calledOf(f: Funnel): { decided: number; confirmed: number; cancelledAtCall: number; cancelledLater: number } {
+  const decided = Math.max(0, f.orders - pendingOf(f));
+  const confirmed = Math.min(f.confirmed, decided);
+  const cancelledAtCall = Math.min(f.cancelled, decided - confirmed);
+  return { decided, confirmed, cancelledAtCall, cancelledLater: Math.max(0, f.cancelled - cancelledAtCall) };
+}
+
 /** What the caller knows beyond the row: the account's own margin, and when the platforms are told about a purchase. */
 export type KpiOptions = {
   /**
@@ -158,7 +193,8 @@ export function kpis(row: AdRow, costs: Costs, baseline: Baseline | null, opts: 
   if (p.purchases == null) missing.push("purchases");
 
   const pending = pendingOf(f);
-  const decided = Math.max(0, f.orders - pending);
+  const called = calledOf(f);
+  const decided = called.decided;
   const final = Math.max(0, f.orders - f.open);
   const parcelsFinal = f.delivered + f.back;
   const kept = f.orders - f.cancelled;
@@ -196,7 +232,7 @@ export function kpis(row: AdRow, costs: Costs, baseline: Baseline | null, opts: 
     marginBasis = fromShop ? "shop" : "account";
   }
 
-  const projection = project(f, pending, confirmExpect, deliveryExpect, spend, marginPerDelivered);
+  const projection = project(f, pending, confirmExpect, deliveryExpect, baseline?.staleDeliveredRate ?? null, spend, marginPerDelivered);
   if (projection == null && f.open > 0) missing.push("baseline");
 
   const pr = profit({
@@ -229,8 +265,10 @@ export function kpis(row: AdRow, costs: Costs, baseline: Baseline | null, opts: 
     pending,
     decided,
     final,
-    confirmRate: ratio(f.confirmed, decided),
-    cancelRate: ratio(f.cancelled, decided),
+    lateCancelled: called.cancelledLater,
+    confirmRate: ratio(called.confirmed, decided),
+    cancelRate: ratio(called.cancelledAtCall, decided),
+    lateCancelRate: ratio(called.cancelledLater, f.confirmed),
     deliveryRate: ratio(f.delivered, parcelsFinal),
     netDeliveryRate: ratio(f.delivered, final),
     openShare: ratio(f.open, f.orders),
@@ -258,24 +296,36 @@ export function kpis(row: AdRow, costs: Costs, baseline: Baseline | null, opts: 
 
 /**
  * Open orders that already passed their call end delivered at the delivery
- * rate; those still waiting must first be confirmed. Null when an open order
- * exists and no rate is known, neither the row's nor the shop's.
+ * rate; those still waiting must first be confirmed. Orders waiting for more
+ * than STALE_PENDING_HOURS end delivered far less often: they count at the
+ * shop's measured rate for them, or not at all when it is unknown (the
+ * projection is then a minimum, and the note says so). Null when an open
+ * order needs a rate nobody knows, neither the row's nor the shop's.
  */
-function project(f: Funnel, pending: number, cr: number | null, dr: number | null, spend: number | null, margin: number | null): Projection | null {
+function project(f: Funnel, pending: number, cr: number | null, dr: number | null, staleRate: number | null, spend: number | null, margin: number | null): Projection | null {
   if (f.orders === 0) return null;
   const afterCall = Math.max(0, f.open - pending);
-  if (f.open > 0 && (dr == null || (pending > 0 && cr == null))) return null;
-  const expected = f.open === 0 ? 0 : afterCall * (dr ?? 0) + pending * (cr ?? 0) * (dr ?? 0);
+  const stale = Math.min(pending, Math.max(0, f.pendingStale ?? 0));
+  const fresh = pending - stale;
+  if (((afterCall > 0 || fresh > 0) && dr == null) || (fresh > 0 && cr == null)) return null;
+  const expected = afterCall * (dr ?? 0) + fresh * (cr ?? 0) * (dr ?? 0) + stale * (staleRate ?? 0);
   const delivered = f.delivered + expected;
   const projected = f.open > 0;
+  const floor = stale > 0 && staleRate == null;
   const pct = (x: number | null) => (x == null ? "—" : `${Math.round(x * 100)} %`);
-  // French takes the singular under 2: "0 livrée", "1 devrait être livrée".
-  const many = (n: number, one: string, other: string) => `${n} ${n < 2 ? one : other}`;
+  const waiting = `${plural(stale, "commande attend", "commandes attendent")} un appel depuis plus de ${STALE_PENDING_HOURS} h`;
+  const staleNote =
+    stale === 0
+      ? ""
+      : staleRate != null
+        ? ` ${waiting}, ${pluralWord(stale, "comptée", "comptées")} à ${pct(staleRate)} de livrées, ce que la boutique mesure pour ces commandes.`
+        : ` ${waiting}, ${pluralWord(stale, "laissée", "laissées")} hors de la projection faute de taux mesuré pour elles : la projection est un minimum.`;
   const note = projected
-    ? `Projection : ${many(f.delivered, "livrée", "livrées")} + ${f.open} en cours, dont environ ${many(Math.round(expected), "devrait être livrée", "devraient être livrées")} (confirmation ${pct(cr)}, livraison ${pct(dr)} : taux de la ligne ajustés sur ceux de la boutique).`
+    ? `Projection : ${plural(f.delivered, "livrée", "livrées")} + ${f.open} en cours, dont environ ${plural(expected, "devrait être livrée", "devraient être livrées")} (confirmation ${pct(cr)}, livraison ${pct(dr)} : taux de ces commandes, rapprochés de ceux de la boutique).${staleNote}`
     : "Toutes les commandes sont terminées : chiffres réels, pas de projection.";
   return {
     delivered,
+    floor,
     costPerDelivered: spend != null && delivered > 0 ? Math.round(spend / delivered) : null,
     netDeliveryRate: delivered / f.orders,
     confirmExpect: cr,
@@ -303,7 +353,10 @@ const PLATFORM_KEYS = ["spend", "impressions", "clicks", "reach", "purchases"] a
  */
 export function totalRow(rows: AdRow[], key = "total", level: Level = "source"): AdRow {
   const funnel = Object.fromEntries(FUNNEL_KEYS.map((k) => [k, rows.reduce((s, r) => s + r.funnel[k], 0)])) as Funnel;
-  if (rows.length > 0 && rows.every((r) => r.funnel.pending != null)) funnel.pending = rows.reduce((s, r) => s + (r.funnel.pending ?? 0), 0);
+  // Optional counts are summed only when every row has them: one missing would make the sum a guess.
+  for (const k of ["pending", "pendingStale"] as const) {
+    if (rows.length > 0 && rows.every((r) => r.funnel[k] != null)) funnel[k] = rows.reduce((s, r) => s + (r.funnel[k] ?? 0), 0);
+  }
   const platform = Object.fromEntries(
     PLATFORM_KEYS.map((k) => {
       const known = rows.map((r) => r.platform[k]).filter((v): v is number => v != null);
@@ -336,7 +389,7 @@ export function funnelSteps(row: AdRow): FunnelStep[] {
   });
 }
 
-export type KpiKey = Exclude<keyof Kpis, "missing" | "projection" | "marginBasis" | "pending" | "decided" | "final"> | "projectedDelivered" | "projectedCpd" | "projectedContribution";
+export type KpiKey = Exclude<keyof Kpis, "missing" | "projection" | "marginBasis" | "pending" | "decided" | "final" | "lateCancelled"> | "projectedDelivered" | "projectedCpd" | "projectedContribution";
 
 export type KpiDef = {
   label: string;
@@ -360,8 +413,9 @@ export const KPI_DEFS: Record<KpiKey, KpiDef> = {
   formStartRate: { label: "Formulaire commencé", help: "Part des fiches vues où le visiteur commence à remplir la commande.", unit: "rate", better: "higher", needs: [] },
   formCompletion: { label: "Formulaire fini", help: "Part des formulaires commencés qui deviennent une commande.", unit: "rate", better: "higher", needs: [] },
   orderRate: { label: "Taux de commande", help: "Commandes pour 100 visites (CVR).", unit: "rate", better: "higher", needs: [] },
-  confirmRate: { label: "Confirmation", help: "Part des commandes déjà appelées qui sont confirmées au téléphone.", unit: "rate", better: "higher", needs: [] },
-  cancelRate: { label: "Annulation", help: "Part des commandes déjà appelées qui sont annulées avant l'envoi.", unit: "rate", better: "lower", needs: [] },
+  confirmRate: { label: "Confirmation", help: "Part des commandes déjà appelées qui sont confirmées au téléphone. Avec l'annulation, elle fait au plus 100 %.", unit: "rate", better: "higher", needs: [] },
+  cancelRate: { label: "Annulation", help: "Part des commandes déjà appelées qui sont annulées sans avoir été confirmées. Les annulations après confirmation sont comptées à part.", unit: "rate", better: "lower", needs: [] },
+  lateCancelRate: { label: "Annulées après confirmation", help: "Part des commandes confirmées au téléphone puis annulées avant l'envoi.", unit: "rate", better: "lower", needs: [] },
   deliveryRate: { label: "Livraison", help: "Colis livrés sur les colis arrivés au bout (livrés ou revenus).", unit: "rate", better: "higher", needs: [] },
   netDeliveryRate: { label: "Livrées sur commandes", help: "Commandes livrées sur les commandes terminées : ce qui reste après annulations et refus.", unit: "rate", better: "higher", needs: [] },
   openShare: { label: "En cours", help: "Part des commandes pas encore terminées : les chiffres de livraison vont encore bouger.", unit: "rate", better: null, needs: [] },
@@ -381,7 +435,7 @@ export const KPI_DEFS: Record<KpiKey, KpiDef> = {
   breakEvenCpa: { label: "CPA max", help: "Coût max par commande passée, une fois les annulations et les refus comptés.", unit: "money", better: null, needs: ["productCost", "carrierCost", "returnCost"] },
   breakEvenRoas: { label: "ROAS minimum", help: "ROAS livré en dessous duquel la publicité perd de l'argent.", unit: "multiple", better: null, needs: ["productCost", "carrierCost", "returnCost"] },
   overReporting: { label: "Achats plateforme par commande", help: "Achats comptés par Meta ou TikTok pour 1 commande réelle (passée, confirmée ou livrée, selon le moment où l'achat leur est envoyé). Au-dessus de 1, la plateforme s'attribue des ventes qui n'existent pas.", unit: "multiple", better: null, needs: ["purchases"] },
-  projectedDelivered: { label: "Livrées (projection)", help: "Livrées + commandes en cours × leur chance d'être livrées. Une projection, pas un résultat.", unit: "number", better: "higher", needs: ["baseline"] },
+  projectedDelivered: { label: "Livrées (projection)", help: `Livrées + commandes en cours × leur chance d'être livrées. Une projection, pas un résultat. Les commandes qui attendent un appel depuis plus de ${STALE_PENDING_HOURS} h comptent au taux que la boutique mesure pour elles, ou pas du tout s'il n'est pas connu.`, unit: "number", better: "higher", needs: ["baseline"] },
   projectedCpd: { label: "Coût par livrée (projection)", help: "Dépense divisée par les livrées projetées : le coût attendu quand les commandes en cours seront terminées.", unit: "money", better: "lower", needs: ["spend", "baseline"] },
   projectedContribution: { label: "Résultat après pub (projection)", help: "Livrées projetées × marge par livrée − dépense.", unit: "money", better: "higher", needs: ["spend", "baseline", "productCost", "carrierCost", "returnCost"] },
 };

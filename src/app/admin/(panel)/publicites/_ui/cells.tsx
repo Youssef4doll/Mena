@@ -29,7 +29,7 @@ export function kpiCell(k: Kpis, key: KpiKey): SortCell {
 
 export const KPI_GROUPS: { title: string; keys: KpiKey[] }[] = [
   { title: "Argent", keys: ["costPerDelivered", "projectedCpd", "breakEvenCpd", "cpaPlaced", "breakEvenCpa", "costPerConfirmed", "roasDelivered", "breakEvenRoas", "poas", "marginPerDelivered", "profitBeforeAds", "contribution", "projectedContribution", "projectedDelivered"] },
-  { title: "Paiement à la livraison", keys: ["confirmRate", "cancelRate", "deliveryRate", "netDeliveryRate", "openShare"] },
+  { title: "Paiement à la livraison", keys: ["confirmRate", "cancelRate", "lateCancelRate", "deliveryRate", "netDeliveryRate", "openShare"] },
   { title: "Sur la boutique", keys: ["orderRate", "viewRate", "formStartRate", "formCompletion"] },
   { title: "Arrivée sur la boutique", keys: ["landingRate", "costPerVisit"] },
   { title: "Plateforme", keys: ["cpm", "ctr", "cpc", "frequency", "overReporting"] },
