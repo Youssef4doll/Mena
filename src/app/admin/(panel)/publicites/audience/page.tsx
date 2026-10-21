@@ -33,7 +33,7 @@ const WEEKDAYS = ["Lundi", "Mardi", "Mercredi", "Jeudi", "Vendredi", "Samedi", "
 const DEVICES: Record<string, string> = { mobile: "Téléphone", desktop: "Ordinateur", tablet: "Tablette", inconnu: "Inconnu" };
 /** Calls an hour needs before its pick-up rate is compared with the others. */
 const CALL_MIN = 10;
-/** Orders than visits counted on a line: part of the visits was not counted, so the share is not a performance. */
+/** More orders than visits counted on a line: part of the visits was not counted, so the share is not a performance. */
 const OVER_NOTE = "« Plus de 100 % » : plus de commandes que de visites comptées sur la ligne ; une partie des visites n'est donc pas comptée (bloqueur de publicité, visites d'avant la mesure).";
 
 function str(v: string | string[] | undefined) {
@@ -263,8 +263,10 @@ function CallHours({ calls }: { calls: { hour: number; calls: number; reached: n
 
 /**
  * Confirmation by how long the first call took (callDelay): the orders no
- * longer pending, in delay buckets, with the confirmation rate and its 95 %
- * interval. The comparison itself is the advisor's (callDelayInsight), in
+ * longer pending, in delay buckets, with the confirmation rate, its 95 %
+ * interval and the confirmed count under it. Three columns, so the rate
+ * stays in view on a phone; narrow on a wide screen, so a line reads at a
+ * glance. The comparison itself is the advisor's (callDelayInsight), in
  * "À retenir".
  */
 function CallDelay({ rows }: { rows: CallDelayRow[] }) {
@@ -274,31 +276,27 @@ function CallDelay({ rows }: { rows: CallDelayRow[] }) {
       {orders === 0 ? (
         <p className="text-sm text-muted">Aucune commande traitée sur la période.</p>
       ) : (
-        <div className="-mx-4 overflow-x-auto px-4 sm:mx-0 sm:px-0">
-          <table className="w-full min-w-[420px] text-[13px]">
-            <thead className="text-xs text-muted">
-              <tr className="border-b border-line">
-                <th className="py-2 pe-3 text-start font-medium">Premier appel</th>
-                <th className="px-2 text-end font-medium">Commandes</th>
-                <th className="px-2 text-end font-medium">Confirmées</th>
-                <th className="ps-2 text-end font-medium">Confirmation</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-line tabular-nums">
-              {rows.map((x) => {
-                const w = wilson(x.confirmed, x.orders);
-                return (
-                  <tr key={x.bucket} className={x.orders === 0 ? "text-muted" : ""}>
-                    <td className="py-2 pe-3">{x.label.charAt(0).toUpperCase() + x.label.slice(1)}</td>
-                    <td className="px-2 text-end">{x.orders}</td>
-                    <td className="px-2 text-end">{x.confirmed}</td>
-                    <td className="ps-2 py-1.5 text-end"><Rate rate={w?.rate ?? null} ci={w} n={x.orders} /></td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
+        <table className="w-full max-w-xl text-[13px]">
+          <thead className="text-xs text-muted">
+            <tr className="border-b border-line">
+              <th className="py-2 pe-3 text-start font-medium">Premier appel</th>
+              <th className="px-2 text-end font-medium">Commandes</th>
+              <th className="ps-2 text-end font-medium">Confirmation</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-line tabular-nums">
+            {rows.map((x) => {
+              const w = wilson(x.confirmed, x.orders);
+              return (
+                <tr key={x.bucket} className={x.orders === 0 ? "text-muted" : ""}>
+                  <td className="py-2 pe-3">{x.label.charAt(0).toUpperCase() + x.label.slice(1)}</td>
+                  <td className="px-2 text-end">{x.orders}</td>
+                  <td className="py-1.5 ps-2 text-end"><Rate rate={w?.rate ?? null} ci={w} n={x.confirmed} unit={["confirmée", "confirmées"]} /></td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
       )}
     </Card>
   );

@@ -19,7 +19,8 @@ import { Badge, Card, btn, input, label } from "@/components/admin/ui";
 
 /** Rows shown in the preview table; the import takes them all. */
 const PREVIEW_ROWS = 200;
-const SOURCES = ["facebook", "instagram", "tiktok", "snapchat", "google"];
+/** Instagram is not offered: a Meta ad's spend is saved under facebook wherever it ran (spendSource). */
+const SOURCES = ["facebook", "tiktok", "snapchat", "google"];
 const CURRENCIES = ["TND", "EUR", "USD"];
 const PLATFORM_LABEL = { meta: "Meta", tiktok: "TikTok" } as const;
 
@@ -153,7 +154,7 @@ export function ExportImport() {
                   <option key={s} value={s} />
                 ))}
               </datalist>
-              <span className="text-xs font-normal text-muted">Vide : facebook pour Meta, tiktok pour TikTok. Le même mot que utm_source dans vos liens.</span>
+              <span className="text-xs font-normal text-muted">Vide : facebook pour Meta (Facebook, Instagram, Messenger), tiktok pour TikTok. Le même mot que utm_source dans vos liens.</span>
             </label>
             <label className={label}>
               Devise du compte
@@ -258,7 +259,7 @@ function Preview({ exp, known, loadingKnown, plan, saved }: { exp: PlatformExpor
             <>
               <p className="text-ink-2">
                 {plan.replaced > 0
-                  ? `${plural(plan.replaced, "ligne", "lignes")} d'un import précédent ${plan.replaced > 1 ? "seront remplacées" : "sera remplacée"} : même campagne, et tous leurs jours sont dans ce fichier.`
+                  ? `${plural(plan.replaced, "ligne", "lignes")} d'un import précédent ${plan.replaced > 1 ? "seront remplacées : même campagne, et tous leurs jours sont" : "sera remplacée : même campagne, et tous ses jours sont"} dans ce fichier.`
                   : "Aucune ligne déjà importée ne sera remplacée."}
               </p>
               {plan.warning && <p className="mt-1 text-[#8a5a00]">{plan.warning}</p>}

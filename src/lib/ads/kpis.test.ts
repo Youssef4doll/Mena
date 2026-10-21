@@ -135,18 +135,34 @@ test("orders waiting for a call for more than 48 h: the shop's measured rate, or
   const measured = kpis(stale, costs, { ...baseline, staleDeliveredRate: 0.2 }).projection!;
   near(measured.delivered, 8 * 0.8 + 6 * cr * 0.8 + 4 * 0.2, 1e-9);
   assert.equal(measured.floor, false);
-  assert.match(measured.note, /4 commandes attendent un appel depuis plus de 48 h, comptées à 20 % de livrées/);
+  assert.match(measured.note, /4 commandes attendent un appel depuis plus de 48 h : dans la boutique, 20 % des commandes dans ce cas finissent livrées, et elles sont comptées à ce taux\.$/);
   // No measured rate: they are not counted as fresh orders, the projection is a floor.
   const unknown = kpis(stale, costs, baseline).projection!;
   near(unknown.delivered, 8 * 0.8 + 6 * cr * 0.8, 1e-9);
   assert.equal(unknown.floor, true);
-  assert.match(unknown.note, /laissées hors de la projection faute de taux mesuré pour elles : la projection est un minimum\.$/);
+  assert.match(unknown.note, /elles sont laissées hors de la projection, faute de taux mesuré pour ces commandes ; la projection est un minimum\.$/);
   // One stale order reads in the singular; without the field every pending order counts as fresh.
-  assert.match(kpis({ ...young, funnel: { ...young.funnel, pendingStale: 1 } }, costs, baseline).projection!.note, /1 commande attend un appel depuis plus de 48 h, laissée hors/);
+  assert.match(kpis({ ...young, funnel: { ...young.funnel, pendingStale: 1 } }, costs, baseline).projection!.note, /1 commande attend un appel depuis plus de 48 h : elle est laissée hors/);
   assert.equal(kpis(young, costs, baseline).projection!.floor, false);
   // The account line sums them only when every row has the count.
   assert.equal(totalRow([stale, { ...mature, funnel: { ...mature.funnel, pendingStale: 0 } }]).funnel.pendingStale, 4);
   assert.equal(totalRow([stale, mature]).funnel.pendingStale, undefined);
+});
+
+test("a projection of less than one order never reads as « environ 0 », and names only the rates it used", () => {
+  // 3 delivered, 1 open order still waiting for its call for more than 48 h, at the shop's measured 20 %.
+  const one = row({ orders: 4, confirmed: 3, shipped: 3, delivered: 3, open: 1, pending: 1, pendingStale: 1 }, { spend: 20_000 });
+  const note = kpis(one, costs, { ...baseline, staleDeliveredRate: 0.2 }).projection!.note;
+  assert.equal(note, "Projection : 3 livrées + 1 en cours, qui a environ 20 % de chances d'être livrée. 1 commande attend un appel depuis plus de 48 h : dans la boutique, 20 % des commandes dans ce cas finissent livrées, et elle est comptée à ce taux.");
+  // Unknown rate: it is not counted at all.
+  assert.match(kpis(one, costs, baseline).projection!.note, /^Projection : 3 livrées \+ 1 en cours, qui n'est pas comptée comme livrée\. /);
+  // Two stale orders at 20 %: 0.4 expected.
+  const two = row({ orders: 5, confirmed: 3, shipped: 3, delivered: 3, open: 2, pending: 2, pendingStale: 2 }, { spend: 20_000 });
+  assert.match(kpis(two, costs, { ...baseline, staleDeliveredRate: 0.2 }).projection!.note, /^Projection : 3 livrées \+ 2 en cours, dont moins d'une devrait être livrée\. 2 commandes attendent/);
+  // Orders past their call only: the delivery rate alone, 3 of 3 parcels pulled toward the shop's 80 % (19 / 23).
+  const shipped = row({ orders: 6, confirmed: 6, shipped: 6, delivered: 3, open: 3, pending: 0 }, { spend: 20_000 });
+  assert.match(kpis(shipped, costs, baseline).projection!.note, /^Projection : 3 livrées \+ 3 en cours, dont environ 2 devraient être livrées \(livraison 83 % : taux de ces commandes, rapproché de celui de la boutique\)\.$/);
+  for (const r of [one, two, shipped]) assert.doesNotMatch(kpis(r, costs, { ...baseline, staleDeliveredRate: 0.2 }).projection!.note, /environ 0 /);
 });
 
 test("French plurals: the singular under 2", () => {

@@ -810,8 +810,8 @@ export function copyWarnings(text: string, input: BriefInput): string[] {
   if (HEALTH.test(text)) out.add("Promesse de santé ou de résultat : refusée par Meta et TikTok.");
   const freeReal = s.deliveryFee === 0 || s.freeThreshold != null || p.offers.some((o) => o.freeDelivery || FREE.test(o.label) || FREE.test(o.labelAr ?? ""));
   if (FREE.test(text) && !freeReal) out.add("« Gratuit » ou « offert » sans offre réelle.");
-  if (SPEED.test(text) && (!s.delivery || Math.max(s.delivery.minDays, s.delivery.maxDays) > 1)) out.add("Délai plus court que celui des réglages.");
-  if (OPEN.test(text) && !s.openBeforePaying) out.add("« Ouvrir avant de payer » alors que les réglages ne le permettent pas.");
+  if (SPEED.test(text) && (!s.delivery || Math.max(s.delivery.minDays, s.delivery.maxDays) > 1)) out.add("Délai plus court que celui de Paramètres, carte « Livraison ».");
+  if (OPEN.test(text) && !s.openBeforePaying) out.add("« Ouvrir avant de payer » alors que ce n'est pas coché dans Paramètres, carte « Livraison ».");
   if (PERCENT.test(text) && !PERCENT.test(`${p.summary} ${p.specs} ${p.summaryAr ?? ""} ${p.specsAr ?? ""} ${p.offers.map((o) => `${o.label} ${o.labelAr ?? ""}`).join(" ")}`)) out.add("Pourcentage que la fiche ne donne pas.");
 
   const allowed = new Set<number>([p.price, s.deliveryFee, p.price + s.deliveryFee]);
@@ -824,7 +824,7 @@ export function copyWarnings(text: string, input: BriefInput): string[] {
   }
   for (const m of text.matchAll(AMOUNT)) {
     const millimes = Number(m[1]) * 1000 + Number((m[2] ?? "").padEnd(3, "0"));
-    if (!allowed.has(millimes)) out.add(`Montant absent de la fiche et des réglages : ${m[0].trim()}.`);
+    if (!allowed.has(millimes)) out.add(`Montant absent de la fiche et de Paramètres, carte « Livraison » : ${m[0].trim()}.`);
   }
   return [...out];
 }

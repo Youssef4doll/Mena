@@ -106,7 +106,7 @@ test("refuses a cut, empty or incomplete reply", () => {
 test("flags a concept that says what the product page does not", () => {
   assert.deepEqual(conceptWarnings(concept, input), []);
   const bad = { ...concept, primaryTextFr: "Stock limité, 39,900 DT seulement !", beats: [{ ...concept.beats[0], voiceAr: "آخر حبّات" }] };
-  assert.deepEqual(conceptWarnings(bad, input), ["Point d'exclamation : la boutique n'en met pas.", "Urgence ou rareté que rien ne prouve.", "Montant absent de la fiche et des réglages : 39,900 DT."]);
+  assert.deepEqual(conceptWarnings(bad, input), ["Point d'exclamation : la boutique n'en met pas.", "Urgence ou rareté que rien ne prouve.", "Montant absent de la fiche et de Paramètres, carte « Livraison » : 39,900 DT."]);
 });
 
 test("the API schema and the reader agree on every field", () => {

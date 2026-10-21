@@ -88,6 +88,10 @@ test("other sources: the source is required and checked, names are encoded, gaps
   const fb = buildAdLink({ ...base, platform: "other", source: "fb", campaign: "x" });
   assert.equal(fb.values.source, "facebook");
   assert.ok(fb.checks.some((c) => c.field === "source" && c.level === "warning"));
+  // An Instagram ad is a Meta ad: the link should be Meta's, written facebook.
+  const ig = buildAdLink({ ...base, platform: "other", source: "Instagram", campaign: "x" });
+  assert.ok(ig.checks.some((c) => c.field === "source" && c.level === "warning" && c.message.includes("plateforme Meta")));
+  assert.ok(!buildAdLink({ ...base, platform: "other", source: "influenceur", campaign: "x" }).checks.some((c) => c.field === "source"));
 });
 
 test("names suggested for a product", () => {

@@ -1,11 +1,16 @@
 import { href, type Lang } from "../../i18n/lang";
-import { normName, normSource } from "./match";
+import { META_SOURCE, normName, normSource, spendSource } from "./match";
 
 /**
  * The link an ad sends people to: the product page with the utm_* the site
  * reads (src/lib/client/attribution.ts), so each visit and order is credited
  * to its campaign and ad, and the spend imported from the same platform
  * finds them (./match compares names trimmed and lowercased, nothing more).
+ *
+ * Meta's link says utm_source=facebook wherever the ad runs (Instagram,
+ * Messenger): that is where its export's spend is saved. A link written with
+ * Meta's {{site_source_name}} (fb, ig, msg) also meets it: ./match counts the
+ * ad traffic of every Meta app for facebook (adSource).
  *
  * The safest names are the platform's own: with its macros, Meta and TikTok
  * write the campaign and ad names into the link at each click, so they are
@@ -29,7 +34,7 @@ export const MACROS = {
 } as const;
 
 /** The source each platform's export is imported under (platform-csv): the link must say the same, or spend and visits never meet. */
-export const PLATFORM_SOURCE = { meta: "facebook", tiktok: "tiktok" } as const;
+export const PLATFORM_SOURCE = { meta: META_SOURCE, tiktok: "tiktok" } as const;
 
 /** One of the mediums data.ts counts as a paid click. */
 export const PAID_MEDIUM = "paid";
@@ -49,7 +54,7 @@ export type LinkInput = {
   slug: string;
   lang: Lang;
   platform: AdPlatform;
-  /** "other" only: the source word (snapchat, instagram, influenceur…). Meta and TikTok use PLATFORM_SOURCE. */
+  /** "other" only: the source word (snapchat, influenceur…). Meta and TikTok use PLATFORM_SOURCE. */
   source?: string;
   /** Names typed by hand. Empty: the platform's macro (Meta, TikTok), or nothing (other). */
   campaign?: string;
@@ -150,10 +155,11 @@ export function buildAdLink(input: LinkInput): AdLink {
   let source: string;
   if (input.platform === "other") {
     source = normSource(input.source);
-    if (!input.source?.trim()) checks.push({ field: "source", level: "error", message: "Indiquez la source : snapchat, instagram, influenceur…" });
+    if (!input.source?.trim()) checks.push({ field: "source", level: "error", message: "Indiquez la source : snapchat, influenceur…" });
     else if (!SOURCE_RE.test(source)) checks.push({ field: "source", level: "error", message: "Source invalide : des lettres minuscules sans espace, par exemple snapchat ou influenceur." });
-    else if (source === PLATFORM_SOURCE.meta || source === PLATFORM_SOURCE.tiktok)
-      checks.push({ field: "source", level: "warning", message: `Pour ${source}, choisissez la plateforme ${source === "facebook" ? "Meta" : "TikTok"} : ses codes remplissent les noms tout seuls.` });
+    // An Instagram or Messenger ad is a Meta ad: its visits count for facebook, with the Meta export's spend.
+    else if (spendSource(source) === PLATFORM_SOURCE.meta || source === PLATFORM_SOURCE.tiktok)
+      checks.push({ field: "source", level: "warning", message: `Pour ${source}, choisissez la plateforme ${source === PLATFORM_SOURCE.tiktok ? "TikTok" : "Meta"} : ses codes remplissent les noms tout seuls.` });
   } else {
     source = PLATFORM_SOURCE[input.platform];
   }

@@ -145,11 +145,13 @@ test("refuses a file without a spend column or a date, and skips unreadable or e
   assert.match(r.error ?? "", /Aucune ligne/);
 });
 
-test("an unknown platform needs a source; a given source wins", () => {
+test("an unknown platform needs a source; a given source wins, a Meta app's is the Meta account's", () => {
   const csv = "Campaign name,Day,Spend (TND)\nA,2026-10-12,10";
   assert.equal(readPlatformExport(csv).needs, "source");
-  assert.equal(readPlatformExport(csv, { source: "Instagram" }).rows[0].source, "instagram");
-  assert.equal(readPlatformExport(META_EN, { source: "ig" }).source, "instagram");
+  assert.equal(readPlatformExport(csv, { source: "Snapchat" }).rows[0].source, "snapchat");
+  // Instagram's ad visits count for facebook (adSource): its spend must be saved there to meet them.
+  assert.equal(readPlatformExport(csv, { source: "Instagram" }).rows[0].source, "facebook");
+  assert.equal(readPlatformExport(META_EN, { source: "ig" }).source, "facebook");
 });
 
 test("names are cut where the site cuts utm values, so they still match", () => {
@@ -206,7 +208,7 @@ const row = (day: string, days: number, campaign: string | null, ad: string | nu
 test("a newer export replaces the earlier import of the same campaign and days, whatever its grain", () => {
   // Campaign totals first, then the same day by ad.
   const byAd = [row("2026-10-12", 1, "Lampe", "V1"), row("2026-10-12", 1, "lampe", "V2")];
-  assert.deepEqual(planImport(byAd, [saved("a", "2026-10-12", 1, "Lampe")]), { replaced: ["a"], overlaps: { imported: 0, typed: 0 } });
+  assert.deepEqual(planImport(byAd, [saved("a", "2026-10-12", 1, "Lampe")]), { replaced: ["a"], overlaps: { imported: 0, typed: 0 }, shrinks: [] });
 
   // Seven daily rows, then one weekly total (and back).
   const week = Array.from({ length: 7 }, (_, i) => saved(`d${i}`, `2026-10-0${i + 1}`, 1, "Lampe"));
@@ -216,28 +218,69 @@ test("a newer export replaces the earlier import of the same campaign and days, 
 
   // Another campaign, another source, or rows typed by hand: untouched.
   const others = [saved("x", "2026-10-12", 1, "Autre"), saved("t", "2026-10-12", 1, "Lampe", { source: "tiktok" }), saved("h", "2026-10-12", 1, "Lampe", { imported: false })];
-  assert.deepEqual(planImport(byAd, others), { replaced: [], overlaps: { imported: 0, typed: 1 } });
+  assert.deepEqual(planImport(byAd, others), { replaced: [], overlaps: { imported: 0, typed: 1 }, shrinks: [] });
 });
 
 test("an earlier import only partly in the new file is kept and reported; another ad's days are not an overlap", () => {
   const plan = planImport([row("2026-10-05", 1, "Lampe"), row("2026-10-06", 1, "Lampe")], [saved("w", "2026-10-01", 7, "Lampe"), saved("n", "2026-10-06", 1, null)]);
-  assert.deepEqual(plan, { replaced: [], overlaps: { imported: 2, typed: 0 } }, "a weekly row with two of its days in the file; a row without a campaign on the same day");
+  assert.deepEqual(plan, { replaced: [], overlaps: { imported: 2, typed: 0 }, shrinks: [] }, "a weekly row with two of its days in the file; a row without a campaign on the same day");
 
   const plan2 = planImport([row("2026-10-12", 1, "Lampe", "V1")], [saved("v2", "2026-10-11", 3, "Lampe", { ad: "V2" })]);
-  assert.deepEqual(plan2, { replaced: [], overlaps: { imported: 0, typed: 0 } });
+  assert.deepEqual(plan2, { replaced: [], overlaps: { imported: 0, typed: 0 }, shrinks: [] });
   const gap = planImport([row("2026-10-01", 1, "Lampe"), row("2026-10-03", 1, "Lampe")], [saved("w", "2026-10-01", 3, "Lampe")]);
-  assert.deepEqual(gap, { replaced: [], overlaps: { imported: 1, typed: 0 } }, "a missing day in the file: the earlier row is not fully covered");
+  assert.deepEqual(gap, { replaced: [], overlaps: { imported: 1, typed: 0 }, shrinks: [] }, "a missing day in the file: the earlier row is not fully covered");
 });
 
 test("an export filtered to some ads replaces only those ads", () => {
   const byAd = [saved("v1", "2026-10-10", 1, "Lampe", { ad: "Video-1" }), saved("c2", "2026-10-10", 1, "Lampe", { ad: "Carrousel-2" }), saved("c2b", "2026-10-11", 1, "Lampe", { ad: "Carrousel-2" })];
   const file = [row("2026-10-10", 1, "lampe", "video-1"), row("2026-10-11", 1, "Lampe", "Video-1")];
-  assert.deepEqual(planImport(file, byAd), { replaced: ["v1"], overlaps: { imported: 0, typed: 0 } }, "Carrousel-2 is not in the file: its spend stays, and does not meet Video-1's");
+  assert.deepEqual(planImport(file, byAd), { replaced: ["v1"], overlaps: { imported: 0, typed: 0 }, shrinks: [] }, "Carrousel-2 is not in the file: its spend stays, and does not meet Video-1's");
 
   // A file without ads is a total of all of them; an ad set the file does not name stays.
   assert.deepEqual(planImport([row("2026-10-10", 1, "Lampe")], byAd).replaced, ["v1", "c2"]);
   const sets = [saved("s1", "2026-10-10", 1, "Lampe", { adSet: "Large" }), saved("s2", "2026-10-10", 1, "Lampe", { adSet: "Femmes 25-45" })];
   assert.deepEqual(planImport([{ ...row("2026-10-10", 1, "Lampe"), adSet: "large" }], sets).replaced, ["s1"]);
+});
+
+test("a file that replaces more spend than it brings is said, with both amounts", () => {
+  const total = saved("t", "2026-10-12", 1, "Lampe", { amount: 11_500 });
+  // An export filtered to one ad, after the campaign's total: the other ad's spend would go.
+  const oneAd = planImport([{ ...row("2026-10-12", 1, "Lampe", "V1"), amount: 6_000 }], [total]);
+  assert.deepEqual(oneAd, { replaced: ["t"], overlaps: { imported: 0, typed: 0 }, shrinks: [{ campaign: "Lampe", before: 11_500, after: 6_000 }] });
+  // The whole campaign by ad, or Meta revising the day by a little: nothing to say.
+  const both = [{ ...row("2026-10-12", 1, "Lampe", "V1"), amount: 6_000 }, { ...row("2026-10-12", 1, "Lampe", "V2"), amount: 5_000 }];
+  assert.deepEqual(planImport(both, [total]).shrinks, []);
+  // Only the replaced rows' days are compared: a new day in the file does not hide the drop.
+  const more = [{ ...row("2026-10-12", 1, "Lampe", "V1"), amount: 6_000 }, { ...row("2026-10-13", 1, "Lampe", "V1"), amount: 9_000 }];
+  assert.deepEqual(planImport(more, [total]).shrinks, [{ campaign: "Lampe", before: 11_500, after: 6_000 }]);
+  // A weekly total replaced by its days: each day's share counts.
+  const week = saved("w", "2026-10-01", 7, "Lampe", { amount: 70_000 });
+  assert.deepEqual(planImport(Array.from({ length: 7 }, (_, i) => ({ ...row(`2026-10-0${i + 1}`, 1, "Lampe"), amount: 10_000 })), [week]).shrinks, []);
+  assert.equal(planImport([{ ...row("2026-10-01", 7, "Lampe"), amount: 30_000 }], [week]).shrinks[0]?.after, 30_000);
+  // Without amounts (an older caller), nothing is compared.
+  assert.deepEqual(planImport([row("2026-10-12", 1, "Lampe", "V1")], [total]).shrinks, []);
+});
+
+test("spend saved under a Meta app is the same spend as the Meta export's", () => {
+  const typedAsInstagram = saved("ig", "2026-10-12", 1, "Lampe", { source: "instagram" });
+  assert.deepEqual(planImport([row("2026-10-12", 1, "Lampe")], [typedAsInstagram]).replaced, ["ig"], "an earlier import forced to instagram");
+  assert.deepEqual(planImport([row("2026-10-12", 1, "Lampe")], [{ ...typedAsInstagram, imported: false }]).overlaps, { imported: 0, typed: 1 }, "typed by hand under instagram: kept, and said");
+  assert.deepEqual(planImport([{ ...row("2026-10-12", 1, "Lampe"), source: "tiktok" }], [typedAsInstagram]), { replaced: [], overlaps: { imported: 0, typed: 0 }, shrinks: [] });
+});
+
+test("another ad account's spend under the same campaign name is neither replaced nor an overlap", () => {
+  const a = saved("a", "2026-10-12", 1, "Lampe", { account: "1111" });
+  const old = saved("o", "2026-10-12", 1, "Lampe");
+  const fromB = [{ ...row("2026-10-12", 1, "Lampe"), account: "2222" }];
+  assert.deepEqual(planImport(fromB, [a]), { replaced: [], overlaps: { imported: 0, typed: 0 }, shrinks: [] });
+  assert.deepEqual(planImport(fromB, [old]).replaced, ["o"], "a row imported without the account may be this account's");
+  assert.deepEqual(planImport([row("2026-10-12", 1, "Lampe")], [a]).replaced, ["a"], "a file without the account may be any account's");
+
+  // One file with both accounts: each account's earlier week is covered only by its own days.
+  const both = [{ ...row("2026-10-01", 3, "Lampe"), account: "1111" }, { ...row("2026-10-04", 4, "Lampe"), account: "2222" }];
+  const weekA = saved("wa", "2026-10-01", 7, "Lampe", { account: "1111" });
+  assert.deepEqual(planImport(both, [weekA]), { replaced: [], overlaps: { imported: 1, typed: 0 }, shrinks: [] });
+  assert.deepEqual(planImport([...both, { ...row("2026-10-04", 4, "Lampe"), account: "1111" }], [weekA]).replaced, ["wa"]);
 });
 
 test("a total spread over days adds up to the period's share of it", () => {

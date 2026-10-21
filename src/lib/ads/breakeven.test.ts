@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { breakEven, levers, productBreakEvens, unitMargin, type UnitInput } from "./breakeven";
+import { breakEven, levers, productBreakEvens, shippedShare, unitMargin, type UnitInput } from "./breakeven";
 import { profit } from "../profit";
 
 // A 59,900 DT lamp bought 20 DT, 8 DT delivery fee, carrier 7 DT a parcel, 3 DT for a parcel back.
@@ -114,4 +114,26 @@ test("levers: what each change adds to the max CPA, largest first", () => {
   assert.equal(l.find((x) => x.key === "price")!.gain, 2_880);
   assert.ok(l.every((x) => (x.gain ?? 0) > 0));
   assert.equal(levers({ ...lamp, unitCost: null }).find((x) => x.key === "unitCost"), undefined);
+});
+
+test("confirmed orders that never ship lower every per-order ceiling, once the measured net rate says so", () => {
+  // 72 % confirmed × 80 % delivered is 57,6 %; the shop measures 51,84 %: a tenth of the confirmed orders never leave.
+  const measured = { ...lamp, netDeliveryRate: 0.5184 };
+  const b = breakEven(measured);
+  assert.ok(Math.abs(shippedShare(measured) - 0.9) < 1e-12);
+  assert.ok(Math.abs(b.netDeliveryRate! - 0.5184) < 1e-12);
+  assert.equal(b.maxCostPerDelivered, 38_400, "the max per delivered order does not move");
+  assert.equal(b.maxCpa, 19_907, "38,4 DT × 51,84 %, not × 57,6 %");
+  // At the minimum delivery rate, a placed order earns nothing once the unshipped confirmations are counted.
+  const d = b.minDeliveryRate!;
+  assert.ok(Math.abs(0.72 * 0.9 * (d * 47_900 - 7_000 - 3_000 * (1 - d)) - 15_000) < 1e-6);
+  assert.ok(Math.abs(b.minConfirmRate! - 15_000 / (0.9 * (0.8 * 47_900 - 7_000 - 600))) < 1e-12);
+  // A measured rate above confirmation × delivery never raises a ceiling; without one they stay as they were.
+  assert.equal(breakEven({ ...lamp, netDeliveryRate: 0.7 }).maxCpa, 22_118);
+  assert.equal(breakEven({ ...lamp, netDeliveryRate: null }).maxCpa, 22_118);
+  // A lever keeps the share shipped: 5 more points of confirmation, 77 % × 90 % × 80 %.
+  assert.equal(levers(measured).find((x) => x.key === "confirmRate")!.maxCpa, 21_289);
+  // From the shop's figures, through productBreakEvens.
+  const [unit] = productBreakEvens({ price: 59_900, cost: 20_000 }, { deliveryFee: 8_000, freeThreshold: null, carrierPerParcel: 7_000, returnPerParcel: 3_000, confirmRate: 0.72, deliveryRate: 0.8, netDeliveryRate: 0.5184 });
+  assert.equal(unit.result.maxCpa, 19_907);
 });

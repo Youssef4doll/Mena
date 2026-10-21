@@ -313,15 +313,33 @@ function project(f: Funnel, pending: number, cr: number | null, dr: number | nul
   const projected = f.open > 0;
   const floor = stale > 0 && staleRate == null;
   const pct = (x: number | null) => (x == null ? "—" : `${Math.round(x * 100)} %`);
+  // One open order has a chance, not a count; under half an order expected, "environ 0" would read as none.
+  const outlook =
+    f.open === 1
+      ? expected > 0
+        ? `qui a environ ${pct(expected)} de chances d'être livrée`
+        : "qui n'est pas comptée comme livrée"
+      : expected >= 0.5
+        ? `dont environ ${plural(expected, "devrait être livrée", "devraient être livrées")}`
+        : expected > 0
+          ? "dont moins d'une devrait être livrée"
+          : "dont aucune n'est comptée comme livrée";
+  // Only the rates the projection used: the stale orders have their own sentence.
+  const rates =
+    fresh > 0
+      ? ` (confirmation ${pct(cr)}, livraison ${pct(dr)} : taux de ces commandes, rapprochés de ceux de la boutique)`
+      : afterCall > 0
+        ? ` (livraison ${pct(dr)} : taux de ces commandes, rapproché de celui de la boutique)`
+        : "";
   const waiting = `${plural(stale, "commande attend", "commandes attendent")} un appel depuis plus de ${STALE_PENDING_HOURS} h`;
   const staleNote =
     stale === 0
       ? ""
       : staleRate != null
-        ? ` ${waiting}, ${pluralWord(stale, "comptée", "comptées")} à ${pct(staleRate)} de livrées, ce que la boutique mesure pour ces commandes.`
-        : ` ${waiting}, ${pluralWord(stale, "laissée", "laissées")} hors de la projection faute de taux mesuré pour elles : la projection est un minimum.`;
+        ? ` ${waiting} : dans la boutique, ${pct(staleRate)} des commandes dans ce cas finissent livrées, et ${pluralWord(stale, "elle est comptée", "elles sont comptées")} à ce taux.`
+        : ` ${waiting} : ${pluralWord(stale, "elle est laissée", "elles sont laissées")} hors de la projection, faute de taux mesuré pour ces commandes ; la projection est un minimum.`;
   const note = projected
-    ? `Projection : ${plural(f.delivered, "livrée", "livrées")} + ${f.open} en cours, dont environ ${plural(expected, "devrait être livrée", "devraient être livrées")} (confirmation ${pct(cr)}, livraison ${pct(dr)} : taux de ces commandes, rapprochés de ceux de la boutique).${staleNote}`
+    ? `Projection : ${plural(f.delivered, "livrée", "livrées")} + ${f.open} en cours, ${outlook}${rates}.${staleNote}`
     : "Toutes les commandes sont terminées : chiffres réels, pas de projection.";
   return {
     delivered,

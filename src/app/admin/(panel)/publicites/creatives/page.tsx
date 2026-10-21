@@ -9,7 +9,7 @@ import type { AdRow, Insight } from "@/lib/ads/types";
 import { Badge, Card, Empty } from "@/components/admin/ui";
 import { adRange, periodText, rangeQuery, withPeriod } from "../_ui/range";
 import { adsBasics } from "../_ui/server";
-import { chanceText, FIX_LINKS, fixHref, sourceLabel, valueText, type KpiUnit } from "../_ui/format";
+import { chanceText, FIX_LINKS, fixHref, rowLabel, sourceLabel, valueText, type KpiUnit } from "../_ui/format";
 import { VerdictBadge } from "../_ui/Verdict";
 import { IntervalBar } from "../_ui/Interval";
 import { InsightList } from "../_ui/Insight";
@@ -49,7 +49,8 @@ export default async function CreativesPage({ searchParams }: PageProps<"/admin/
   const q = rangeQuery(r);
   const metric: AdMetric = METRIC_KEYS.find((m) => m === sp.m) ?? "cost";
   const only = typeof sp.c === "string" ? sp.c : null;
-  const [ads, daily, { costs, baseline, tracking }] = await Promise.all([adRows(r.from, r.to, "ad"), dailyByRow(r.from, r.to, "ad"), adsBasics(r.to)]);
+  // Ad links only, as on Campagnes.
+  const [ads, daily, { costs, baseline, tracking }] = await Promise.all([adRows(r.from, r.to, "ad", { paidOnly: true }), dailyByRow(r.from, r.to, "ad", { paidOnly: true }), adsBasics(r.to)]);
   const report = advise({ rows: ads, costs, baseline, days: r.days, daily, tracking });
   const advice = new Map(report.rows.map((a) => [a.key, a]));
 
@@ -73,10 +74,13 @@ export default async function CreativesPage({ searchParams }: PageProps<"/admin/
   const blocks = shown.map((g) => {
     const keys = new Set(g.rows.map((x) => x.key));
     const own = creativeInsights(g.rows, costs, baseline);
-    // The report also names each campaign's best ad: keep one copy.
-    const theirs = report.insights.filter((i) => i.key != null && keys.has(i.key) && !own.some((o) => o.key === i.key && o.title === i.title));
+    // The report also names each campaign's best ad, as « … est gagnante »: keep one copy, the comparison's.
+    const theirs = report.insights.filter((i) => i.key != null && keys.has(i.key) && !own.some((o) => o.key === i.key && (o.title === i.title || (o.severity === "good" && i.severity === "good"))));
     const insights = sortInsights([...own, ...theirs]);
-    return { g, comps: compareAds(g.rows, metric, costs, baseline), insights };
+    // An ad whose order rate cannot be read is left out of the comparison and listed after the others.
+    const over = metric === "orderRate" ? beyondVisits(g.rows) : new Set<string>();
+    const comps = [...compareAds(g.rows.filter((x) => !over.has(x.key)), metric, costs, baseline), ...g.rows.filter((x) => over.has(x.key)).map(unreadAd)];
+    return { g, comps, over, insights };
   });
   const next = dedupe(blocks.flatMap((b) => b.insights.filter((i) => i.fix === "brief")));
 
@@ -132,7 +136,7 @@ export default async function CreativesPage({ searchParams }: PageProps<"/admin/
       {shown.length === 0 && <Empty>Cette campagne n&apos;a pas de publicité reconnue sur la période.</Empty>}
 
       <div className="grid gap-4 xl:grid-cols-2">
-        {blocks.map(({ g, comps, insights }) => (
+        {blocks.map(({ g, comps, over, insights }) => (
           <Card
             key={g.key}
             title={g.label}
@@ -145,7 +149,7 @@ export default async function CreativesPage({ searchParams }: PageProps<"/admin/
               ) : undefined
             }
           >
-            <Comparison comps={comps} metric={metric} advice={advice} />
+            <Comparison comps={comps} metric={metric} advice={advice} over={over} />
             {insights.length > 0 && (
               <div className="mt-4 border-t border-line pt-3">
                 <InsightList insights={insights} limit={2} period={q} />
@@ -176,15 +180,36 @@ function spendText(rows: AdRow[]): string {
   return ` · ${formatTND(known.reduce((s, x) => s + (x.platform.spend ?? 0), 0))} dépensés`;
 }
 
-/** The ads of one campaign on one metric: best odds first, each with its range on a shared scale. */
-function Comparison({ comps, metric, advice }: { comps: AdComparison[]; metric: AdMetric; advice: Map<string, RowAdvice> }) {
+/**
+ * Ads with more orders than visits counted: their visits carry the ad's name only since that capture
+ * was added. Their order rate would read as 100 % (the interval caps it), which is not a performance,
+ * and would weigh on the other ads' chance of being the best.
+ */
+function beyondVisits(rows: AdRow[]): Set<string> {
+  return new Set(rows.filter((x) => x.funnel.sessions > 0 && x.funnel.orders > x.funnel.sessions).map((x) => x.key));
+}
+
+/** Such an ad in the list: no value, no range, no chance; its visits as the count. */
+const unreadAd = (x: AdRow): AdComparison => ({ key: x.key, label: rowLabel(x), value: null, low: null, high: null, n: x.funnel.sessions, probBest: null, enough: false });
+
+const overNote = (n: number) =>
+  `« Plus de 100 % » : plus de commandes que de visites comptées ; les visites ne portent le nom de la publicité que depuis peu. ${n > 1 ? "Ces publicités sont laissées" : "Elle est laissée"} hors de la comparaison.`;
+
+/**
+ * The ads of one campaign on one metric: best odds first, each with its range on a shared scale.
+ * `over`: ads left out of the comparison (beyondVisits), listed last with "plus de 100 %".
+ */
+function Comparison({ comps, metric, advice, over }: { comps: AdComparison[]; metric: AdMetric; advice: Map<string, RowAdvice>; over: Set<string> }) {
   const m = METRICS[metric];
+  const beyond = (c: AdComparison) => over.has(c.key);
   const ordered = [...comps].sort((a, b) => (b.probBest ?? -1) - (a.probBest ?? -1) || (b.n ?? 0) - (a.n ?? 0));
   const targets = comps.map((c) => (metric === "cost" ? (advice.get(c.key)?.target ?? null) : null));
   const ends = comps.flatMap((c, i) => [c.high, c.value, targets[i]]).filter((v): v is number => v != null && Number.isFinite(v));
   const max = ends.length ? Math.max(...ends) * SCALE_ROOM : null;
   const scale = m.unit === "rate" && max != null ? Math.min(1, max) : max;
   const single = comps.length < 2;
+  // One readable ad beside the ones left out: nothing to compare it with either.
+  const alone = comps.filter((c) => !beyond(c)).length < 2;
   return (
     <div className="flex flex-col gap-3">
       <ul className="flex flex-col divide-y divide-line">
@@ -198,8 +223,15 @@ function Comparison({ comps, metric, advice }: { comps: AdComparison[]; metric: 
                 <div className="min-w-0">
                   <p className="break-words text-[13px] font-medium text-ink">{c.label}</p>
                   <p className="text-xs text-muted">
-                    {m.label} : <span className="font-medium text-ink">{valueText(c.value, m.unit)}</span>
-                    {c.low != null && ` (entre ${valueText(c.low, m.unit)} et ${c.high == null ? "plus" : valueText(c.high, m.unit)})`}
+                    {m.label} :{" "}
+                    {beyond(c) ? (
+                      <span className="font-medium text-[#8a5a00]">plus de 100 %</span>
+                    ) : (
+                      <>
+                        <span className="font-medium text-ink">{valueText(c.value, m.unit)}</span>
+                        {c.low != null && ` (entre ${valueText(c.low, m.unit)} et ${c.high == null ? "plus" : valueText(c.high, m.unit)})`}
+                      </>
+                    )}
                   </p>
                 </div>
                 <div className="flex shrink-0 items-center gap-1.5">
@@ -211,10 +243,14 @@ function Comparison({ comps, metric, advice }: { comps: AdComparison[]; metric: 
                   {a && <VerdictBadge verdict={a.verdict} ad />}
                 </div>
               </div>
-              <IntervalBar value={c.value} low={c.low} high={c.high} max={scale} unit={m.unit} target={target} label={c.label} />
+              {!beyond(c) && <IntervalBar value={c.value} low={c.low} high={c.high} max={scale} unit={m.unit} target={target} label={c.label} />}
               <p className="text-xs text-ink-2">
                 {single ? (
                   <span className="text-muted">Seule publicité de la campagne : rien à comparer.</span>
+                ) : beyond(c) ? (
+                  <span className="text-[#8a5a00]">Pas comparée sur ce taux</span>
+                ) : alone ? (
+                  <span className="text-muted">Aucune autre publicité lisible sur ce taux : rien à comparer.</span>
                 ) : c.enough && c.probBest != null ? (
                   <>
                     Chance d&apos;être {m.best} : <strong className="font-semibold text-ink">{chanceText(c.probBest)}</strong>
@@ -228,6 +264,7 @@ function Comparison({ comps, metric, advice }: { comps: AdComparison[]; metric: 
           );
         })}
       </ul>
+      {over.size > 0 && <p className="text-xs leading-relaxed text-[#8a5a00]">{overNote(over.size)}</p>}
     </div>
   );
 }

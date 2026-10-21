@@ -6,6 +6,7 @@
  * costs the way back with no money in. Pure, so it is tested. Millimes.
  *
  *   unitMargin(u)                 → number | null    what one delivered order leaves before ads
+ *   shippedShare(i)               → number           of the confirmed orders, the share shipped (1 without a measured net rate)
  *   breakEven(i)                  → BreakEven        every ceiling for one product or offer
  *   productBreakEvens(p, shop)    → OfferBreakEven[] the single unit, then each active offer
  *   levers(i)                     → Lever[]          what a better price, cost, confirmation or delivery gives
@@ -24,6 +25,14 @@ export type UnitInput = {
   /** Share of placed orders confirmed by phone, and of shipped parcels delivered (the shop's own rates). */
   confirmRate: number | null;
   deliveryRate: number | null;
+  /**
+   * The shop's measured share of placed orders that end delivered, over
+   * orders old enough to be final. Confirmation × delivery counts every
+   * confirmed order as shipped; orders cancelled after their call never are.
+   * When given, the share of confirmed orders shipped is read from it (never
+   * above 1) and every per-order ceiling counts it.
+   */
+  netDeliveryRate?: number | null;
   /** Measured, for the platform ceilings: orders per visit, visits per link click, link clicks per impression. */
   orderRate?: number | null;
   landingRate?: number | null;
@@ -42,7 +51,7 @@ export type BreakEven = {
   shippingPerDelivered: number | null;
   /** What one delivered order leaves before ads. Negative: the product loses money even with free ads. */
   margin: number | null;
-  /** Share of placed orders that end delivered (confirmation × delivery). */
+  /** Share of placed orders that end delivered: confirmation × share of the confirmed shipped × delivery. */
   netDeliveryRate: number | null;
   /** Ceilings, never below 0: above them every sale loses money. */
   maxCostPerDelivered: number | null;
@@ -79,6 +88,13 @@ function shippingPerDelivered(carrier: number | null, ret: number | null, d: num
   return (carrier + returnCost * back) / Math.min(1, d);
 }
 
+/** Of the confirmed orders, the share shipped: what the measured net rate leaves of confirmation × delivery; 1 without it. */
+export function shippedShare(i: Pick<UnitInput, "confirmRate" | "deliveryRate" | "netDeliveryRate">): number {
+  const product = i.confirmRate != null && i.deliveryRate != null ? i.confirmRate * i.deliveryRate : null;
+  if (i.netDeliveryRate == null || product == null || !(product > 0)) return 1;
+  return Math.min(1, Math.max(0, i.netDeliveryRate / product));
+}
+
 export function breakEven(i: UnitInput): BreakEven {
   const missing: BreakEvenInput[] = [];
   const revenue = i.price + i.deliveryFee;
@@ -91,7 +107,8 @@ export function breakEven(i: UnitInput): BreakEven {
 
   const ship = shippingPerDelivered(i.carrierPerParcel, i.returnPerParcel, i.deliveryRate);
   const margin = productCost == null || ship == null ? null : Math.round(revenue - productCost - ship);
-  const net = i.confirmRate != null && i.deliveryRate != null ? i.confirmRate * i.deliveryRate : null;
+  const shipped = shippedShare(i);
+  const net = i.confirmRate != null && i.deliveryRate != null ? i.confirmRate * shipped * i.deliveryRate : null;
   const maxCpd = margin == null ? null : Math.max(0, margin);
   // Ceilings are chained from the unrounded max CPA, rounded once each.
   const maxCpaRaw = maxCpd == null || net == null ? null : maxCpd * net;
@@ -108,20 +125,21 @@ export function breakEven(i: UnitInput): BreakEven {
   const maxCpc = maxCpcRaw == null ? null : Math.round(maxCpcRaw);
   const maxCpm = maxCpcRaw == null || ctr == null ? null : Math.round(maxCpcRaw * ctr * 1000);
 
-  // Per placed order at CPA a, confirmation c, delivery d, revenue R, product P, carrier k, return r:
-  //   profit = c · [d·(R − P) − k − r·(1 − d)] − a
-  // so the product breaks even at d = (a/c + k + r) / (R − P + r), and at c = a / (d·(R − P) − k − r·(1 − d)).
+  // Per placed order at CPA a, confirmation c, share of the confirmed shipped s, delivery d, revenue R, product P,
+  // carrier k, return r:
+  //   profit = c · s · [d·(R − P) − k − r·(1 − d)] − a
+  // so the product breaks even at d = (a/(c·s) + k + r) / (R − P + r), and at c = a / (s · [d·(R − P) − k − r·(1 − d)]).
   const cpa = i.cpa ?? null;
   if (cpa == null) missing.push("cpa");
   const r = i.returnPerParcel;
   let minDeliveryRate: number | null = null;
   let minConfirmRate: number | null = null;
-  if (cpa != null && productCost != null && i.carrierPerParcel != null && r != null) {
+  if (cpa != null && productCost != null && i.carrierPerParcel != null && r != null && shipped > 0) {
     const gain = revenue - productCost + r;
-    if (i.confirmRate != null && i.confirmRate > 0 && gain > 0) minDeliveryRate = (cpa / i.confirmRate + i.carrierPerParcel + r) / gain;
+    if (i.confirmRate != null && i.confirmRate > 0 && gain > 0) minDeliveryRate = (cpa / (i.confirmRate * shipped) + i.carrierPerParcel + r) / gain;
     if (i.deliveryRate != null) {
       const perShipped = i.deliveryRate * (revenue - productCost) - i.carrierPerParcel - r * (1 - i.deliveryRate);
-      if (perShipped > 0) minConfirmRate = cpa / perShipped;
+      if (perShipped > 0) minConfirmRate = cpa / (shipped * perShipped);
     }
   }
 
@@ -152,6 +170,8 @@ export type ShopEconomics = {
   returnPerParcel: number | null;
   confirmRate: number | null;
   deliveryRate: number | null;
+  /** Measured delivered / placed over final orders (Baseline.netDeliveryRate): see UnitInput. */
+  netDeliveryRate?: number | null;
   orderRate?: number | null;
   landingRate?: number | null;
   ctr?: number | null;
@@ -174,6 +194,7 @@ export function productBreakEvens(p: ProductEconomics, shop: ShopEconomics): Off
     returnPerParcel: shop.returnPerParcel,
     confirmRate: shop.confirmRate,
     deliveryRate: shop.deliveryRate,
+    netDeliveryRate: shop.netDeliveryRate,
     orderRate: shop.orderRate,
     landingRate: shop.landingRate,
     ctr: shop.ctr,
@@ -203,8 +224,11 @@ export type Lever = { key: "price" | "unitCost" | "confirmRate" | "deliveryRate"
 /** What each lever adds to the max CPA (and the max cost per delivered order), all else equal. Sorted by gain, largest first. */
 export function levers(i: UnitInput): Lever[] {
   const now = breakEven(i);
+  // A better confirmation or delivery moves the measured net rate with it: the share of the confirmed shipped stays.
+  const shipped = shippedShare(i);
   const one = (key: Lever["key"], label: string, change: Partial<UnitInput>): Lever => {
-    const r = breakEven({ ...i, ...change });
+    const next = { ...i, ...change };
+    const r = breakEven(next.netDeliveryRate == null || next.confirmRate == null || next.deliveryRate == null ? next : { ...next, netDeliveryRate: next.confirmRate * shipped * next.deliveryRate });
     return { key, label, maxCpa: r.maxCpa, maxCostPerDelivered: r.maxCostPerDelivered, gain: r.maxCpa != null && now.maxCpa != null ? r.maxCpa - now.maxCpa : null };
   };
   const step = (v: number | null) => (v == null ? null : Math.min(RATE_CAP, v + LEVER_RATE_STEP));

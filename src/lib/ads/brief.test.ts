@@ -198,13 +198,13 @@ test("same input, same brief", () => {
 test("copyWarnings catches what an ad must not say", () => {
   const w = (t: string, i: BriefInput = lamp) => copyWarnings(t, i);
   assert.deepEqual(w("Stock limité !"), ["Point d'exclamation : la boutique n'en met pas.", "Urgence ou rareté que rien ne prouve."]);
-  assert.deepEqual(w("Seulement 49,900 DT"), ["Montant absent de la fiche et des réglages : 49,900 DT."]);
+  assert.deepEqual(w("Seulement 49,900 DT"), ["Montant absent de la fiche et de Paramètres, carte « Livraison » : 49,900 DT."]);
   assert.deepEqual(w("59,900 DT, 99,000 د.ت les deux, livraison 8,000 DT, 49,500 DT la lampe"), []);
-  assert.deepEqual(w("Livré en 24h"), ["Délai plus court que celui des réglages."]);
+  assert.deepEqual(w("Livré en 24h"), ["Délai plus court que celui de Paramètres, carte « Livraison »."]);
   assert.deepEqual(w("Perte de poids garantie"), ["Promesse de santé ou de résultat : refusée par Meta et TikTok."]);
   assert.deepEqual(w("Finitions soignées"), []);
   const strict = { ...lamp, shop: { ...lamp.shop, openBeforePaying: false }, product: { ...lamp.product, offers: [] } };
-  assert.deepEqual(w("Livraison gratuite, ouvrez avant de payer", strict), ["« Gratuit » ou « offert » sans offre réelle.", "« Ouvrir avant de payer » alors que les réglages ne le permettent pas."]);
+  assert.deepEqual(w("Livraison gratuite, ouvrez avant de payer", strict), ["« Gratuit » ou « offert » sans offre réelle.", "« Ouvrir avant de payer » alors que ce n'est pas coché dans Paramètres, carte « Livraison »."]);
   assert.deepEqual(w("التوصيل بلاش", strict), ["« Gratuit » ou « offert » sans offre réelle."]);
   assert.deepEqual(w("-30 % aujourd'hui"), ["Pourcentage que la fiche ne donne pas."]);
 });

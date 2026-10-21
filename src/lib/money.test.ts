@@ -18,3 +18,9 @@ test("parses back-office input", () => {
   assert.equal(parseTND("1.2345"), null);
   assert.equal(parseTND("-5"), null);
 });
+
+test("a loss is written with a minus sign, not a hyphen", () => {
+  assert.equal(formatTND(-54_000), "\u221254,000 DT");
+  assert.equal(formatTND(-500, "ar"), "\u22120,500 د.ت");
+  assert.equal(formatTND(0), "0,000 DT");
+});

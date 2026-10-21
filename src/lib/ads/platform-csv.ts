@@ -13,7 +13,7 @@
  */
 import { decodeText, detectDelimiter, normHeader, parseDelimited } from "../product-csv";
 import { spendInRange } from "../profit";
-import { normName, normSource } from "./match";
+import { META_SOURCE, normName, spendSource } from "./match";
 
 export { decodeText };
 
@@ -29,8 +29,8 @@ export type SpendRow = {
   ad: string | null;
   /**
    * The ad account (its ID, else its name) when the export has the column.
-   * Not saved on the row: it only keeps two accounts' campaigns of the same
-   * name apart in the import key.
+   * Not a column of its own: the import key carries it, which keeps two
+   * accounts' campaigns of the same name apart.
    */
   account: string | null;
   amount: number;
@@ -46,7 +46,7 @@ export type ExportRow = SpendRow & { line: number; lines: number };
 export type Platform = "meta" | "tiktok";
 
 export type ExportOptions = {
-  /** Forces the source written on every row ("facebook", "instagram"…). Default: from the platform. */
+  /** Forces the source written on every row ("snapchat"…). Default: from the platform. A Meta app gives "facebook" (spendSource). */
   source?: string;
   /** The account's currency, when the file does not say it. */
   currency?: string;
@@ -120,7 +120,7 @@ for (const c of COLUMNS) {
 /** Columns only one of the two managers writes: enough to tell which file it is. */
 const META_ONLY = new Set(["Ad set name", "Nom de l'ensemble de publicités", "Amount spent", "Montant dépensé", "Reporting starts", "Début des rapports", "Link clicks", "Clics sur un lien", "Result indicator", "Indicateur de résultat"].map(normHeader));
 const TIKTOK_ONLY = new Set(["Ad group name", "Nom du groupe d'annonces", "Clicks (destination)", "Clics (destination)", "Complete payment", "Paiement effectué", "Paiement complet", "Cost", "Coût", "Stat time day"].map(normHeader));
-const SOURCE_OF: Record<Platform, string> = { meta: "facebook", tiktok: "tiktok" };
+const SOURCE_OF: Record<Platform, string> = { meta: META_SOURCE, tiktok: "tiktok" };
 
 /**
  * What a column holds. "Amount spent (TND)" is the spend, in dinars; the
@@ -303,7 +303,8 @@ export function readPlatformExport(input: string, opts: ExportOptions = {}): Pla
   const cell = (row: string[], f: Field) => (at[f] == null ? undefined : row[at[f]!]);
 
   out.platform = meta > tiktok ? "meta" : tiktok > meta ? "tiktok" : null;
-  const source = opts.source ? normSource(opts.source) : out.platform ? SOURCE_OF[out.platform] : null;
+  // A Meta export forced to "instagram" is still the Meta account's spend: saved under "facebook", where Instagram's ad visits are counted.
+  const source = opts.source ? spendSource(opts.source) : out.platform ? SOURCE_OF[out.platform] : null;
   if (!source) return fail("Plateforme non reconnue : choisissez la source (facebook, tiktok…).", "source");
   if (!/^[a-z0-9._-]{2,40}$/.test(source)) return fail("Source invalide : des lettres minuscules, par exemple facebook ou tiktok.", "source");
   out.source = source;
@@ -450,8 +451,20 @@ export function importKeyText(r: Pick<SpendRow, "source" | "campaign" | "adSet" 
   return JSON.stringify(account == null ? parts : [...parts, account]);
 }
 
-/** A spend row already saved, as the import compares it: `imported` when it came from an export (it has an import key). */
-export type SavedSpend = { id: string; day: string; days: number; source: string; campaign: string | null; adSet: string | null; ad: string | null; imported: boolean };
+/**
+ * A spend row already saved, as the import compares it: `imported` when it
+ * came from an export (it has an import key); `account`, the ad account its
+ * key names (null: typed by hand, or an export without the account column).
+ */
+export type SavedSpend = { id: string; day: string; days: number; source: string; campaign: string | null; adSet: string | null; ad: string | null; account?: string | null; imported: boolean; amount?: number };
+
+/**
+ * Under this share of the spend it replaces, a file probably leaves some ads
+ * out (an export filtered to one ad, after the campaign's total): the preview
+ * says so with both amounts. Meta's later revisions of a day move it by a few
+ * percent, far less.
+ */
+export const SHRINK_WARN = 0.9;
 
 export type ImportPlan = {
   /**
@@ -462,11 +475,17 @@ export type ImportPlan = {
   replaced: string[];
   /**
    * Rows kept that share days with a new row of the same spend (same source,
-   * and the same campaign, ad set and ad, or one of them left blank): earlier
-   * imports only partly covered, or spend typed by hand, which an import
-   * never deletes. Those days may be counted twice.
+   * and the same campaign, ad set, ad and ad account, or one of them left
+   * blank): earlier imports only partly covered, or spend typed by hand,
+   * which an import never deletes. Those days may be counted twice.
    */
   overlaps: { imported: number; typed: number };
+  /**
+   * Campaigns whose spend on the days of the replaced rows would fall under
+   * SHRINK_WARN of what those rows held (millimes, before → after). Only
+   * when every amount is given.
+   */
+  shrinks: { campaign: string | null; before: number; after: number }[];
 };
 
 type Span = { start: number; end: number };
@@ -483,49 +502,80 @@ const span = (r: { day: string; days: number }): Span => {
  * adding to it. An earlier row with only some of its days in the new file is
  * kept (deleting it would lose the other days) and reported. So is an ad, or
  * an ad set, the file does not name while it names others of the campaign:
- * an export filtered to one ad says nothing about the other ones.
+ * an export filtered to one ad says nothing about the other ones. Another ad
+ * account's spend is never the same spend, even under the same campaign
+ * name; a row whose account is not known may be any account's. Sources are
+ * compared as spendSource reads them: spend saved under "instagram" is the
+ * Meta account's, as the ads page counts it. The file cannot say whether it
+ * was filtered: when the rows it replaces held clearly more spend than it
+ * brings on their days, `shrinks` says so before anything is saved.
  */
-export function planImport(rows: Pick<SpendRow, "day" | "days" | "source" | "campaign" | "adSet" | "ad">[], saved: SavedSpend[]): ImportPlan {
-  const group = (source: string, campaign: string | null) => `${normSource(source)}\u0000${normName(campaign) ?? ""}`;
-  const spans = new Map<string, (Span & { adSet: string | null; ad: string | null })[]>();
+export function planImport(rows: (Pick<SpendRow, "day" | "days" | "source" | "campaign" | "adSet" | "ad"> & { account?: string | null; amount?: number })[], saved: SavedSpend[]): ImportPlan {
+  const group = (source: string, campaign: string | null) => `${spendSource(source)}\u0000${normName(campaign) ?? ""}`;
+  const same = (a: string | null, b: string | null) => a == null || b == null || a === b;
+  const spans = new Map<string, (Span & { adSet: string | null; ad: string | null; account: string | null })[]>();
   for (const r of rows) {
     const g = group(r.source, r.campaign);
-    spans.set(g, [...(spans.get(g) ?? []), { ...span(r), adSet: normName(r.adSet), ad: normName(r.ad) }]);
+    spans.set(g, [...(spans.get(g) ?? []), { ...span(r), adSet: normName(r.adSet), ad: normName(r.ad), account: normName(r.account) }]);
   }
-  // The days each campaign of the file covers, as merged runs of days.
+  // The days a campaign of the file covers for one account, as merged runs of days.
   const covered = new Map<string, Span[]>();
-  for (const [g, list] of spans) {
-    const runs: Span[] = [];
-    for (const s of [...list].sort((a, b) => a.start - b.start)) {
-      const last = runs[runs.length - 1];
-      if (last && s.start <= last.end) last.end = Math.max(last.end, s.end);
-      else runs.push({ start: s.start, end: s.end });
+  const coveredFor = (g: string, account: string | null) => {
+    const k = `${g}\u0000${account ?? ""}`;
+    let runs = covered.get(k);
+    if (!runs) {
+      runs = [];
+      for (const s of (spans.get(g) ?? []).filter((n) => same(account, n.account)).sort((a, b) => a.start - b.start)) {
+        const last = runs[runs.length - 1];
+        if (last && s.start <= last.end) last.end = Math.max(last.end, s.end);
+        else runs.push({ start: s.start, end: s.end });
+      }
+      covered.set(k, runs);
     }
-    covered.set(g, runs);
-  }
+    return runs;
+  };
   const bySource = new Map<string, string[]>();
   for (const g of spans.keys()) {
     const source = g.split("\u0000")[0];
     bySource.set(source, [...(bySource.get(source) ?? []), g]);
   }
 
-  const plan: ImportPlan = { replaced: [], overlaps: { imported: 0, typed: 0 } };
-  const same = (a: string | null, b: string | null) => a == null || b == null || a === b;
+  const plan: ImportPlan = { replaced: [], overlaps: { imported: 0, typed: 0 }, shrinks: [] };
+  const gone = new Map<string, SavedSpend[]>();
   for (const s of saved) {
     const d = span(s);
     const g = group(s.source, s.campaign);
     const adSet = normName(s.adSet);
     const ad = normName(s.ad);
-    // A new row on some of the same days for the same spend: the same ad set and ad, or a total that includes it, or a part of it.
-    const meetsIn = (k: string) => spans.get(k)?.some((n) => n.start < d.end && d.start < n.end && same(adSet, n.adSet) && same(ad, n.ad)) ?? false;
-    if (s.imported && covered.get(g)?.some((run) => run.start <= d.start && d.end <= run.end) && meetsIn(g)) {
+    const account = normName(s.account);
+    // A new row on some of the same days for the same spend: the same ad set, ad and account, or a total that includes it, or a part of it.
+    const meetsIn = (k: string) => spans.get(k)?.some((n) => n.start < d.end && d.start < n.end && same(adSet, n.adSet) && same(ad, n.ad) && same(account, n.account)) ?? false;
+    if (s.imported && coveredFor(g, account).some((run) => run.start <= d.start && d.end <= run.end) && meetsIn(g)) {
       plan.replaced.push(s.id);
+      gone.set(g, [...(gone.get(g) ?? []), s]);
       continue;
     }
     // A row without a campaign meets every campaign of its source; a campaign meets itself and the rows without one.
     const campaign = normName(s.campaign);
-    const groups = campaign == null ? (bySource.get(normSource(s.source)) ?? []) : [g, group(s.source, null)];
+    const groups = campaign == null ? (bySource.get(spendSource(s.source)) ?? []) : [g, group(s.source, null)];
     if (groups.some(meetsIn)) plan.overlaps[s.imported ? "imported" : "typed"]++;
+  }
+
+  // Per campaign, what the replaced rows held against what the file gives on their days.
+  const known = rows.every((r) => r.amount != null) && saved.every((s) => s.amount != null);
+  for (const [g, list] of known ? gone : []) {
+    const runs: Span[] = [];
+    for (const x of list.map(span).sort((a, b) => a.start - b.start)) {
+      const last = runs[runs.length - 1];
+      if (last && x.start <= last.end) last.end = Math.max(last.end, x.end);
+      else runs.push({ ...x });
+    }
+    const dayOf = (n: number) => new Date(n * DAY_MS).toISOString().slice(0, 10);
+    const before = list.reduce((t, s) => t + s.amount!, 0);
+    const after = rows
+      .filter((r) => group(r.source, r.campaign) === g)
+      .reduce((t, r) => t + runs.reduce((u, run) => u + spendInRange({ day: r.day, days: r.days, amount: r.amount! }, dayOf(run.start), dayOf(run.end)), 0), 0);
+    if (after < before * SHRINK_WARN) plan.shrinks.push({ campaign: list[0].campaign, before, after });
   }
   return plan;
 }

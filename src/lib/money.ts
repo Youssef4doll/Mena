@@ -12,8 +12,8 @@ export type Locale = "fr" | "ar";
  */
 export function formatTND(millimes: number, locale: Locale = "fr"): string {
   if (!Number.isFinite(millimes)) return "—";
-  const dt = millimes / 1000;
-  const n = dt.toLocaleString("fr-FR", { minimumFractionDigits: 3, maximumFractionDigits: 3, useGrouping: false });
+  // A loss reads with a true minus sign (−54,000 DT), not a hyphen.
+  const n = (millimes < 0 ? "\u2212" : "") + (Math.abs(millimes) / 1000).toLocaleString("fr-FR", { minimumFractionDigits: 3, maximumFractionDigits: 3, useGrouping: false });
   return locale === "ar" ? `${n} د.ت` : `${n} DT`;
 }
 

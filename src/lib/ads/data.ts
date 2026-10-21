@@ -4,7 +4,7 @@ import { prisma } from "../prisma";
 import { getSettings } from "../settings";
 import { spendInRange } from "../profit";
 import { TZ, tunisDay } from "../analytics-range";
-import { SOURCE_ALIASES, normName, normSource, parseRowKey, rowKey } from "./match";
+import { META_APPS, META_SOURCE, ORGANIC_MEDIA, PAID_MEDIA, SOURCE_ALIASES, normName, normSource, parseRowKey, rowKey, spendSource } from "./match";
 import { unitMargin } from "./breakeven";
 import { dayShares } from "./platform-csv";
 import { STALE_PENDING_HOURS, type AdRow, type Baseline, type CallDelayRow, type Costs, type DayPoint, type Funnel, type Level, type Platform } from "./types";
@@ -31,7 +31,10 @@ import { STALE_PENDING_HOURS, type AdRow, type Baseline, type CallDelayRow, type
  *   customerGrowth(from: Date, to: Date, filter?: AdFilter, now?: Date): Promise<CustomerGrowth>
  *   knownKeys(from: Date, to: Date): Promise<{ campaigns: string[]; ads: string[] }>
  *
- * Keys and name matching come from ./match (rowKey, parseRowKey, normName).
+ * Keys and name matching come from ./match (rowKey, parseRowKey, normName),
+ * and so does the source a row counts for (adSource, spendSource): the ad
+ * traffic of every Meta app (Instagram, Messenger…) and the Meta export's
+ * spend meet on the "facebook" row; organic Instagram stays "instagram".
  */
 
 const n = (v: unknown) => (v == null ? 0 : Number(v));
@@ -43,12 +46,9 @@ export type AdFilter = {
   /** null: visits and orders without a campaign. */
   campaign?: string | null;
   ad?: string | null;
-  /** Only visits and orders that came from an ad link: a utm_campaign, or a paid medium (cpc, paid…). */
+  /** Only visits and orders that came from an ad link (isPaidLink): a paid medium (cpc, paid…), or a utm_campaign whose medium is not organic (social, email…). */
   paidOnly?: boolean;
 };
-
-/** Mediums that mean a paid click: what utm_medium usually says, and what the site writes for click ids without utm. */
-const PAID_MEDIA = ["paid", "cpc", "ppc", "cpm", "cpv", "paid_social", "paidsocial", "paid-social", "social_paid", "paid_or_social", "ads", "ad", "sponsored", "display"];
 
 /** Days of order history the shop-wide rates are read over. */
 const BASELINE_DAYS = 180;
@@ -64,11 +64,23 @@ export const LTV_DAYS = [30, 60, 90] as const;
 
 /** A name as matched (see normName): trimmed, lowercased, null when empty. */
 const nameSql = (col: string) => `NULLIF(lower(btrim(${col}, E' \\t\\r\\n')), '')`;
-/** A source as matched (see normSource): aliases folded, "direct" when none. */
-const sourceSql = (col: string) =>
+const listSql = (values: string[]) => values.map((v) => `'${v}'`).join(", ");
+/** A source as normSource reads it: aliases folded, "direct" when none. */
+const aliasSql = (col: string) =>
   `COALESCE(CASE ${nameSql(col)} ${Object.entries(SOURCE_ALIASES)
     .map(([alias, s]) => `WHEN '${alias}' THEN '${s}'`)
     .join(" ")} ELSE ${nameSql(col)} END, 'direct')`;
+/** isPaidLink, on a table alias whose columns are medium and campaign. */
+const paidSql = (t: string) => {
+  const medium = nameSql(`${t}.medium`);
+  return `(${medium} IN (${listSql(PAID_MEDIA)}) OR (${nameSql(`${t}.campaign`)} IS NOT NULL AND COALESCE(${medium}, '') NOT IN (${listSql(ORGANIC_MEDIA)})))`;
+};
+/** The source a visit or an order counts for (adSource), on a table alias whose columns are source, medium and campaign. */
+const sourceSql = (t: string) => {
+  const source = aliasSql(`${t}.source`);
+  const apps = META_APPS.filter((a) => a !== META_SOURCE);
+  return `CASE WHEN ${source} IN (${listSql(apps)}) AND ${paidSql(t)} THEN '${META_SOURCE}' ELSE ${source} END`;
+};
 const tunisSql = (col: string) => `(${col} AT TIME ZONE 'UTC' AT TIME ZONE '${TZ}')`;
 
 /** Order statuses past the phone confirmation (confirmedAt is set on the way, this also covers older rows). */
@@ -94,18 +106,18 @@ function dimsSql(level: Level, t: string, contentCol = "content") {
   const camp = level === "source" ? "NULL::text" : nameSql(`${t}.campaign`);
   const ad = level === "ad" ? nameSql(`${t}.${contentCol}`) : "NULL::text";
   return {
-    select: Prisma.raw(`${sourceSql(`${t}.source`)} AS src, ${camp} AS camp, ${ad} AS ad`),
+    select: Prisma.raw(`${sourceSql(t)} AS src, ${camp} AS camp, ${ad} AS ad`),
     group: Prisma.raw(level === "source" ? "1" : level === "campaign" ? "1, 2" : "1, 2, 3"),
     // A campaign row needs a campaign; an ad row needs an ad.
     need: Prisma.raw(level === "campaign" ? `AND ${camp} IS NOT NULL` : level === "ad" ? `AND ${ad} IS NOT NULL` : ""),
   };
 }
 
-/** The filter as SQL on a table alias whose columns are source, medium, campaign and `contentCol`. */
+/** The filter as SQL on a table alias whose columns are source, medium, campaign and `contentCol`. A key's source is the one sourceSql gives. */
 function filterSql(f: AdFilter | undefined, t: string, contentCol = "content"): Prisma.Sql {
   if (!f) return Prisma.empty;
   const parts: Prisma.Sql[] = [];
-  if (f.source != null) parts.push(Prisma.sql`AND ${Prisma.raw(sourceSql(`${t}.source`))} = ${normSource(f.source)}`);
+  if (f.source != null) parts.push(Prisma.sql`AND ${Prisma.raw(sourceSql(t))} = ${normSource(f.source)}`);
   if (f.campaign !== undefined) {
     const c = normName(f.campaign);
     parts.push(c == null ? Prisma.raw(`AND ${nameSql(`${t}.campaign`)} IS NULL`) : Prisma.sql`AND ${Prisma.raw(nameSql(`${t}.campaign`))} = ${c}`);
@@ -114,7 +126,7 @@ function filterSql(f: AdFilter | undefined, t: string, contentCol = "content"): 
     const a = normName(f.ad);
     parts.push(a == null ? Prisma.raw(`AND ${nameSql(`${t}.${contentCol}`)} IS NULL`) : Prisma.sql`AND ${Prisma.raw(nameSql(`${t}.${contentCol}`))} = ${a}`);
   }
-  if (f.paidOnly) parts.push(Prisma.sql`AND (${Prisma.raw(nameSql(`${t}.campaign`))} IS NOT NULL OR lower(${Prisma.raw(`${t}.medium`)}) IN (${Prisma.join(PAID_MEDIA)}))`);
+  if (f.paidOnly) parts.push(Prisma.raw(`AND ${paidSql(t)}`));
   return parts.length ? Prisma.join(parts, " ") : Prisma.empty;
 }
 
@@ -170,7 +182,7 @@ async function spendRows(from: Date, to: Date): Promise<SpendEntry[]> {
     day: r.day.toISOString().slice(0, 10),
     imported: importKey != null,
     savedAt: createdAt.getTime(),
-    source: normSource(r.source),
+    source: spendSource(r.source),
     campaign: normName(r.campaign),
     ad: normName(r.ad),
     spelling: { campaign: r.campaign?.trim() || null, ad: r.ad?.trim() || null },
@@ -714,7 +726,7 @@ export async function customerGrowth(from: Date, to: Date, filter?: AdFilter, no
   const cut = Object.fromEntries(LTV_DAYS.map((d) => [d, new Date(now.getTime() - d * DAY)])) as Record<(typeof LTV_DAYS)[number], Date>;
   const [bySource, cohorts] = await Promise.all([
     prisma.$queryRaw<{ src: string; orders: bigint; from_new: bigint; customers: bigint }[]>`
-      SELECT ${Prisma.raw(sourceSql("o.source"))} AS src, COUNT(*) AS orders,
+      SELECT ${Prisma.raw(sourceSql("o"))} AS src, COUNT(*) AS orders,
         COUNT(*) FILTER (WHERE ${Prisma.raw(NEW_CUSTOMER_SQL)}) AS from_new, COUNT(DISTINCT o.phone) AS customers
       FROM "Order" o
       WHERE o."createdAt" >= ${from} AND o."createdAt" < ${to} AND o.status <> 'CANCELLED' AND ${Prisma.raw(`o.${NOT_ADMIN_SQL}`)} ${filterSql(filter, "o")}
@@ -727,7 +739,7 @@ export async function customerGrowth(from: Date, to: Date, filter?: AdFilter, no
         FROM "Order" o
         WHERE o."createdAt" >= ${from} AND o."createdAt" < ${to} AND o.status <> 'CANCELLED' AND ${Prisma.raw(NEW_CUSTOMER_SQL)} ${filterSql(filter, "o")}
       ), c AS (
-        SELECT f.at, f.device, f.source, x.*
+        SELECT f.at, f.device, f.source, f.medium, f.campaign, x.*
         FROM firsts f CROSS JOIN LATERAL (
           SELECT COUNT(*) FILTER (WHERE p.id <> f.id AND p.status <> 'CANCELLED') AS later,
             COUNT(*) FILTER (WHERE p.status = 'DELIVERED' AND p."createdAt" < f.at + interval '30 days') AS o30,
@@ -739,7 +751,7 @@ export async function customerGrowth(from: Date, to: Date, filter?: AdFilter, no
           FROM "Order" p WHERE p.phone = f.phone AND p."createdAt" >= f.at
         ) x
       )
-      SELECT CASE WHEN device = 'admin' THEN NULL ELSE ${Prisma.raw(sourceSql("c.source"))} END AS src,
+      SELECT CASE WHEN device = 'admin' THEN NULL ELSE ${Prisma.raw(sourceSql("c"))} END AS src,
         COUNT(*) AS customers, COUNT(*) FILTER (WHERE later > 0) AS repeaters,
         COUNT(*) FILTER (WHERE at <= ${cut[30]}) AS m30, COALESCE(SUM(o30) FILTER (WHERE at <= ${cut[30]}), 0) AS o30, COALESCE(SUM(r30) FILTER (WHERE at <= ${cut[30]}), 0) AS r30,
         COUNT(*) FILTER (WHERE at <= ${cut[60]}) AS m60, COALESCE(SUM(o60) FILTER (WHERE at <= ${cut[60]}), 0) AS o60, COALESCE(SUM(r60) FILTER (WHERE at <= ${cut[60]}), 0) AS r60,
@@ -778,10 +790,10 @@ export async function customerGrowth(from: Date, to: Date, filter?: AdFilter, no
  */
 export async function knownKeys(from: Date, to: Date): Promise<{ campaigns: string[]; ads: string[] }> {
   const rows = await prisma.$queryRaw<{ src: string; camp: string | null; ad: string | null }[]>`
-    SELECT DISTINCT ${Prisma.raw(sourceSql("o.source"))} AS src, ${Prisma.raw(nameSql("o.campaign"))} AS camp, ${Prisma.raw(nameSql("o.content"))} AS ad
+    SELECT DISTINCT ${Prisma.raw(sourceSql("o"))} AS src, ${Prisma.raw(nameSql("o.campaign"))} AS camp, ${Prisma.raw(nameSql("o.content"))} AS ad
     FROM "Order" o WHERE o."createdAt" >= ${from} AND o."createdAt" < ${to} AND ${Prisma.raw(`o.${NOT_ADMIN_SQL}`)} AND (o.campaign IS NOT NULL OR o.content IS NOT NULL)
     UNION
-    SELECT DISTINCT ${Prisma.raw(sourceSql("e.source"))}, ${Prisma.raw(nameSql("e.campaign"))}, ${Prisma.raw(nameSql("e.content"))}
+    SELECT DISTINCT ${Prisma.raw(sourceSql("e"))}, ${Prisma.raw(nameSql("e.campaign"))}, ${Prisma.raw(nameSql("e.content"))}
     FROM "AnalyticsEvent" e WHERE e.name = 'page_view' AND e."createdAt" >= ${from} AND e."createdAt" < ${to} AND (e.campaign IS NOT NULL OR e.content IS NOT NULL)
     LIMIT 5000`;
   const campaigns = new Set<string>();

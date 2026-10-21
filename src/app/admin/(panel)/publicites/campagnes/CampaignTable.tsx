@@ -150,9 +150,10 @@ function tableRow({ row, advice: a }: Line, period: string, level: "campaign" | 
   return { key: row.key, id: rowId(row.key), cells, detail: <RowDetail row={row} a={a} period={period} level={level} /> };
 }
 
-/** The advisor's recent-cost check in figures: cost per placed order of the last days against the days before. */
+/** The advisor's recent-cost check in figures: cost per placed order of the last days against the days before, each on its days with a known spend. */
 function trendText(t: NonNullable<RowAdvice["trend"]>): string {
-  return `Coût par commande passée : ${formatTND(t.recent.cpa)} sur les derniers jours (${plural(t.recent.orders, "commande", "commandes")}), contre ${formatTND(t.base.cpa)} avant (${plural(t.base.orders, "commande", "commandes")}).`;
+  const side = (w: typeof t.recent) => `${plural(w.days, "jour", "jours")}, ${plural(w.orders, "commande", "commandes")}`;
+  return `Coût par commande passée : ${formatTND(t.recent.cpa)} sur les derniers jours (${side(t.recent)}), contre ${formatTND(t.base.cpa)} avant (${side(t.base)}).`;
 }
 
 /** A stage's rate in its unit: the CPM in money, every other stage in percent. */
@@ -164,6 +165,10 @@ function stageText(v: number, stage: Stage): string {
 function RowDetail({ row, a, period, level }: { row: AdRow; a: RowAdvice; period: string; level: "campaign" | "ad" }) {
   const k = a.kpis;
   const neck = a.bottleneck;
+  // The figures behind the "plus cher ces derniers jours" mark, which a phone cannot hover; left out
+  // when the verdict already rests on them (its reason quotes the recent cost).
+  const worse = a.trend?.worse ? a.trend : null;
+  const trend = worse && !a.reasons.some((t) => t.includes(formatTND(worse.recent.cpa))) ? worse : null;
   return (
     <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
       <div className="flex min-w-0 flex-col gap-3">
@@ -175,6 +180,11 @@ function RowDetail({ row, a, period, level }: { row: AdRow; a: RowAdvice; period
             ))}
           </ul>
         </div>
+        {trend && (
+          <p className="text-[13px] leading-relaxed text-[#8a5a00]">
+            <span className="font-medium">Plus cher ces derniers jours.</span> {trendText(trend)}
+          </p>
+        )}
         {neck && (
           <div className="rounded-xl border border-line bg-white p-3 text-[13px] leading-relaxed">
             <p className="font-medium text-clay">{neck.title}</p>

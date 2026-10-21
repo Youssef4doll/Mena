@@ -7,7 +7,8 @@ import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { requireAdmin } from "@/lib/admin-auth";
 import { tunisDay } from "@/lib/analytics-range";
-import { normSource } from "@/lib/ads/match";
+import { formatTND } from "@/lib/money";
+import { normName, spendSource } from "@/lib/ads/match";
 import { MAX_EXPORT_ROWS, MAX_ROW_DAYS, importKeyText, planImport, type ImportPlan, type SpendRow } from "@/lib/ads/platform-csv";
 
 const DAY = 86_400_000;
@@ -45,18 +46,32 @@ const FIELD_LABELS: Record<string, string> = { day: "date", days: "nombre de jou
 
 /** `replaced`: earlier imported rows deleted; `overlaps`: rows kept that share days with the new ones (see planImport). */
 export type ImportResult = { ok: true; imported: number; replaced: number; overlaps: ImportPlan["overlaps"]; message: string } | { ok: false; error: string };
-/** `warning`: the rows kept on some of the same days, in words (null when none). */
+/** `warning`: the rows kept on some of the same days, and the campaigns whose spend would drop, in words (null when none). */
 export type ImportPreview = { ok: true; replaced: number; overlaps: ImportPlan["overlaps"]; warning: string | null } | { ok: false; error: string };
 
 type Row = z.output<typeof rowSchema> & { importKey: string };
 type Db = Prisma.TransactionClient | typeof prisma;
 
+const sha256 = (s: string) => createHash("sha256").update(s).digest("hex");
+/** A short hash of the ad account, or null when the export does not name it. */
+const accountTag = (account: string | null) => {
+  const a = normName(account);
+  return a == null ? null : sha256(a).slice(0, 16);
+};
+
 /**
  * Same source, campaign, ad set, ad, days and ad account → same key, whatever
  * the case or the amounts: importing an export again (Meta revises
  * yesterday's figures) replaces its rows instead of adding them a second time.
+ * When the export names the account, its tag follows the hash after a dot, so
+ * a later import can tell another account's rows from its own (keyAccount).
  */
-const importKey = (r: z.output<typeof rowSchema>) => createHash("sha256").update(importKeyText(r)).digest("hex");
+const importKey = (r: z.output<typeof rowSchema>) => {
+  const tag = accountTag(r.account);
+  return tag ? `${sha256(importKeyText(r))}.${tag}` : sha256(importKeyText(r));
+};
+/** The account tag a saved key carries: null for a row typed by hand or imported without the account. */
+const keyAccount = (key: string | null) => key?.split(".")[1] ?? null;
 
 /** The rows from the browser, checked again, with the lines of one key (an export broken down by age or placement) added up. */
 function readRows(data: unknown): { ok: true; rows: Row[]; note: string | undefined } | { ok: false; error: string } {
@@ -73,7 +88,7 @@ function readRows(data: unknown): { ok: true; rows: Row[]; note: string | undefi
 
   const rows = new Map<string, Row>();
   for (const raw of parsed.data.rows) {
-    const r = { ...raw, source: normSource(raw.source) };
+    const r = { ...raw, source: spendSource(raw.source) };
     const key = importKey(r);
     const prev = rows.get(key);
     if (!prev) {
@@ -94,25 +109,26 @@ function readRows(data: unknown): { ok: true; rows: Row[]; note: string | undefi
 
 /**
  * What saving the rows does to the spend already saved (planImport): the
- * earlier imported rows they replace, and the rows kept on some of the same
- * days. A row with one of the new keys is always replaced.
+ * earlier imported rows they replace, the rows kept on some of the same
+ * days, and the campaigns whose spend falls. A row with one of the new keys
+ * is always replaced.
  */
-async function planFor(db: Db, list: Row[]): Promise<{ replaced: string[]; overlaps: ImportPlan["overlaps"] }> {
+async function planFor(db: Db, list: Row[]): Promise<ImportPlan> {
   const start = (r: { day: string }) => Date.parse(`${r.day}T00:00:00Z`);
   const first = Math.min(...list.map(start));
   const last = Math.max(...list.map((r) => start(r) + r.days * DAY));
   // A saved row covers at most MAX_ROW_DAYS: one starting earlier cannot reach the file's days.
   const saved = await db.adSpend.findMany({
     where: { day: { gte: new Date(first - MAX_ROW_DAYS * DAY), lt: new Date(last) } },
-    select: { id: true, day: true, days: true, source: true, campaign: true, adSet: true, ad: true, importKey: true },
+    select: { id: true, day: true, days: true, source: true, campaign: true, adSet: true, ad: true, amount: true, importKey: true },
   });
   const plan = planImport(
-    list,
-    saved.map((s) => ({ ...s, day: s.day.toISOString().slice(0, 10), imported: s.importKey != null })),
+    list.map((r) => ({ ...r, account: accountTag(r.account) })),
+    saved.map((s) => ({ ...s, day: s.day.toISOString().slice(0, 10), account: keyAccount(s.importKey), imported: s.importKey != null })),
   );
   const keys = new Set(list.map((r) => r.importKey));
   const sameKey = saved.filter((s) => s.importKey != null && keys.has(s.importKey)).map((s) => s.id);
-  return { replaced: [...new Set([...plan.replaced, ...sameKey])], overlaps: plan.overlaps };
+  return { ...plan, replaced: [...new Set([...plan.replaced, ...sameKey])] };
 }
 
 /**
@@ -125,7 +141,7 @@ export async function previewImport(data: { rows: SpendRow[] }): Promise<ImportP
   const read = readRows(data);
   if (!read.ok) return read;
   const plan = await planFor(prisma, read.rows);
-  return { ok: true, replaced: plan.replaced.length, overlaps: plan.overlaps, warning: overlapText(plan.overlaps) };
+  return { ok: true, replaced: plan.replaced.length, overlaps: plan.overlaps, warning: [overlapText(plan.overlaps), shrinkText(plan.shrinks, false)].filter(Boolean).join(" ") || null };
 }
 
 /** Two imports at once: the same keys inserted twice, or the database ending one transaction to let the other through. */
@@ -171,7 +187,7 @@ export async function importAdSpend(data: { rows: SpendRow[]; note?: string }): 
             })),
           });
         }
-        return { replaced: gone.count, overlaps: plan.overlaps };
+        return { replaced: gone.count, overlaps: plan.overlaps, shrinks: plan.shrinks };
       },
       { timeout: 30_000 },
     );
@@ -192,12 +208,26 @@ export async function importAdSpend(data: { rows: SpendRow[]; note?: string }): 
   revalidatePath("/admin/publicites", "layout");
   revalidatePath("/admin/analytics");
   revalidatePath("/admin/depenses");
-  const { replaced, overlaps } = done;
+  const { replaced, overlaps, shrinks } = done;
   let message = `${list.length} ligne${list.length > 1 ? "s" : ""} importée${list.length > 1 ? "s" : ""}.`;
   if (replaced > 0) message += ` ${replaced} ligne${replaced > 1 ? "s" : ""} d'un import précédent ${replaced > 1 ? "remplacées" : "remplacée"} (même campagne, mêmes jours).`;
-  const warning = overlapText(overlaps);
-  if (warning) message += ` ${warning}`;
+  for (const warning of [overlapText(overlaps), shrinkText(shrinks, true)]) if (warning) message += ` ${warning}`;
   return { ok: true, imported: list.length, replaced, overlaps, message };
+}
+
+/**
+ * The campaigns whose spend on the replaced rows' days falls (planImport's
+ * shrinks), with both amounts, or null: before the import (`done` false) and
+ * after it. A file filtered to some ads would lose the others' spend.
+ */
+function shrinkText(shrinks: ImportPlan["shrinks"], done: boolean): string | null {
+  if (shrinks.length === 0) return null;
+  const MAX = 3;
+  const one = (x: ImportPlan["shrinks"][number]) => `« ${x.campaign ?? "sans campagne"} » ${done ? "est passée" : "passerait"} de ${formatTND(x.before)} à ${formatTND(x.after)}`;
+  const rest = shrinks.length - MAX;
+  const many = shrinks.length > 1;
+  const whole = many ? "les campagnes entières" : "la campagne entière";
+  return `Sur les jours remplacés, la dépense de ${shrinks.slice(0, MAX).map(one).join(", celle de ")}${rest > 0 ? ` (et ${rest > 1 ? `${rest} autres campagnes` : "une autre campagne"})` : ""}. Si le fichier a été filtré sur certaines publicités, la dépense des autres ${done ? `a été retirée : importez ${whole}` : `serait retirée : exportez ${whole}`}.`;
 }
 
 /** The warning for rows kept on some of the imported days, or null. Shown by the preview and after the import. */

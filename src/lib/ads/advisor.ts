@@ -122,6 +122,12 @@ export const UTM_COVERAGE_FLOOR = 0.7;
 /** One row making this share of the delivered orders: the account hangs on it. Needs this many delivered orders in all. */
 export const CONCENTRATION_SHARE = 0.6;
 export const CONCENTRATION_MIN_DELIVERED = 10;
+/**
+ * Share of the daily budget a test of 2 or 3 new creatives takes: enough to
+ * judge them within a week, not so much that unproven ads live on the money
+ * taken from the losers. Freed budget beyond it is simply not spent.
+ */
+export const TEST_BUDGET_SHARE = { min: 0.1, max: 0.2 };
 /** This many rows still waiting for data, together taking this share of the spend: the budget is spread too thin. */
 export const FRAGMENTED_ROWS = 4;
 export const FRAGMENTED_SHARE = 0.4;
@@ -172,9 +178,12 @@ export const LATE_CANCEL_SHARE = 0.1;
 const CALL_FAST: CallDelayRow["bucket"][] = ["1h"];
 const CALL_SLOW: CallDelayRow["bucket"][] = ["24h", "later"];
 
-/** Fatigue: the last 3 active days against up to 7 days before them. */
+/** Fatigue: the last 3 active days against up to 7 days before them… */
 export const FATIGUE_RECENT_DAYS = 3;
 export const FATIGUE_BASE_DAYS = 7;
+/** …and the last 7 against up to 14 before them: a wear that began a week ago is already inside the 7 days before the last 3. */
+export const FATIGUE_WEEK_DAYS = 7;
+export const FATIGUE_WEEK_BASE_DAYS = 14;
 /** Impressions (or visits, without platform figures) each window needs. */
 export const FATIGUE_MIN_IMPRESSIONS = { base: 3_000, recent: 1_000 };
 export const FATIGUE_MIN_SESSIONS = { base: 150, recent: 60 };
@@ -260,6 +269,12 @@ export type RowAdvice = Advice & {
   fatigue: Fatigue | null;
   /** Cost per order of the last days against the days before (needs the daily points). */
   trend: CostTrend | null;
+  /**
+   * When the last days cost clearly more per order: the probability that they
+   * still cost less than the CPA max. Under LOSE_PROB the line loses money on
+   * its orders now, whatever its period says ("turned"). Null otherwise.
+   */
+  trendUnderMax: number | null;
   spendPerDay: number | null;
   /** The reason the verdict rests on, word for word one of `reasons`. */
   decision: string | null;
@@ -348,14 +363,16 @@ export type Report = {
 
 // ── Text helpers ───────────────────────────────────────────────────────
 
-const money = (m: number | null | undefined) => (m == null ? "—" : formatTND(m));
+/** A loss is written with the minus sign (−54,000 DT), as the pages write a budget cut, never with a hyphen. */
+const money = (m: number | null | undefined) => (m == null ? "—" : formatTND(m).replace(/^-/, "−"));
 const pct = (x: number | null | undefined) => fmt(x, "pct");
 const signed = (x: number) => `${x >= 0 ? "+" : "−"}${fmt(Math.abs(x), "pct")}`;
 const count = (n: number) => Math.round(n).toLocaleString("fr-FR");
 /** A probability shown without false certainty: never "100 %" or "0 %". */
 const chance = (p: number) => (p > 0.99 ? "plus de 99 %" : p < 0.01 ? "moins de 1 %" : pct(p));
 const dec = (n: number) => n.toLocaleString("fr-FR", { maximumFractionDigits: 1 });
-const name = (r: AdRow) => `« ${r.ad ?? r.campaign ?? r.source} »`;
+// Every « » of these texts holds its words with no-break spaces (\u00a0): a line never breaks between a guillemet and its name.
+const name = (r: AdRow) => `«\u00a0${r.ad ?? r.campaign ?? r.source}\u00a0»`;
 /** "a", "a et b", "a, b et c". */
 const joinFr = (xs: string[]) => (xs.length < 2 ? (xs[0] ?? "") : `${xs.slice(0, -1).join(", ")} et ${xs[xs.length - 1]}`);
 /** The names of a few rows: "« a », « b » et 2 autres". */
@@ -400,7 +417,7 @@ const STAGE_TEXT: Record<Stage, { title: string; action: string; fix?: Fix }> = 
   view: { title: "Les visiteurs n'ouvrent pas la fiche produit", action: "Faire pointer la publicité directement sur la fiche du produit montré, pas sur l'accueil.", fix: "links" },
   formStart: { title: "La fiche ne convainc pas", action: "Revoir l'offre et la confiance en haut de la fiche : prix clair, pack de 2 ou 3, vraies photos, paiement à la livraison et délai visibles. Le prix doit être celui de la publicité." },
   formCompletion: { title: "Le formulaire perd des clients", action: "Appeler dans la journée les formulaires commencés sans commande (leur numéro est gardé dans Commandes non terminées). Raccourcir le formulaire, essayer la saisie du téléphone sur un Android, afficher les frais de livraison avant le bouton.", fix: "carts" },
-  confirmation: { title: "Trop de commandes non confirmées", action: "Appeler dans l'heure qui suit la commande. Si l'écart reste : audience trop large ou fausses commandes ; exclure les placements en cause et signaler l'achat aux publicités à la confirmation (Paramètres, carte « Pixels publicitaires »).", fix: "tracking" },
+  confirmation: { title: "Trop de commandes non confirmées", action: "Appeler dans l'heure qui suit la commande. Si l'écart reste : audience trop large ou fausses commandes ; exclure les placements en cause et signaler l'achat aux publicités à la confirmation (Paramètres, carte «\u00a0Pixels publicitaires\u00a0»).", fix: "tracking" },
   delivery: { title: "Trop de colis refusés", action: "Montrer le vrai produit et le prix total dans la publicité, reconfirmer la veille de la livraison par appel ou SMS, vérifier les gouvernorats qui refusent le plus.", fix: "brief" },
 };
 
@@ -578,16 +595,24 @@ export function bottleneck(row: AdRow, ref: Reference): Bottleneck | null {
 /**
  * Creative fatigue from daily points: the same people see the ad again, the
  * CTR falls, the platform charges more to find new ones (CPM up). Read on
- * the last 3 active days against the 7 before them. Null when there are not
- * enough days or volume to say anything.
+ * the last 3 active days against the 7 before them, and on the last 7
+ * against the 14 before them; the clearer reading is kept (the shorter one
+ * on a tie). Null when there are not enough days or volume to say anything.
  */
 export function fatigue(points: DayPoint[], frequency: number | null = null): Fatigue | null {
   const active = points
     .filter((p) => (p.spend ?? 0) > 0 || (p.impressions ?? 0) > 0 || p.sessions > 0)
     .sort((a, b) => a.day.localeCompare(b.day));
-  if (active.length < FATIGUE_RECENT_DAYS + 3) return null;
-  const recent = active.slice(-FATIGUE_RECENT_DAYS);
-  const base = active.slice(-FATIGUE_RECENT_DAYS - FATIGUE_BASE_DAYS, -FATIGUE_RECENT_DAYS);
+  const read = (recentDays: number, baseDays: number) =>
+    active.length < recentDays + 3 ? null : wear(active.slice(-recentDays), active.slice(-recentDays - baseDays, -recentDays), frequency);
+  const short = read(FATIGUE_RECENT_DAYS, FATIGUE_BASE_DAYS);
+  const week = read(FATIGUE_WEEK_DAYS, FATIGUE_WEEK_BASE_DAYS);
+  const rank = (f: Fatigue | null) => (f == null ? -1 : f.level === "clear" ? 2 : f.level === "early" ? 1 : 0);
+  return rank(week) > rank(short) ? week : short;
+}
+
+/** One reading of the wear: the recent days against the days before them. */
+function wear(recent: DayPoint[], base: DayPoint[], frequency: number | null): Fatigue | null {
   const sum = (xs: DayPoint[], f: (p: DayPoint) => number | null) => xs.reduce((s, p) => s + (f(p) ?? 0), 0);
   const all = (xs: DayPoint[], f: (p: DayPoint) => number | null) => xs.every((p) => f(p) != null);
   const trend = (b: number, r: number): Trend => ({ base: b, recent: r, change: b > 0 ? r / b - 1 : 0 });
@@ -706,6 +731,8 @@ export function adviseRow(row: AdRow, k: Kpis, ctx: RowContext): RowAdvice {
   const spendPerDay = currentSpendPerDay(spend, ctx.days, ctx.daily);
   const fat = ctx.daily ? fatigue(ctx.daily, k.frequency) : null;
   const trend = ctx.daily ? costTrend(ctx.daily) : null;
+  // A dearer week held against the CPA max (the max per placed order, cancellations and refusals counted).
+  const trendUnderMax = trend?.worse && k.breakEvenCpa != null && k.breakEvenCpa > 0 ? probCostUnder(trend.recent.orders, trend.recent.spend, k.breakEvenCpa) : null;
   const neck = bottleneck(row, ctx.ref);
   const reasons: string[] = [];
   let decision: string | null = null;
@@ -732,6 +759,7 @@ export function adviseRow(row: AdRow, k: Kpis, ctx: RowContext): RowAdvice {
     bottleneck: neck,
     fatigue: fat,
     trend,
+    trendUnderMax,
     spendPerDay,
     decision,
     ...extra,
@@ -829,10 +857,19 @@ export function adviseRow(row: AdRow, k: Kpis, ctx: RowContext): RowAdvice {
     return out("keep", confidence, budget(0), base);
   }
 
+  // Under the max over the period, over the CPA max on its last days: the average hides a line that now loses
+  // money on each order. It is cut back today, not held for 3 more days. Never more than medium confidence:
+  // the last days' orders are mostly still open.
+  if (trend && trendUnderMax != null && trendUnderMax <= LOSE_PROB && share <= 1 && !account) {
+    decide(
+      `${p >= WIN_PROB ? "Rentable" : "Sous le coût max"} sur la période, mais les ${TREND_RECENT_DAYS} derniers jours coûtent ${money(trend.recent.cpa)} par commande contre ${money(trend.base.cpa)} avant (${signed(trend.change)}), au-dessus du CPA max de ${money(k.breakEvenCpa)} : ${unit === "ad" ? "lancer dès maintenant une nouvelle créative à côté, dans le même ensemble, pour prendre sa place." : `réduire de ${-NEAR_STEP} % et lancer une nouvelle créative.`}`,
+    );
+    return out("fix", 1 - trendUnderMax >= HIGH_CERTAINTY ? "medium" : "low", budget(NEAR_STEP), base);
+  }
   if (p >= WIN_PROB && share <= SCALE_MAX_SHARE) {
     // The account goes up exactly when one of its lines does, and only those lines: each passed its own checks below.
     if (account && ctx.account?.anyScale) {
-      decide("Rentable dans l'ensemble : monter seulement les lignes marquées « monter », chacune par palier.");
+      decide("Rentable dans l'ensemble : monter seulement les lignes marquées «\u00a0monter\u00a0», chacune par palier.");
       return out("scale", confidence, null, base);
     }
     if (fat && fat.level !== "none") {
@@ -854,9 +891,15 @@ export function adviseRow(row: AdRow, k: Kpis, ctx: RowContext): RowAdvice {
       decide(`Rentable, mais sur ${plural(spent, "jour", "jours")} de dépense seulement : attendre ${MIN_SCALE_DAYS} jours avant de monter, les premiers jours varient beaucoup.`);
       return out("keep", confidence, budget(0), base);
     }
-    const net = proj?.netDeliveryRate ?? null;
+    // What is already final counts too, once there are enough of them: numbers that never answer stay pending
+    // the longest, so a young row's open orders (and its confirmation rate) look better than its finished ones did.
+    const projectedNet = proj?.netDeliveryRate ?? null;
+    const finalNet = k.final >= JUDGE_MIN_ORDERS ? k.netDeliveryRate : null;
+    const byFinal = finalNet != null && (projectedNet == null || finalNet < projectedNet);
+    const net = byFinal ? finalNet : projectedNet;
     if (net != null && net < FRAGILE_NET_RATE && f.orders >= JUDGE_MIN_ORDERS) {
-      decide(`Rentable sur le papier, mais seules ${pct(net)} des commandes ${proj?.projected ? "devraient finir livrées" : "finissent livrées"} : environ ${dec(1 / net)} commandes à appeler et à préparer pour une vente. Corriger d'abord les annulations et les refus, puis monter.`);
+      const share = byFinal ? `seules ${pct(net)} des commandes terminées ont été livrées` : `seules ${pct(net)} des commandes ${proj?.projected ? "devraient finir livrées" : "finissent livrées"}`;
+      decide(`Rentable sur le papier, mais ${share} : environ ${dec(1 / net)} commandes à appeler et à préparer pour une vente. Corriger d'abord les annulations et les refus, puis monter.`);
       return out("keep", confidence, budget(0), base);
     }
     if (f.orders > 0 && k.pending / f.orders > PENDING_SCALE_SHARE) {
@@ -880,7 +923,14 @@ export function adviseRow(row: AdRow, k: Kpis, ctx: RowContext): RowAdvice {
     return out("scale", confidence, budget(step), base);
   }
   if (share <= 1) {
-    decide(share > SCALE_MAX_SHARE ? "Rentable, sans assez de marge pour monter : garder le budget." : "Sous le coût max, mais pas encore assez sûr pour monter : garder le budget.");
+    // "Rentable" only once it is likely: just under the max with a coin-flip chance is close, not profitable.
+    decide(
+      share <= SCALE_MAX_SHARE
+        ? "Sous le coût max, mais pas encore assez sûr pour monter : garder le budget."
+        : p >= WIN_PROB
+          ? "Rentable, sans assez de marge pour monter : garder le budget."
+          : "Juste sous le coût max, sans certitude d'être rentable : garder le budget.",
+    );
     if (neck) reasons.push(`À améliorer : ${lowerFirst(neck.title)}. ${neck.evidence}`);
     return out("keep", confidence, budget(0), base);
   }
@@ -891,7 +941,7 @@ export function adviseRow(row: AdRow, k: Kpis, ctx: RowContext): RowAdvice {
       decide(`À corriger : ${lowerFirst(neck.title)}. Corrigé, le coût par livrée serait d'environ ${money(Math.round(judgedCpd! / neck.factor))}.`);
       return out("fix", confidence, budget(FIX_STEP), base);
     }
-    if (f.orders === 0) reasons.push(`${money(spend)} dépensés sans commande : à ce coût, environ ${plural(spend / target, "livrée était attendue", "livrées étaient attendues")}.`);
+    if (f.orders === 0) reasons.push(`${money(spend)} dépensés sans commande : une ligne au coût max aurait déjà environ ${plural(spend / target, "livrée", "livrées")}.`);
     decide(
       unit === "ad"
         ? "Perdante : la désactiver ; les autres publicités de l'ensemble reprennent son budget."
@@ -924,6 +974,11 @@ export function adviseRow(row: AdRow, k: Kpis, ctx: RowContext): RowAdvice {
   return out("fix", confidence, budget(FIX_STEP), base);
 }
 
+/** Whether a "fix" rests on the last days (adviseRow): under the max over the period, over the CPA max lately. */
+function turnedLately(a: RowAdvice): boolean {
+  return a.verdict === "fix" && a.trend != null && a.trendUnderMax != null && a.trendUnderMax <= LOSE_PROB && a.judgedCpd != null && a.target != null && a.judgedCpd <= a.target;
+}
+
 // ── Account, tracking, money ───────────────────────────────────────────
 
 type Weighted = { insight: Insight; weight: number };
@@ -945,7 +1000,23 @@ function rowInsights(row: AdRow, a: RowAdvice, purchaseAt: TrackingSetup["purcha
   const k = a.kpis;
   const evidence = a.reasons.slice(0, 3).join(" ");
   const perDay = (step: number) => (a.spendPerDay != null ? ` (environ ${step > 0 ? "+" : "−"}${money(Math.round((a.spendPerDay * Math.abs(step)) / 100))} par jour)` : "");
-  if (a.verdict === "tracking") {
+  const turned = turnedLately(a);
+  if (turned) {
+    // Its own insight, with the wear of the ad when the platform figures show it: one place to read why and what to do.
+    const t = a.trend!;
+    const worn = a.fatigue && a.fatigue.level !== "none" ? ` La publicité s'use : ${lowerFirst(a.fatigue.evidence)}` : "";
+    out.push({
+      severity: "warning",
+      key: row.key,
+      title: `${name(row)} coûte trop cher depuis ${TREND_RECENT_DAYS} jours`,
+      evidence: `${money(t.recent.cpa)} par commande sur les ${TREND_RECENT_DAYS} derniers jours (${plural(t.recent.orders, "commande", "commandes")}), contre ${money(t.base.cpa)} avant (${plural(t.base.days, "jour", "jours")}, ${plural(t.base.orders, "commande", "commandes")}) : au-dessus du CPA max de ${money(k.breakEvenCpa)}.${worn}`,
+      action:
+        row.level === "ad"
+          ? "Lancer dès maintenant 2 à 3 nouvelles créatives dans le même ensemble, et la désactiver dès que l'une fait mieux. Chercher aussi ce qui a changé ces jours-là (audience, prix, page)."
+          : `Réduire le budget de ${-NEAR_STEP} %${perDay(NEAR_STEP)} dès aujourd'hui et lancer 2 à 3 nouvelles créatives. Chercher aussi ce qui a changé ces jours-là (audience, prix, page).`,
+      fix: "brief",
+    });
+  } else if (a.verdict === "tracking") {
     // The parameters the row is matched on, down to its level: an ad also needs its utm_content.
     const params = [`utm_source=${row.source}`, ...(row.campaign ? [`utm_campaign=${row.campaign}`] : []), ...(row.level === "ad" && row.ad ? [`utm_content=${row.ad}`] : [])];
     out.push({ severity: "critical", key: row.key, title: `${name(row)} : les visites ne sont pas comptées`, evidence: a.reasons[0], action: `Vérifier que le lien de la publicité contient ${joinFr(params)}, exactement comme la dépense saisie ; le recréer avec le générateur de liens.`, fix: "links" });
@@ -953,10 +1024,11 @@ function rowInsights(row: AdRow, a: RowAdvice, purchaseAt: TrackingSetup["purcha
     const lost = a.bottleneck ? ` Là où les clients se perdent : ${lowerFirst(a.bottleneck.evidence)}` : "";
     out.push({ severity: "critical", key: row.key, title: `Couper ${name(row)}`, evidence: `${evidence}${lost}`, action: "Mettre en pause. Garder l'angle si les clics étaient bons, et reporter le budget sur les gagnantes." });
   } else if (a.verdict === "scale" && row.level === "ad") {
-    out.push({ severity: "good", key: row.key, title: `${name(row)} est gagnante`, evidence, action: "La garder active et couper les publicités perdantes de son ensemble pour qu'elle prenne leur budget ; monter ensuite le budget de l'ensemble par paliers de 20 %, tous les 3 jours. Tester 2 variantes de son accroche.", fix: "brief" });
+    out.push({ severity: "good", key: row.key, title: `${name(row)} est gagnante`, evidence, action: "La garder active et couper les publicités perdantes de son ensemble pour qu'elle prenne leur budget ; monter ensuite le budget de l'ensemble par paliers de 20 %, tous les 3 jours. Tester 2 à 3 variantes de son accroche.", fix: "brief" });
   } else if (a.verdict === "scale") {
-    // A winner can still leak at one stage: say it next to the step up, where the owner reads.
-    const also = a.bottleneck ? ` En même temps, ${lowerFirst(a.bottleneck.title)} : ${lowerFirst(a.bottleneck.action)}` : "";
+    // A winner can still leak at one stage: said next to the step up, where the owner reads, in a sentence of its own
+    // (the stage's action may hold a colon).
+    const also = a.bottleneck ? ` À corriger en même temps : ${lowerFirst(a.bottleneck.title)}. ${a.bottleneck.action}` : "";
     out.push({ severity: "good", key: row.key, title: `Monter ${name(row)}`, evidence, action: `Augmenter le budget de ${a.budgetChange} %${perDay(a.budgetChange ?? 0)}, puis attendre 3 jours avant le palier suivant. Ne pas dupliquer l'ensemble de publicités.${also}`, fix: a.bottleneck ? STAGE_TEXT[a.bottleneck.stage].fix : undefined });
   } else if (a.verdict === "fix") {
     const neck = a.bottleneck;
@@ -988,7 +1060,7 @@ function rowInsights(row: AdRow, a: RowAdvice, purchaseAt: TrackingSetup["purcha
           : "Ne pas monter le budget. Chercher ce qui a changé ces jours-là (créative, audience, prix, page) ; si la hausse dure encore 3 jours, réduire le budget de 20 %.",
     });
   }
-  if (a.fatigue && a.fatigue.level !== "none") {
+  if (a.fatigue && a.fatigue.level !== "none" && !turned) {
     out.push({
       severity: a.fatigue.level === "clear" ? "warning" : "info",
       key: row.key,
@@ -1021,11 +1093,11 @@ function rowInsights(row: AdRow, a: RowAdvice, purchaseAt: TrackingSetup["purcha
 function missingInsights(rows: AdRow[], total: AdRow, k: Kpis, costs: Costs, spend: number, sources?: AdRow[]): Weighted[] {
   const out: Weighted[] = [];
   if (costs.carrierPerParcel == null) {
-    out.push({ weight: spend, insight: { severity: "warning", key: null, title: "Coût du transporteur manquant", evidence: `${plural(total.funnel.shipped, "colis envoyé", "colis envoyés")} sur la période sans coût de transport connu : ni la marge par livrée ni le coût max par livrée ne peuvent être calculés, les lignes sont comparées à la moyenne du compte.`, action: "Renseigner ce que le transporteur facture par colis dans Paramètres, carte « Livraison ».", fix: "costs" } });
+    out.push({ weight: spend, insight: { severity: "warning", key: null, title: "Coût du transporteur manquant", evidence: `${plural(total.funnel.shipped, "colis envoyé", "colis envoyés")} sur la période sans coût de transport connu : ni la marge par livrée ni le coût max par livrée ne peuvent être calculés, les lignes sont comparées à la moyenne du compte.`, action: "Renseigner ce que le transporteur facture par colis dans Paramètres, carte «\u00a0Livraison\u00a0».", fix: "costs" } });
   }
   if (costs.returnPerParcel == null && total.funnel.back > 0) {
     const back = total.funnel.back;
-    out.push({ weight: spend, insight: { severity: "warning", key: null, title: "Coût d'un retour manquant", evidence: `${plural(back, "colis est revenu", "colis sont revenus")} sur la période ; ${pluralWord(back, "son", "leur")} coût de retour n'est pas connu.`, action: "Renseigner le coût en plus d'un colis refusé ou retourné dans Paramètres, carte « Livraison » (0 si le transporteur ne le facture pas).", fix: "costs" } });
+    out.push({ weight: spend, insight: { severity: "warning", key: null, title: "Coût d'un retour manquant", evidence: `${plural(back, "colis est revenu", "colis sont revenus")} sur la période ; ${pluralWord(back, "son", "leur")} coût de retour n'est pas connu.`, action: "Renseigner le coût en plus d'un colis refusé ou retourné dans Paramètres, carte «\u00a0Livraison\u00a0» (0 si le transporteur ne le facture pas).", fix: "costs" } });
   }
   if (total.funnel.costUnknownDelivered > 0) {
     const unknown = total.funnel.costUnknownDelivered;
@@ -1086,11 +1158,11 @@ export function trackingInsights(rows: AdRow[], total: AdRow, k: Kpis, setup?: T
     for (const pl of platforms) {
       if (pl.spend <= 0) continue;
       if (!pl.pixel) {
-        out.push({ severity: "critical", key: null, title: `Pixel ${pl.label} absent`, evidence: `${money(pl.spend)} dépensés sur ${pl.label} sans pixel : l'algorithme ne sait pas qui achète et cherche des clics, pas des acheteurs.`, action: `Coller l'identifiant du pixel ${pl.label} dans Paramètres, carte « Pixels publicitaires ».`, fix: "tracking" });
+        out.push({ severity: "critical", key: null, title: `Pixel ${pl.label} absent`, evidence: `${money(pl.spend)} dépensés sur ${pl.label} sans pixel : l'algorithme ne sait pas qui achète et cherche des clics, pas des acheteurs.`, action: `Coller l'identifiant du pixel ${pl.label} dans Paramètres, carte «\u00a0Pixels publicitaires\u00a0».`, fix: "tracking" });
       } else if (!pl.server && setup.purchaseAt !== "placed") {
-        out.push({ severity: "critical", key: null, title: `${pl.label} ne reçoit aucun achat`, evidence: `L'achat est signalé à la ${stage(setup.purchaseAt)}, ce qui passe par ${pl.serverName}, et son jeton n'est pas renseigné.`, action: `Ajouter le jeton de ${pl.serverName} dans Paramètres, carte « Pixels publicitaires », ou y signaler l'achat dès que la commande est passée.`, fix: "tracking" });
+        out.push({ severity: "critical", key: null, title: `${pl.label} ne reçoit aucun achat`, evidence: `L'achat est signalé à la ${stage(setup.purchaseAt)}, ce qui passe par ${pl.serverName}, et son jeton n'est pas renseigné.`, action: `Ajouter le jeton de ${pl.serverName} dans Paramètres, carte «\u00a0Pixels publicitaires\u00a0», ou y signaler l'achat dès que la commande est passée.`, fix: "tracking" });
       } else if (!pl.server) {
-        out.push({ severity: "warning", key: null, title: pl.serverTitle, evidence: `${money(pl.spend)} dépensés sur ${pl.label} avec le pixel du navigateur seul : il perd des achats (bloqueurs, iPhone, refus des cookies), l'algorithme apprend sur moins d'acheteurs.`, action: `Ajouter le jeton de ${pl.serverName} dans Paramètres, carte « Pixels publicitaires ».`, fix: "tracking" });
+        out.push({ severity: "warning", key: null, title: pl.serverTitle, evidence: `${money(pl.spend)} dépensés sur ${pl.label} avec le pixel du navigateur seul : il perd des achats (bloqueurs, iPhone, refus des cookies), l'algorithme apprend sur moins d'acheteurs.`, action: `Ajouter le jeton de ${pl.serverName} dans Paramètres, carte «\u00a0Pixels publicitaires\u00a0».`, fix: "tracking" });
       }
     }
     const anyPixel = (setup.metaPixel && metaSpend > 0) || (setup.tiktokPixel && tiktokSpend > 0);
@@ -1098,15 +1170,15 @@ export function trackingInsights(rows: AdRow[], total: AdRow, k: Kpis, setup?: T
     const toDeliver = baseline?.daysToDeliver ?? null;
     if (anyPixel && setup.purchaseAt === "placed" && k.confirmRate != null && k.confirmRate < PIXEL_CONFIRM_FLOOR && k.decided >= 20) {
       const quick = toDeliver != null && toDeliver < LATE_DELIVERY_DAYS;
-      const delivered = quick && deliveredPerWeek != null && deliveredPerWeek >= LEARNING_EVENTS_PER_WEEK ? ` (ou « quand la commande est livrée et payée » : environ ${count(deliveredPerWeek)} livraisons par semaine suffisent pour apprendre)` : "";
+      const delivered = quick && deliveredPerWeek != null && deliveredPerWeek >= LEARNING_EVENTS_PER_WEEK ? ` (ou «\u00a0quand la commande est livrée et payée\u00a0» : environ ${count(deliveredPerWeek)} livraisons par semaine suffisent pour apprendre)` : "";
       out.push({
         severity: "warning",
         key: null,
         title: "Le pixel apprend sur des commandes jamais confirmées",
         evidence: `${pct(1 - k.confirmRate)} des commandes appelées ne sont pas confirmées, mais chacune est envoyée comme un achat : l'algorithme cherche des gens qui leur ressemblent.`,
         action: server
-          ? `Dans Paramètres, carte « Pixels publicitaires », signaler l'achat « quand la commande est confirmée par téléphone »${delivered}.`
-          : "Ajouter le jeton de l'API Conversions, puis signaler l'achat « quand la commande est confirmée par téléphone » (Paramètres, carte « Pixels publicitaires »).",
+          ? `Dans Paramètres, carte «\u00a0Pixels publicitaires\u00a0», signaler l'achat «\u00a0quand la commande est confirmée par téléphone\u00a0»${delivered}.`
+          : "Ajouter le jeton de l'API Conversions, puis signaler l'achat «\u00a0quand la commande est confirmée par téléphone\u00a0» (Paramètres, carte «\u00a0Pixels publicitaires\u00a0»).",
         fix: "tracking",
       });
     }
@@ -1116,11 +1188,11 @@ export function trackingInsights(rows: AdRow[], total: AdRow, k: Kpis, setup?: T
         key: null,
         title: "L'achat arrive trop tard pour les publicités",
         evidence: `Une commande est livrée en moyenne ${dec(toDeliver)} jours après avoir été passée. Meta et TikTok ne relient un achat à une publicité que dans les 7 jours qui suivent le clic : une bonne partie des livraisons n'apprend rien à l'algorithme.`,
-        action: "Dans Paramètres, carte « Pixels publicitaires », signaler l'achat quand la commande est confirmée par téléphone : l'algorithme apprend le jour même, sur des commandes vérifiées.",
+        action: "Dans Paramètres, carte «\u00a0Pixels publicitaires\u00a0», signaler l'achat quand la commande est confirmée par téléphone : l'algorithme apprend le jour même, sur des commandes vérifiées.",
         fix: "tracking",
       });
     } else if (anyPixel && setup.purchaseAt === "delivered" && deliveredPerWeek != null && deliveredPerWeek < LEARNING_EVENTS_PER_WEEK) {
-      out.push({ severity: "info", key: null, title: "Peu d'achats envoyés pour apprendre", evidence: `Environ ${plural(deliveredPerWeek, "livraison", "livraisons")} par semaine : moins que les ${LEARNING_EVENTS_PER_WEEK} dont un ensemble de publicités a besoin pour sortir de l'apprentissage.`, action: "Signaler l'achat à la confirmation (Paramètres, carte « Pixels publicitaires ») : plus d'événements, presque aussi propres.", fix: "tracking" });
+      out.push({ severity: "info", key: null, title: "Peu d'achats envoyés pour apprendre", evidence: `Environ ${plural(deliveredPerWeek, "livraison", "livraisons")} par semaine : moins que les ${LEARNING_EVENTS_PER_WEEK} dont un ensemble de publicités a besoin pour sortir de l'apprentissage.`, action: "Signaler l'achat à la confirmation (Paramètres, carte «\u00a0Pixels publicitaires\u00a0») : plus d'événements, presque aussi propres.", fix: "tracking" });
     }
     // Purchases sent at confirmation or delivery make the platform's buyer audience clean: a lookalike can start from it.
     const buyers = baseline && baseline.orders > 0 ? baseline.orders * (setup.purchaseAt === "confirmed" ? (baseline.confirmRate ?? 0) : (baseline.netDeliveryRate ?? 0)) : 0;
@@ -1129,8 +1201,8 @@ export function trackingInsights(rows: AdRow[], total: AdRow, k: Kpis, setup?: T
         severity: "info",
         key: null,
         title: "Une audience similaire à partir des vrais acheteurs",
-        evidence: `Environ ${count(buyers)} commandes ${setup.purchaseAt === "confirmed" ? "confirmées" : "livrées"} sur 180 jours. Comme l'achat est envoyé à Meta à la ${stage(setup.purchaseAt)}, son audience « Achat » ne garde que des acheteurs vérifiés (ceux qui acceptent les cookies publicitaires), sans les faux numéros.`,
-        action: "Dans le gestionnaire de publicités Meta : créer une audience personnalisée « Achat » sur 180 jours, puis une audience similaire de 1 à 3 % en Tunisie, et la tester dans un ensemble à part contre le ciblage large. Exclure les acheteurs des 30 derniers jours des campagnes qui cherchent de nouveaux clients.",
+        evidence: `Environ ${count(buyers)} commandes ${setup.purchaseAt === "confirmed" ? "confirmées" : "livrées"} sur 180 jours. Comme l'achat est envoyé à Meta à la ${stage(setup.purchaseAt)}, son audience «\u00a0Achat\u00a0» ne garde que des acheteurs vérifiés (ceux qui acceptent les cookies publicitaires), sans les faux numéros.`,
+        action: "Dans le gestionnaire de publicités Meta : créer une audience personnalisée «\u00a0Achat\u00a0» sur 180 jours, puis une audience similaire de 1 à 3 % en Tunisie, et la tester dans un ensemble à part contre le ciblage large. Exclure les acheteurs des 30 derniers jours des campagnes qui cherchent de nouveaux clients.",
       });
     }
   }
@@ -1143,7 +1215,7 @@ export function trackingInsights(rows: AdRow[], total: AdRow, k: Kpis, setup?: T
     if (purchases >= 2 * REPORT_MIN_EVENTS && k.overReporting >= OVER_REPORT_RATIO) {
       out.push({ severity: "warning", key: null, title: "La plateforme compte plus d'achats que la boutique", evidence: `${count(purchases)} achats comptés pour ${plural(real, ...REPORTED_WORDS[at])}${at === "delivered" ? "" : `, dont ${plural(total.funnel.delivered, "livrée", "livrées")}`}.`, action: "Juger uniquement sur les chiffres de la boutique : la plateforme compte aussi des achats après un simple affichage, et des doublons." });
     } else if (real >= 2 * REPORT_MIN_EVENTS && k.overReporting <= UNDER_REPORT_RATIO) {
-      out.push({ severity: "warning", key: null, title: "Le pixel ne voit qu'une partie des commandes", evidence: `${plural(purchases, "achat reçu", "achats reçus")} par la plateforme pour ${plural(real, ...REPORTED_WORDS[at])}.`, action: "Ajouter le jeton de l'API Conversions (Meta) ou de l'Events API (TikTok) dans Paramètres, carte « Pixels publicitaires ». Les clients qui refusent les cookies ne sont pas envoyés : une partie de l'écart est normale.", fix: "tracking" });
+      out.push({ severity: "warning", key: null, title: "Le pixel ne voit qu'une partie des commandes", evidence: `${plural(purchases, "achat reçu", "achats reçus")} par la plateforme pour ${plural(real, ...REPORTED_WORDS[at])}.`, action: "Ajouter le jeton de l'API Conversions (Meta) ou de l'Events API (TikTok) dans Paramètres, carte «\u00a0Pixels publicitaires\u00a0». Les clients qui refusent les cookies ne sont pas envoyés : une partie de l'écart est normale.", fix: "tracking" });
     }
   }
   if (coverage && coverage.orders >= 20 && spend > 0) {
@@ -1202,17 +1274,26 @@ function reallocation(advice: RowAdvice[]): Weighted | null {
   const winners = advice.filter((a) => a.verdict === "scale" && a.spendPerDay != null);
   const needed = winners.reduce((s, a) => s + (a.spendPerDay! * (a.budgetChange ?? 0)) / 100, 0);
   const rest = Math.max(0, freed - needed);
+  // A test of new creatives gets 10 to 20 % of today's budget; what is freed beyond that is a saving, not a budget to place.
+  const daily = advice.reduce((s, a) => s + (a.spendPerDay ?? 0), 0);
+  const testMax = TEST_BUDGET_SHARE.max * daily;
+  const testRange = `${TEST_BUDGET_SHARE.min * 100} à ${TEST_BUDGET_SHARE.max * 100} % du budget (environ ${money(Math.round(TEST_BUDGET_SHARE.min * daily))} à ${money(Math.round(testMax))} par jour)`;
+  const keepRest = (left: number, lead: string) =>
+    left > testMax
+      ? `${lead} n'a pas à être redépensé : pour tester 2 à 3 nouvelles créatives dans un ensemble de test, ${testRange} suffisent.`
+      : `${lead} peut servir à tester 2 à 3 nouvelles créatives dans un ensemble de test.`;
   return {
     weight: freed,
     insight: {
       severity: "info",
       key: null,
       title: "Déplacer le budget",
-      evidence: `Couper ou réduire ${plural(freedRows.length, "ligne libère", "lignes libèrent")} environ ${money(Math.round(freed))} par jour.${winners.length ? ` Monter ${winners.length > 1 ? `les ${winners.length} gagnantes` : "la gagnante"} d'un palier demande environ ${money(Math.round(needed))} par jour.` : ""}`,
+      // The subject is "couper ou réduire": the verb stays singular whatever the count.
+      evidence: `Couper ou réduire ${plural(freedRows.length, "ligne", "lignes")} libère environ ${money(Math.round(freed))} par jour.${winners.length ? ` Monter ${winners.length > 1 ? `les ${winners.length} gagnantes` : "la gagnante"} d'un palier demande environ ${money(Math.round(needed))} par jour.` : ""}`,
       action: !winners.length
-        ? "Aucune ligne n'est assez sûre pour recevoir plus : garder ce budget pour tester 2 à 3 nouvelles créatives dans un ensemble de test."
+        ? `Aucune ligne n'est assez sûre pour recevoir plus. ${keepRest(freed, "Ce budget")}`
         : freed >= needed
-          ? `Faire les deux le même jour${rest > 0 ? `, et garder le reste (environ ${money(Math.round(rest))} par jour) pour tester 2 à 3 nouvelles créatives` : ""}.`
+          ? `Faire les deux le même jour.${rest > 0 ? ` ${keepRest(rest, `Le reste (environ ${money(Math.round(rest))} par jour)`)}` : ""}`
           : "Mettre d'abord ce budget sur la gagnante la moins chère par livrée, puis monter les autres si le budget total le permet.",
       fix: winners.length ? undefined : "brief",
     },
@@ -1242,9 +1323,11 @@ function accountStep(lines: Line[], neck: Bottleneck | null, k: Kpis, losing: bo
   }
   if (fix.length) {
     const first = fix[0];
-    const stage = first.a.bottleneck;
+    // A line fixed for its last days is named for them, not for a stage it may also have.
+    const stage = turnedLately(first.a) ? null : first.a.bottleneck;
+    const why = turnedLately(first.a) ? `trop cher depuis ${TREND_RECENT_DAYS} jours` : stage ? lowerFirst(stage.title) : null;
     return {
-      action: `Corriger ${names(fix.map((l) => l.row))} avant de monter quoi que ce soit${stage ? ` (pour ${name(first.row)} : ${lowerFirst(stage.title)})` : ""}.`,
+      action: `Corriger ${names(fix.map((l) => l.row))} avant de monter quoi que ce soit${why ? ` (pour ${name(first.row)} : ${why})` : ""}.`,
       fix: stage ? STAGE_TEXT[stage.stage].fix : "brief",
     };
   }
@@ -1264,8 +1347,9 @@ function accountStep(lines: Line[], neck: Bottleneck | null, k: Kpis, losing: bo
  * so the two never disagree: profitable when the verdict is "scale", or
  * "keep" with the cost very likely under the max; losing when it is "cut" or
  * "fix" with the cost very likely over it, or when a delivered order loses
- * money before any ad; close to (or over) the max otherwise. Null while the
- * account cannot be judged. The action names the lines that make it so.
+ * money before any ad; otherwise under, close to or over the max, with the
+ * probability. Null while the account cannot be judged. The action names the
+ * lines that make it so.
  */
 function accountHeadline(lines: Line[], a: RowAdvice, neck: Bottleneck | null, spend: number): Insight | null {
   const k = a.kpis;
@@ -1282,19 +1366,31 @@ function accountHeadline(lines: Line[], a: RowAdvice, neck: Bottleneck | null, s
   const cut = lines.filter((l) => l.a.verdict === "cut").map((l) => l.row);
   if (a.verdict === "scale" || (a.verdict === "keep" && p >= WIN_PROB)) {
     const winners = lines.filter((l) => l.a.verdict === "scale").map((l) => l.row);
-    const alsoCut = cut.length ? ` ; couper ${names(cut)}` : "";
+    // The lines told to cut or to lower their budget are named, so "the other budgets" never covers them.
+    const reduced = lines.filter((l) => l.a.verdict !== "cut" && (l.a.budgetChange ?? 0) < 0).map((l) => l.row);
+    const changes = [cut.length ? `couper ${names(cut)}` : null, reduced.length ? `réduire ${names(reduced)}` : null].filter((x): x is string => x != null);
+    const also = changes.length ? ` ; ${joinFr(changes)}` : "";
     const adLevel = lines.length > 0 && lines.every((l) => l.row.level === "ad");
     const action =
       a.verdict === "keep"
-        ? `Garder les budgets${alsoCut}.`
+        ? `Garder ${changes.length ? "les autres budgets" : "les budgets"}${also}.`
         : adLevel
-          ? `Garder ${names(winners)} et couper les perdantes de ${pluralWord(winners.length, "son", "leur")} ensemble, puis monter le budget de l'ensemble par paliers de 20 %, tous les 3 jours${alsoCut}.`
-          : `Monter seulement ${names(winners)}, par paliers de 20 à 30 % tous les 3 jours, et garder les autres budgets${alsoCut}.`;
+          ? `Garder ${names(winners)} et couper les perdantes de ${pluralWord(winners.length, "son", "leur")} ensemble, puis monter le budget de l'ensemble par paliers de 20 %, tous les 3 jours${also}.`
+          : `Monter seulement ${names(winners)}, par paliers de 20 à 30 % tous les 3 jours, et garder les autres budgets${also}.`;
     return { severity: "good", key: null, title: "Le compte est rentable", evidence: a.verdict === "keep" && a.decision ? `${evidence} ${a.decision}` : evidence, action };
   }
   if (p <= LOSE_PROB) return { severity: "critical", key: null, title: "Le compte perd de l'argent", evidence, ...accountStep(lines, neck, k, true) };
-  const over = a.judgedCpd == null || a.judgedCpd > NEAR_MAX_SHARE * a.target;
-  return { severity: over ? "warning" : "info", key: null, title: over ? "Le compte est au-dessus du coût max" : "Le compte est proche du coût max", evidence, ...accountStep(lines, neck, k, false) };
+  // Not decided either way: where the cost stands against the max (over it is said as over, however close), and how likely it is under it.
+  const share = a.judgedCpd == null ? Infinity : a.judgedCpd / a.target;
+  const title =
+    share <= SCALE_MAX_SHARE
+      ? "Le compte est sous le coût max, sans certitude"
+      : share <= 1
+        ? "Le compte est juste sous le coût max"
+        : share <= NEAR_MAX_SHARE
+          ? "Le compte est un peu au-dessus du coût max"
+          : "Le compte est au-dessus du coût max";
+  return { severity: share > 1 ? "warning" : "info", key: null, title, evidence: `${evidence} Probabilité d'être sous le coût max : ${chance(p)}.`, ...accountStep(lines, neck, k, false) };
 }
 
 /**
@@ -1315,11 +1411,16 @@ function staleInsight(rows: AdRow[], k: Kpis, baseline: Baseline | null): Insigh
   const rate = baseline?.staleDeliveredRate ?? null;
   const usual = baseline?.netDeliveryRate ?? null;
   const odds = rate != null ? ` Dans la boutique, ${pct(rate)} des commandes restées sans appel aussi longtemps finissent livrées${usual != null ? `, contre ${pct(usual)} de toutes les commandes` : ""}.` : "";
+  const waiting = Math.max(stale, k.pending);
+  const placed =
+    stale >= waiting
+      ? pluralWord(stale, "La commande en attente d'appel a été passée", `Les ${count(stale)} commandes en attente d'appel ont été passées`)
+      : `${plural(stale, "commande", "commandes")} sur ${count(waiting)} en attente d'appel ${pluralWord(stale, "a", "ont")} été ${pluralWord(stale, "passée", "passées")}`;
   return {
     severity: "warning",
     key: null,
     title: `${plural(stale, "commande attend", "commandes attendent")} un appel depuis plus de ${STALE_PENDING_HOURS} h`,
-    evidence: `${plural(stale, "commande", "commandes")} sur ${count(Math.max(stale, k.pending))} en attente d'appel ${pluralWord(stale, "a", "ont")} été ${pluralWord(stale, "passée", "passées")} il y a plus de ${STALE_PENDING_HOURS} h${where}.${odds}`,
+    evidence: `${placed} il y a plus de ${STALE_PENDING_HOURS} h${where}.${odds}`,
     action: "Les appeler aujourd'hui, les plus anciennes d'abord, et annuler celles qui restent injoignables : les chiffres cessent alors de les compter comme en cours.",
     fix: "orders",
   };
@@ -1415,7 +1516,7 @@ const SEGMENT_TEXT: Record<SegmentKind, { who: (l: string) => string; confirm: s
     who: (l) => l,
     confirm: "Appeler ces commandes en premier ; si l'écart reste deux semaines, réduire ce gouvernorat dans le ciblage.",
     // A governorate that refuses more can still pay: excluding it is right only once its delivery rate is under the product's floor.
-    delivery: "Reconfirmer la veille de la livraison dans ce gouvernorat et vérifier le délai du transporteur. Si l'écart reste deux semaines et que sa livraison passe sous la « livraison minimale » de l'onglet Seuils, l'exclure des audiences.",
+    delivery: "Reconfirmer la veille de la livraison dans ce gouvernorat et vérifier le délai du transporteur. Si l'écart reste deux semaines et que sa livraison passe sous la «\u00a0livraison minimale\u00a0» de l'onglet Seuils, l'exclure des audiences.",
     better: "Tester un ensemble de publicités ciblé sur ce gouvernorat avec 10 à 20 % du budget.",
   },
   device: {
@@ -1552,13 +1653,13 @@ export function creativeInsights(rows: AdRow[], costs: Costs, baseline: Baseline
     out.push({
       severity: "good",
       key: best.key,
-      title: `« ${best.label} » est la meilleure publicité`,
+      title: `«\u00a0${best.label}\u00a0» est la meilleure publicité`,
       evidence: `Probabilité d'être la moins chère par livrée : ${chance(best.probBest ?? 0)} ; coût par livrée ${money(best.value)}${range}.`,
-      action: "La garder, et couper les publicités marquées « couper » dans son ensemble pour qu'elle prenne leur budget. Tester 3 variantes de son accroche : mêmes images, nouvelles 3 premières secondes.",
+      action: "La garder, et couper les publicités marquées «\u00a0couper\u00a0» dans son ensemble pour qu'elle prenne leur budget. Tester 2 à 3 variantes de son accroche : mêmes images, nouvelles 3 premières secondes.",
       fix: "brief",
     });
   } else if (ready.length >= 2) {
-    out.push({ severity: "info", key: null, title: "Pas encore de gagnante nette", evidence: `La meilleure publicité n'a que ${chance(best.probBest ?? 0)} de chances d'être la moins chère par livrée.`, action: "Laisser tourner sans toucher aux budgets et couper seulement les publicités marquées « couper » ; une gagnante se déclare quand l'une dépasse 90 %." });
+    out.push({ severity: "info", key: null, title: "Pas encore de gagnante nette", evidence: `La meilleure publicité n'a que ${chance(best.probBest ?? 0)} de chances d'être la moins chère par livrée.`, action: "Laisser tourner sans toucher aux budgets et couper seulement les publicités marquées «\u00a0couper\u00a0» ; une gagnante se déclare quand l'une dépasse 90 %." });
   }
   return out;
 }
@@ -1598,7 +1699,7 @@ export function advise(input: AdviseInput): Report {
     const name = family(row);
     return {
       platform: fam.size > 1 ? subtract(fam.total, row) : null,
-      platformWho: name === "Meta" || name === "TikTok" ? `le reste du compte ${name}` : `les autres lignes « ${name} »`,
+      platformWho: name === "Meta" || name === "TikTok" ? `le reste du compte ${name}` : `les autres lignes «\u00a0${name}\u00a0»`,
       campaign: row.level === "ad" && row.campaign != null && camp.size > 1 ? subtract(camp.total, row) : null,
     };
   };

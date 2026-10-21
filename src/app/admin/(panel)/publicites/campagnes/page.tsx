@@ -27,11 +27,13 @@ export default async function CampaignsPage({ searchParams }: PageProps<"/admin/
   await requireAdmin();
   const r = adRange(await searchParams);
   const q = rangeQuery(r);
+  // Ad links only, as on the overview: a link tagged utm_medium=social or email (a bio, a post) is not an ad.
+  const paid = { paidOnly: true };
   const [campaigns, ads, dCampaigns, dAds, { costs, baseline, tracking }] = await Promise.all([
-    adRows(r.from, r.to, "campaign"),
-    adRows(r.from, r.to, "ad"),
-    dailyByRow(r.from, r.to, "campaign"),
-    dailyByRow(r.from, r.to, "ad"),
+    adRows(r.from, r.to, "campaign", paid),
+    adRows(r.from, r.to, "ad", paid),
+    dailyByRow(r.from, r.to, "campaign", paid),
+    dailyByRow(r.from, r.to, "ad", paid),
     adsBasics(r.to),
   ]);
   const report = advise({ rows: campaigns, costs, baseline, days: r.days, daily: dCampaigns, tracking });
@@ -55,7 +57,7 @@ export default async function CampaignsPage({ searchParams }: PageProps<"/admin/
   return (
     <div className="flex flex-col gap-4">
       <p className="text-xs text-muted">
-        Période {periodText(r)}. Une ligne par campagne (le nom utm_campaign de ses liens) ; la flèche déplie le détail et ses publicités (utm_content). Les commandes saisies dans l&apos;admin n&apos;y sont pas.
+        Période {periodText(r)}. Une ligne par campagne (le nom utm_campaign de ses liens de publicité) ; la flèche déplie le détail et ses publicités (utm_content). Les liens marqués utm_medium=social ou email (bio, publication) et les commandes saisies dans l&apos;admin n&apos;y sont pas.
       </p>
 
       {counts.length > 0 && (

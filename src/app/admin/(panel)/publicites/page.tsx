@@ -3,6 +3,7 @@ import { requireAdmin } from "@/lib/admin-auth";
 import { formatTND } from "@/lib/money";
 import { fmt } from "@/lib/viz";
 import { adRows, callDelay, dailyByRow } from "@/lib/ads/data";
+import { META_SOURCE } from "@/lib/ads/match";
 import { advise, bottleneck, reference, type RowAdvice } from "@/lib/ads/advisor";
 import { funnelSteps, kpis, kpiValue, plural, totalRow } from "@/lib/ads/kpis";
 import { STALE_PENDING_HOURS, type AdRow, type Insight } from "@/lib/ads/types";
@@ -27,8 +28,6 @@ const CAMPAIGN_SHARE = 0.9;
 /** Campaigns listed on the overview; the Campagnes tab has them all. */
 const LIST_MAX = 8;
 
-const META = new Set(["facebook", "instagram"]);
-
 /** Verdicts that ask for action keep their order (cut, broken measure, fix); the others are ranked together, by spend. */
 const urgency = (a: RowAdvice) => Math.min(VERDICTS[a.verdict].rank, VERDICTS.wait.rank);
 
@@ -52,8 +51,9 @@ export default async function AdsOverview({ searchParams }: PageProps<"/admin/pu
     adRows(r.from, r.to, "source", { paidOnly: true }),
     adRows(r.prevFrom, r.prevTo, "source", { paidOnly: true }),
     adRows(r.from, r.to, "source"),
-    adRows(r.from, r.to, "campaign"),
-    dailyByRow(r.from, r.to, "campaign"),
+    // Ad links only, as the tiles: a bio link tagged utm_medium=social is not a campaign to judge.
+    adRows(r.from, r.to, "campaign", { paidOnly: true }),
+    dailyByRow(r.from, r.to, "campaign", { paidOnly: true }),
     callDelay(r.from, r.to),
     adsBasics(r.to),
   ]);
@@ -78,7 +78,8 @@ export default async function AdsOverview({ searchParams }: PageProps<"/admin/pu
   const unassigned = byCampaign && spend ? spend - campaignSpend : 0;
 
   const extra: ExtraMissing[] = [];
-  const hasMeta = paid.some((x) => META.has(x.source));
+  // Every Meta app's ad traffic counts for facebook (adSource); an "instagram" row left is not a Meta ad's.
+  const hasMeta = paid.some((x) => x.source === META_SOURCE);
   const hasTiktok = paid.some((x) => x.source === "tiktok");
   if (hasMeta && !tracking.metaPixel) extra.push({ label: "Pixel Meta absent", href: FIX_LINKS.tracking.href, cta: "Ajouter le pixel" });
   else if (hasMeta && !tracking.metaCapi) extra.push({ label: "Jeton de l'API Conversions Meta absent", href: FIX_LINKS.tracking.href, cta: "Ajouter le jeton" });
