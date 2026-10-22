@@ -24,6 +24,12 @@ export const CLIENT_EVENTS = [
   "gallery_swiped",
   "tracking_viewed",
   "sticky_clicked",
+  // The long pictures: the gallery's link to them, the first one reached, the last one passed.
+  "details_link_clicked",
+  "details_seen",
+  "details_end",
+  // The order sheet opened in place (from the bottom bar or the end of the page).
+  "order_sheet_opened",
   "list_item_clicked",
   "consent_granted",
   "consent_denied",
@@ -58,6 +64,10 @@ export const EVENT_LABELS: Record<string, string> = {
   search_suggestion_clicked: "Suggestions cliquées",
   whatsapp_clicked: "Clics WhatsApp",
   phone_clicked: "Appels depuis le site",
+  details_link_clicked: "Lien vers les détails en images",
+  details_seen: "Détails en images vus",
+  details_end: "Détails en images vus jusqu'au bout",
+  order_sheet_opened: "Commandes ouvertes en fenêtre",
   messenger_clicked: "Clics Messenger",
   delivery_estimate_checked: "Estimations de livraison",
   gallery_swiped: "Photos parcourues",
