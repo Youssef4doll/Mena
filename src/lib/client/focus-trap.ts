@@ -13,7 +13,7 @@ export function useFocusTrap(ref: RefObject<HTMLElement | null>, active: boolean
     if (!active) return;
     const onKey = (e: KeyboardEvent) => {
       if (e.key !== "Tab" || !ref.current) return;
-      const items = [...ref.current.querySelectorAll<HTMLElement>(FOCUSABLE)].filter((el) => el.offsetParent !== null || el === document.activeElement);
+      const items = [...ref.current.querySelectorAll<HTMLElement>(FOCUSABLE)].filter((el) => el.tabIndex >= 0 && (el.offsetParent !== null || el === document.activeElement));
       if (items.length === 0) return;
       const first = items[0];
       const last = items[items.length - 1];

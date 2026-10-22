@@ -41,6 +41,18 @@ export async function GET(request: Request) {
       return csvResponse(`appareils_${tag}.csv`, toCsv(["appareil", "visites", "commandes", "conversion_pct", "ca_dt"], a.devices.map((d) => [d.device, d.sessions, d.orders, pct(ratio(d.orders, d.sessions)), dt(d.revenue)])));
     case "products":
       return csvResponse(`produits_${tag}.csv`, toCsv(["produit", "vues", "formulaires", "commandes", "vue_commande_pct", "unites", "ca_dt"], a.products.map((p) => [p.name, p.views, p.forms, p.orders, pct(ratio(p.orders, p.views)), p.units, dt(p.revenue)])));
+    case "details": {
+      // The long pictures on a phone, product by product, then every product together.
+      const seen = a.details.since != null;
+      return csvResponse(`details_images_${tag}.csv`, toCsv(
+        ["produit", "visites_telephone", "images_vues", "images_vues_pct", "jusqu_au_bout", "jusqu_au_bout_pct", "lien_details", "barre_formulaire", "barre_fenetre", "barre_non_precise", "fenetre_depuis_barre", "fenetre_depuis_fin",
+          "commandes", "cmd_fiche_produit", "cmd_fenetre_de_commande", "cmd_commande_rapide", "cmd_panier", "cmd_origine_non_enregistree", "confirmees", "livrees", "refusees", "livrees_par_visite_pct", "taux_refus_pct", "visites_barre", "commandes_visites_barre"],
+        [...a.details.products, a.details.total].map((x) => [
+          x.name, x.sessions, seen ? x.seen : "", seen ? pct(ratio(x.seen, x.sessions)) : "", seen ? x.ended : "", seen ? pct(ratio(x.ended, x.sessions)) : "", x.links, x.bar.scroll, x.bar.sheet, x.bar.other, x.opened.bar, x.opened.end,
+          x.orders.all, x.orders.product, x.orders.sheet, x.orders.quick, x.orders.cart, x.orders.other, x.confirmed, x.delivered, x.refused, pct(ratio(x.delivered, x.sessions)), pct(ratio(x.refused, x.delivered + x.refused)), x.barSessions, x.barOrders,
+        ]),
+      ));
+    }
     case "searches":
       return csvResponse(`recherches_${tag}.csv`, toCsv(["recherche", "nombre", "resultats"], [...a.searches.top, ...a.searches.none].map((s) => [s.q, s.count, s.results])));
     case "governorates":

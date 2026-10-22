@@ -48,7 +48,7 @@ export default async function AnalyticsPage({ searchParams }: PageProps<"/admin/
           <div className="absolute end-0 z-20 mt-1 flex w-56 flex-col rounded-xl border border-line bg-white p-1 text-sm shadow-lift">
             {[
               ["daily", "Jour par jour"], ["funnel", "Entonnoir"], ["sources", "Sources"], ["campaigns", "Campagnes"], ["devices", "Appareils"],
-              ["products", "Produits"], ["searches", "Recherches"], ["governorates", "Gouvernorats"], ["customers", "Clients"], ["cohorts", "Cohortes"], ["contacts", "Clics WhatsApp et téléphone"],
+              ["products", "Produits"], ["details", "Détails en images (téléphone)"], ["searches", "Recherches"], ["governorates", "Gouvernorats"], ["customers", "Clients"], ["cohorts", "Cohortes"], ["contacts", "Clics WhatsApp et téléphone"],
             ].map(([key, label]) => (
               <a key={key} href={`/admin/analytics/export?report=${key}&${qs}`} className="rounded-lg px-3 py-2 hover:bg-cream">{label}</a>
             ))}
@@ -161,9 +161,10 @@ export default async function AnalyticsPage({ searchParams }: PageProps<"/admin/
       </div>
 
       <div className="grid gap-4 lg:grid-cols-2">
-        <Card title="Panier et commande rapide" hint="Où les commandes sont passées : le formulaire de la fiche produit, le bouton « Acheter maintenant » d'une carte (commande rapide), ou le panier. Visites : sessions distinctes.">
+        <Card title="Panier et commande rapide" hint="Où les commandes sont passées : le formulaire de la fiche produit, le même formulaire ouvert en fenêtre depuis la fiche, le bouton « Acheter maintenant » d'une carte (commande rapide), ou le panier. Visites : sessions distinctes.">
           <dl className="grid grid-cols-2 gap-3 text-sm sm:grid-cols-3">
             <div><dt className="text-xs text-muted">Commandes depuis la fiche</dt><dd className="text-xl font-semibold">{a.basket.orders.product}</dd></div>
+            <div><dt className="text-xs text-muted">Commandes depuis la {ORIGINS.sheet.toLowerCase()}</dt><dd className="text-xl font-semibold">{a.basket.orders.sheet}</dd></div>
             <div><dt className="text-xs text-muted">Commandes rapides</dt><dd className="text-xl font-semibold">{a.basket.orders.quick}</dd></div>
             <div><dt className="text-xs text-muted">Commandes depuis le panier</dt><dd className="text-xl font-semibold">{a.basket.orders.cart}</dd></div>
             <div><dt className="text-xs text-muted">Visites avec ajout au panier</dt><dd className="text-xl font-semibold">{a.basket.added}</dd></div>
@@ -178,6 +179,8 @@ export default async function AnalyticsPage({ searchParams }: PageProps<"/admin/
           </dl>
         </Card>
       </div>
+
+      <DetailsCard d={a.details} from={r.from} />
 
       <div className="grid gap-4 lg:grid-cols-2">
         <Card title="Commandes par heure" hint="Heure de Tunis. Utile pour placer les appels de confirmation et les budgets publicitaires.">
@@ -211,6 +214,14 @@ export default async function AnalyticsPage({ searchParams }: PageProps<"/admin/
 
 function str(v: string | string[] | undefined) {
   return typeof v === "string" ? v : undefined;
+}
+
+/** Where an order was placed, as the order form tells it. */
+const ORIGINS = { product: "Fiche produit", sheet: "Fenêtre de commande", quick: "Commande rapide", cart: "Panier" } as const;
+
+/** "12 (34 %)": a share always with its count; "—" with nothing to divide by. */
+function share(count: number, of: number) {
+  return of > 0 ? `${fmt(count, "int")} (${pct(ratio(count, of))})` : "—";
 }
 
 function deviceLabel(d: string) {
@@ -512,5 +523,126 @@ function ProfitCard({ m }: { m: Awaited<ReturnType<typeof getAnalytics>>["profit
         </div>
       </div>
     </Card>
+  );
+}
+
+type DetailsRow = import("@/lib/analytics").DetailsRow;
+
+/**
+ * The long pictures on a phone: whether visits reach them and read them to
+ * the end, how the bottom bar and the order sheet are used, and what became of
+ * the orders of those visits. The deciding numbers are the last ones:
+ * delivered orders per visit, and refusals.
+ */
+function DetailsCard({ d, from }: { d: import("@/lib/analytics").Analytics["details"]; from: Date }) {
+  const t = d.total;
+  // Before the first picture seen anywhere, the pictures were not measured: a visit then did not "miss" them.
+  const since = d.since ? d.since.toLocaleString("fr-FR", { timeZone: "Africa/Tunis", day: "numeric", month: "long", hour: "2-digit", minute: "2-digit" }) : null;
+  const seen = (x: DetailsRow, k: "seen" | "ended") => (d.since ? share(x[k], x.sessions) : "—");
+  const byOrigin = (x: DetailsRow) =>
+    [...(Object.keys(ORIGINS) as (keyof typeof ORIGINS)[]).map((o) => [ORIGINS[o], x.orders[o]] as const), ["Origine non enregistrée", x.orders.other] as const].filter(([, v]) => v > 0).map(([l, v]) => `${l} ${v}`).join(" · ") || "—";
+  const figures: [string, string, string?][] = [
+    ["Visites de la fiche", fmt(t.sessions, "int")],
+    ["Ont vu les images", seen(t, "seen")],
+    ["Jusqu'à la dernière image", seen(t, "ended")],
+    ["Appuis sur le lien vers les images", fmt(t.links, "int")],
+    ["Barre du bas touchée", fmt(t.bar.scroll + t.bar.sheet + t.bar.other, "int"), `descend au formulaire ${t.bar.scroll} · ouvre la fenêtre ${t.bar.sheet}${t.bar.other ? ` · non précisé ${t.bar.other}` : ""}`],
+    ["Fenêtre de commande ouverte", fmt(t.opened.bar + t.opened.end, "int"), `depuis la barre ${t.opened.bar} · depuis la fin de la fiche ${t.opened.end}`],
+    ["Commandes", fmt(t.orders.all, "int"), byOrigin(t)],
+    ["Confirmées", share(t.confirmed, t.orders.all), "sur les commandes"],
+    ["Livrées par visite", share(t.delivered, t.sessions), "commandes livrées, sur les visites"],
+    ["Refus à la livraison", share(t.refused, t.delivered + t.refused), "sur les colis arrivés (livrés + refusés)"],
+    ["Commandes après la barre", share(t.barOrders, t.barSessions), `dans les ${t.barSessions} visite(s) qui ont touché la barre`],
+  ];
+  // Product by product, then all of them when there are several.
+  const rows = [...d.products, ...(d.products.length > 1 ? [t] : [])];
+  const name = (x: DetailsRow) => (x.id ? <Link href={`/admin/produits/${x.id}`} className="hover:underline">{x.name}</Link> : x.name);
+  return (
+    <Card
+      title="Détails en images (téléphone)"
+      hint={`Fiches ouvertes sur un téléphone, une par visite, pour les ${d.withPictures} produit(s) qui ont des images de description. Une commande compte pour un produit quand elle le contient et vient d'une visite de sa fiche.`}
+    >
+      {t.sessions === 0 ? (
+        <p className="text-sm text-muted">{d.withPictures === 0 ? "Aucun produit n'a d'images de description." : "Aucune visite sur téléphone d'une fiche avec des images de description sur la période."}</p>
+      ) : (
+        <>
+          {!since ? (
+            <p className="mb-3 rounded-xl bg-cream p-3 text-sm">Les images vues ne sont pas encore mesurées : les deux parts se remplissent dès les premières visites qui les atteignent.</p>
+          ) : d.since! > from ? (
+            <p className="mb-3 rounded-xl bg-[#fff8e6] p-3 text-sm">Images vues mesurées depuis le {since} : les visites d&apos;avant comptent dans les visites, pas dans les images vues. Les deux parts sont donc trop basses sur cette période.</p>
+          ) : null}
+          <dl className="grid grid-cols-2 gap-3 text-sm sm:grid-cols-3 lg:grid-cols-4">
+            {figures.map(([label, value, sub]) => (
+              <div key={label} className="min-w-0">
+                <dt className="text-xs text-muted">{label}</dt>
+                <dd className="text-xl font-semibold tabular-nums">{value}</dd>
+                {sub && <dd className="text-xs text-muted">{sub}</dd>}
+              </div>
+            ))}
+          </dl>
+          {d.products.length > 0 && (
+            <>
+              <DetailsTable
+                title="Lecture des images"
+                head={["Visites", "Images vues", "Jusqu'au bout", "Lien touché", "Barre : formulaire · fenêtre", "Fenêtre : barre · fin"]}
+                rows={rows.map((x) => [
+                  name(x),
+                  x.sessions,
+                  seen(x, "seen"),
+                  seen(x, "ended"),
+                  x.links,
+                  <>{x.bar.scroll} · {x.bar.sheet}{x.bar.other > 0 && <span className="text-muted" title="Non précisé : touchée avant que la barre ne dise où elle mène"> (+{x.bar.other})</span>}</>,
+                  `${x.opened.bar} · ${x.opened.end}`,
+                ])}
+              />
+              <DetailsTable
+                title="Commandes de ces visites"
+                head={["Commandes", ...Object.values(ORIGINS), ...(t.orders.other > 0 ? ["Origine non enregistrée"] : []), "Confirmées", "Livrées / visites", "Refus", "Après la barre"]}
+                rows={rows.map((x) => [
+                  name(x),
+                  x.orders.all,
+                  x.orders.product,
+                  x.orders.sheet,
+                  x.orders.quick,
+                  x.orders.cart,
+                  ...(t.orders.other > 0 ? [x.orders.other] : []),
+                  share(x.confirmed, x.orders.all),
+                  share(x.delivered, x.sessions),
+                  share(x.refused, x.delivered + x.refused),
+                  share(x.barOrders, x.barSessions),
+                ])}
+              />
+            </>
+          )}
+        </>
+      )}
+    </Card>
+  );
+}
+
+/** One table of the card: the product first, then its numbers; the last row in bold when it is every product together. */
+function DetailsTable({ title, head, rows }: { title: string; head: string[]; rows: React.ReactNode[][] }) {
+  return (
+    <div className="mt-5">
+      <h3 className="text-[13px] font-semibold text-ink">{title}</h3>
+      <div className="-mx-4 mt-1 overflow-x-auto px-4 sm:mx-0 sm:px-0">
+        <table className="w-full min-w-[720px] text-[13px]">
+          <thead className="text-xs text-muted">
+            <tr className="border-b border-line align-bottom">
+              <th className="min-w-36 py-2 text-start font-medium">Produit</th>
+              {head.map((h) => <th key={h} className="ps-4 text-end font-medium">{h}</th>)}
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-line tabular-nums">
+            {rows.map(([product, ...cells], i) => (
+              <tr key={i} className={i === rows.length - 1 && rows.length > 1 ? "font-semibold" : ""}>
+                <td className="py-2 pe-3">{product}</td>
+                {cells.map((c, j) => <td key={j} className="whitespace-nowrap ps-4 text-end">{c}</td>)}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
   );
 }

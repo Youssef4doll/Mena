@@ -15,6 +15,8 @@ import { deliveryRangeLabel, deliverySpan } from "@/lib/delivery";
 import { Stars } from "./Stars";
 import { Gallery, slidesOf } from "./Gallery";
 import { BuyBox, useBuyChoice, type BuyChoice } from "./BuyBox";
+import { useOrderDraft } from "./OrderForm";
+import { OrderSheet } from "./OrderSheet";
 import { IconCheck, IconChevronDown, IconTruck } from "./Icons";
 
 type P = Omit<ProductPage, "related">;
@@ -23,8 +25,12 @@ type P = Omit<ProductPage, "related">;
  * The product page, kept to what a cash-on-delivery customer needs, in the
  * order they need it: the pictures (and the video), the name and a line about
  * the product, the price, the offers and the four-field form. Under it, the
- * description with its long pictures, the specifications, and the reviews of
- * customers who received it. Few words, plain sizes, one strong button.
+ * long pictures and the description, the reviews of customers who received
+ * it, the questions asked before ordering, the price again with one button,
+ * then the specifications. Few words, plain sizes, one strong button.
+ *
+ * Past the form, the order comes to the reader (in a sheet over the page)
+ * rather than the reader going back up to it.
  */
 export function ProductView({ p, lang, settings, url }: { p: P; lang: Lang; settings: PublicSettings; url: string }) {
   const t = dict(lang);
@@ -33,13 +39,21 @@ export function ProductView({ p, lang, settings, url }: { p: P; lang: Lang; sett
   const out = p.stock.kind === "out";
   const buyRef = useRef<HTMLDivElement>(null);
   const priceRef = useRef<HTMLParagraphElement>(null);
+  const endRef = useRef<HTMLButtonElement>(null);
   const [sticky, setSticky] = useState(false);
+  const [sheet, setSheet] = useState(false);
   const choice = useBuyChoice(p);
+  // What is typed, the same in the page's form and in the sheet's.
+  const draft = useOrderDraft();
   const shown = shownPrice(p, choice, lang);
   const pct = out ? 0 : discountPct(shown.price, shown.compareAt);
   const struck = !out && shown.compareAt != null && shown.compareAt > shown.price ? shown.compareAt : null;
   const pay = payNow(p, choice);
   const slides = useMemo(() => slidesOf(p.images, p.video), [p.images, p.video]);
+  const details = p.detailImages;
+  const detailsTitle = useRef<HTMLHeadingElement>(null);
+  const picturesRef = useRef<HTMLDivElement>(null);
+  const picturesEnd = useRef<HTMLSpanElement>(null);
 
   const viewPrice = leadOffer(p.offers)?.price ?? p.price;
   useEffect(() => {
@@ -49,8 +63,9 @@ export function ProductView({ p, lang, settings, url }: { p: P; lang: Lang; sett
 
   // The bottom bar shows whenever the order form is out of sight, from the first screen on: on a short
   // phone (an ad opened in the Facebook app) the price and the button are there before any scrolling.
-  // It hides once a good part of the form is on screen, and waits while the page's own price line,
-  // fully visible, sits where the bar would cover it (a price cut by the screen's edge is in the bar).
+  // It hides once a good part of the form is on screen, or while any part of the order block's own button at
+  // the end is (never two such buttons on screen at once), and waits while the page's own price line, fully
+  // visible, sits where the bar would cover it (a price cut by the screen's edge is in the bar).
   useEffect(() => {
     let raf = 0;
     const check = () => {
@@ -59,9 +74,11 @@ export function ProductView({ p, lang, settings, url }: { p: P; lang: Lang; sett
       if (!el) return;
       const r = el.getBoundingClientRect();
       const formInView = r.top < innerHeight - 160 && r.bottom > 140;
+      const end = endRef.current?.getBoundingClientRect();
+      const endInView = end != null && end.top < innerHeight && end.bottom > 0;
       const pr = priceRef.current?.getBoundingClientRect();
       const priceUnderBar = pr != null && pr.bottom <= innerHeight && pr.bottom > innerHeight - 84;
-      setSticky(!formInView && !priceUnderBar);
+      setSticky(!formInView && !endInView && !priceUnderBar);
     };
     const onScroll = () => {
       if (!raf) raf = requestAnimationFrame(check);
@@ -76,8 +93,6 @@ export function ProductView({ p, lang, settings, url }: { p: P; lang: Lang; sett
     };
   }, []);
 
-  // To the first thing still missing: the option, then the first empty field, else the button itself
-  // (a customer who filled the form and went on reading is not sent back to the top of it).
   // Tells what else floats at the bottom (the cookie question) to stay above the bar.
   useEffect(() => {
     const root = document.documentElement;
@@ -85,8 +100,56 @@ export function ProductView({ p, lang, settings, url }: { p: P; lang: Lang; sett
     return () => root.removeAttribute("data-sticky");
   }, [sticky, out]);
 
+  // How far the long pictures are read, once each per page view: the first one reaching the middle of the
+  // screen (the bottom half of the screen is left out, so a picture taller than the screen counts too), then
+  // the end of the last one.
+  const hasDetails = details.length > 0;
+  useEffect(() => {
+    if (!hasDetails || typeof IntersectionObserver === "undefined") return;
+    const watch = (el: Element | null, name: "details_seen" | "details_end", rootMargin = "0px") => {
+      if (!el) return null;
+      const io = new IntersectionObserver(
+        (entries) => {
+          if (!entries.some((e) => e.isIntersecting)) return;
+          io.disconnect();
+          track(name, { productId: p.id });
+        },
+        { rootMargin },
+      );
+      io.observe(el);
+      return io;
+    };
+    const seen = watch(picturesRef.current, "details_seen", "0px 0px -50% 0px");
+    const end = watch(picturesEnd.current, "details_end");
+    return () => {
+      seen?.disconnect();
+      end?.disconnect();
+    };
+  }, [p.id, hasDetails]);
+
+  /** The gallery's link: down to the long pictures' title, which takes the focus, so the reader knows where they arrived. */
+  function toDetails() {
+    track("details_link_clicked", { productId: p.id });
+    const h = detailsTitle.current;
+    h?.scrollIntoView({ behavior: "smooth", block: "start" });
+    h?.focus({ preventScroll: true });
+  }
+
+  function openSheet(from: "bar" | "end") {
+    track("order_sheet_opened", { productId: p.id, props: { from } });
+    setSheet(true);
+  }
+
+  // Still under the form (the first screen): down to the first thing still missing, the option, then the first
+  // empty field, else the button itself (a customer who filled the form and went on reading is not sent back to
+  // the top of it). Past the form: the form opens in a sheet, and the reader stays where they were reading.
   function goToForm() {
-    track("sticky_clicked", { productId: p.id });
+    const past = (buyRef.current?.getBoundingClientRect().bottom ?? 0) < 0;
+    track("sticky_clicked", { productId: p.id, props: { mode: past ? "sheet" : "scroll" } });
+    if (past) {
+      openSheet("bar");
+      return;
+    }
     if (p.variants.length > 0 && !choice.variant) {
       document.getElementById("commander")?.scrollIntoView({ behavior: "smooth", block: "start" });
       const b = document.querySelector<HTMLButtonElement>("#bb-variants button:not(:disabled)");
@@ -116,7 +179,7 @@ export function ProductView({ p, lang, settings, url }: { p: P; lang: Lang; sett
           Computer: the pictures on the left (they stay in view), the rest on the right. */}
       <div className="grid gap-4 pt-1 md:grid-cols-[minmax(0,1.1fr)_minmax(0,1fr)] md:grid-rows-[auto_1fr] md:gap-x-10 md:gap-y-5 md:pt-4">
         <div className="min-w-0 md:sticky md:top-36 md:col-start-1 md:row-span-2 md:row-start-1 md:self-start">
-          <Gallery slides={slides} name={name} productId={p.id} lang={lang} badge={0} />
+          <Gallery slides={slides} name={name} productId={p.id} lang={lang} badge={0} details={hasDetails ? { count: details.length, label: t.product.detailsLink, onClick: toDetails } : undefined} />
         </div>
 
         <div className="flex min-w-0 flex-col gap-2 md:col-start-2 md:row-start-1">
@@ -164,18 +227,21 @@ export function ProductView({ p, lang, settings, url }: { p: P; lang: Lang; sett
         </div>
 
         <div ref={buyRef} className="min-w-0 pt-1 md:col-start-2 md:row-start-2">
-          <BuyBox p={p} lang={lang} settings={settings} url={url} choice={choice} />
+          <BuyBox p={p} lang={lang} settings={settings} url={url} choice={choice} origin="product" draft={draft} paused={sheet} />
         </div>
       </div>
 
       {/* The long pictures first, one under the other (they sell): edge to edge on a phone, wide on a computer, as on the
-          owner's reference shop; then the description as the shop wrote it, at a readable line length. */}
-      {(description || p.detailImages.length > 0) && (
-        <section className="mx-auto mt-10 flex max-w-5xl flex-col gap-4 border-t border-line pt-8" aria-labelledby="desc-title">
-          <TabTitle id="desc-title">{t.product.description}</TabTitle>
-          {p.detailImages.length > 0 && (
-            <div className="-mx-4 flex flex-col overflow-hidden md:mx-0 md:rounded-2xl">
-              {p.detailImages.map((img) => (
+          owner's reference shop; then the description as the shop wrote it, at a readable line length.
+          With pictures, the title has the gallery link's words. */}
+      {(description || hasDetails) && (
+        <section id="details" className="mx-auto mt-10 flex max-w-5xl flex-col gap-4 border-t border-line pt-8" aria-labelledby="desc-title">
+          <TabTitle id="desc-title" ref={detailsTitle}>
+            {hasDetails ? t.product.detailsTitle : t.product.description}
+          </TabTitle>
+          {hasDetails && (
+            <div ref={picturesRef} className="relative -mx-4 flex flex-col overflow-hidden md:mx-0 md:rounded-2xl">
+              {details.map((img) => (
                 <Image
                   key={img.id}
                   src={`/api/img/${img.id}`}
@@ -187,6 +253,8 @@ export function ProductView({ p, lang, settings, url }: { p: P; lang: Lang; sett
                   {...(img.blur ? { placeholder: "blur" as const, blurDataURL: img.blur } : {})}
                 />
               ))}
+              {/* The last picture's last line: once on screen, the pictures were seen to the end. */}
+              <span ref={picturesEnd} aria-hidden className="pointer-events-none absolute inset-x-0 bottom-0 h-px" />
             </div>
           )}
           {description && (
@@ -198,33 +266,6 @@ export function ProductView({ p, lang, settings, url }: { p: P; lang: Lang; sett
               ))}
             </div>
           )}
-        </section>
-      )}
-
-      {/* "قبل ما تطلب": the questions people ask, under the description and its pictures. */}
-      <Questions lang={lang} settings={settings} />
-
-      {specs.length > 0 && (
-        <section className="mx-auto mt-10 max-w-3xl border-t border-line pt-8" aria-labelledby="specs-title">
-          <TabTitle id="specs-title">{t.product.specs}</TabTitle>
-          <dl className="mt-1 divide-y divide-line text-[17px]">
-            {specs.map((s, i) =>
-              s.label ? (
-                <div key={i} className="grid grid-cols-[minmax(0,2fr)_minmax(0,3fr)] gap-3 py-3">
-                  <dt className="text-muted" dir="auto">{s.label}</dt>
-                  <dd className="text-ink" dir="auto">{s.value}</dd>
-                </div>
-              ) : (
-                <div key={i} className="flex items-start gap-2 py-3">
-                  <dt className="sr-only">·</dt>
-                  <dd className="flex items-start gap-2 text-ink" dir="auto">
-                    <IconCheck className="mt-1 h-4 w-4 shrink-0 text-olive" />
-                    {s.value}
-                  </dd>
-                </div>
-              ),
-            )}
-          </dl>
         </section>
       )}
 
@@ -261,6 +302,36 @@ export function ProductView({ p, lang, settings, url }: { p: P; lang: Lang; sett
         </section>
       )}
 
+      {/* "قبل ما تطلب": the questions people ask, under the pictures and what customers said. */}
+      <Questions lang={lang} settings={settings} />
+
+      {/* The end of the reading: the price of the current choice and one button, which opens the form here. */}
+      {!out && <EndOrder ref={endRef} lang={lang} settings={settings} price={pay.price} from={pay.from} free={Boolean(choice.offer?.freeDelivery)} onOrder={() => openSheet("end")} />}
+
+      {specs.length > 0 && (
+        <section className="mx-auto mt-10 max-w-3xl border-t border-line pt-8" aria-labelledby="specs-title">
+          <TabTitle id="specs-title">{t.product.specs}</TabTitle>
+          <dl className="mt-1 divide-y divide-line text-[17px]">
+            {specs.map((s, i) =>
+              s.label ? (
+                <div key={i} className="grid grid-cols-[minmax(0,2fr)_minmax(0,3fr)] gap-3 py-3">
+                  <dt className="text-muted" dir="auto">{s.label}</dt>
+                  <dd className="text-ink" dir="auto">{s.value}</dd>
+                </div>
+              ) : (
+                <div key={i} className="flex items-start gap-2 py-3">
+                  <dt className="sr-only">·</dt>
+                  <dd className="flex items-start gap-2 text-ink" dir="auto">
+                    <IconCheck className="mt-1 h-4 w-4 shrink-0 text-olive" />
+                    {s.value}
+                  </dd>
+                </div>
+              ),
+            )}
+          </dl>
+        </section>
+      )}
+
       {/* Phone: what the current choice costs and the button, one look away. */}
       <div
         className={`fixed inset-x-0 bottom-0 z-30 border-t border-line bg-white/95 px-4 pb-[max(.625rem,env(safe-area-inset-bottom))] pt-2.5 shadow-[0_-6px_20px_-12px_rgb(0_0_0/.25)] backdrop-blur transition-transform duration-300 md:hidden ${
@@ -280,14 +351,16 @@ export function ProductView({ p, lang, settings, url }: { p: P; lang: Lang; sett
           </button>
         </div>
       </div>
+
+      {sheet && <OrderSheet p={p} lang={lang} settings={settings} url={url} choice={choice} draft={draft} onClose={() => setSheet(false)} />}
     </div>
   );
 }
 
-/** A section's name; the hairline above the section already separates it. */
-function TabTitle({ id, children }: { id: string; children: React.ReactNode }) {
+/** A section's name; the hairline above the section already separates it. One a link leads to takes the focus (`ref`). */
+function TabTitle({ id, ref, children }: { id: string; ref?: React.Ref<HTMLHeadingElement>; children: React.ReactNode }) {
   return (
-    <h2 id={id} className="text-[20px] font-bold text-ink">
+    <h2 id={id} ref={ref} tabIndex={ref ? -1 : undefined} className="scroll-mt-4 text-[20px] font-bold text-ink">
       {children}
     </h2>
   );
@@ -331,6 +404,29 @@ function DeliveryLine({ lang, settings, free, price }: { lang: Lang; settings: P
         {isFree ? <strong className="text-olive">{t.buy.freeDelivery}</strong> : <>{t.buy.delivery} <span className="price-nums ltr-nums">{formatTND(fee, lang)}</span></>}
       </span>
     </p>
+  );
+}
+
+/**
+ * Under the questions, for the reader who has read it all: what the current
+ * choice costs, what delivery costs, and one button that opens the form in
+ * place, where the reading ended. The bottom bar gives way to that button
+ * (`ref`).
+ */
+function EndOrder({ ref, lang, settings, price, from, free, onOrder }: { ref: React.Ref<HTMLButtonElement>; lang: Lang; settings: PublicSettings; price: number; from: boolean; free: boolean; onOrder: () => void }) {
+  const t = dict(lang);
+  return (
+    <div className="mx-auto mt-10 flex max-w-3xl flex-col gap-3 rounded-[24px] bg-sand/70 p-4 md:p-5" data-testid="end-order">
+      <p className="flex items-baseline justify-between gap-3">
+        <span className="text-[16px] text-ink-2">{from ? t.product.from : t.buy.price}</span>
+        <span className="whitespace-nowrap text-[24px] font-bold leading-none text-ink price-nums ltr-nums">{formatTND(price, lang)}</span>
+      </p>
+      <DeliveryLine lang={lang} settings={settings} free={free} price={price} />
+      <button ref={ref} type="button" onClick={onOrder} aria-haspopup="dialog" className="flex min-h-[58px] w-full items-center justify-center gap-2.5 rounded-full bg-buy px-5 py-2 text-[19px] font-bold leading-tight text-night shadow-[inset_0_-3px_0_var(--color-buy-2)] transition [--focus-ring:var(--color-night)] hover:bg-buy-2 active:scale-[.99]">
+        <IconTruck className="h-6 w-6 shrink-0" />
+        {t.product.orderNow}
+      </button>
+    </div>
   );
 }
 

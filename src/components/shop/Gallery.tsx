@@ -9,7 +9,7 @@ import type { ImageRef } from "@/lib/catalog";
 import type { Video } from "@/lib/product-content";
 import { track } from "@/lib/client/track";
 import { Placeholder } from "./Img";
-import { IconExpand, IconPlay } from "./Icons";
+import { IconArrowDown, IconExpand, IconPlay } from "./Icons";
 
 // The full-screen viewer is only downloaded when someone opens it.
 const Viewer = dynamic(() => import("./GalleryViewer").then((m) => m.GalleryViewer), { ssr: false });
@@ -28,9 +28,10 @@ export function slidesOf(images: ImageRef[], video: Video | null): Slide[] {
  * The pictures in a light frame: swiped on a phone with the thumbnails
  * centred under them, the thumbnails down the side on a computer, and the
  * whole set in full screen (with zoom) at a tap. The video plays in its
- * place, loaded only when asked for.
+ * place, loaded only when asked for. A product with long pictures says so on
+ * the first screen: a link in the picture's corner, with their real number.
  */
-export function Gallery({ slides, name, productId, badge, lang }: { slides: Slide[]; name: string; productId: string; badge: number; lang: Lang }) {
+export function Gallery({ slides, name, productId, badge, lang, details }: { slides: Slide[]; name: string; productId: string; badge: number; lang: Lang; details?: { count: number; label: string; onClick: () => void } }) {
   const t = dict(lang);
   const [i, setI] = useState(0);
   const [playing, setPlaying] = useState(false);
@@ -43,11 +44,23 @@ export function Gallery({ slides, name, productId, badge, lang }: { slides: Slid
         <span className="ltr-nums">−{badge}%</span>
       </span>
     ) : null;
+  // In the corner opposite the zoom button, never under it: narrower than the picture by the button, its margins
+  // and a gap (12 + 44 + 8 + 12 px), it goes on two lines rather than over it. One line on a 360 px phone.
+  const link =
+    details && details.count > 0 ? (
+      <button type="button" onClick={details.onClick} className="absolute bottom-3 start-3 flex min-h-11 max-w-[calc(100%-4.75rem)] items-center gap-1 rounded-[22px] border border-line bg-white/95 py-1 ps-3 pe-2.5 text-start text-[16px] font-bold leading-tight text-ink shadow-[0_2px_10px_-4px_rgb(0_0_0/.3)]" data-testid="details-link">
+        <span>
+          {details.label}&nbsp;<span className="ltr-nums">({details.count})</span>
+        </span>
+        <IconArrowDown className="h-4 w-4 shrink-0 text-sea" />
+      </button>
+    ) : null;
   if (slides.length === 0)
     return (
       <div className="relative aspect-square overflow-hidden rounded-2xl border border-line">
         {tag}
         <Placeholder />
+        {link}
       </div>
     );
   const go = (n: number) => {
@@ -129,6 +142,8 @@ export function Gallery({ slides, name, productId, badge, lang }: { slides: Slid
             <IconExpand className="h-5 w-5" />
           </button>
         )}
+        {/* Out of the way of a playing video's controls. */}
+        {!playing && link}
       </div>
 
       {slides.length > 1 && (

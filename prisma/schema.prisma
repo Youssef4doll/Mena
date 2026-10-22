@@ -132,6 +132,9 @@ model ProductImage {
   /// A CSV import run twice, or from two devices at once, never adds the same picture twice
   /// (several pictures without a source are allowed: NULLs are distinct).
   source    String?
+  /// DETAIL pictures carry their own text: "ar" shows on the Arabic page only, "fr" on the
+  /// French page only, NULL on both. Gallery pictures are always on both.
+  lang      String?
 
   @@index([productId, sort])
   @@unique([productId, kind, source])

@@ -40,10 +40,28 @@ function readJson(raw: string): Partial<Form> {
   }
 }
 
+/**
+ * What is typed in the form, and what goes with it: the fields already left, the promo code, whether the form
+ * was used, the attempt's key. The product page keeps it, as its form shows in two places (on the page and in
+ * the order sheet): nothing typed is lost between them, and the same order sent from either is still one order.
+ */
+export function useOrderDraft() {
+  const [edits, setEdits] = useState<Partial<Form>>({});
+  const [touched, setTouched] = useState<Partial<Record<keyof Form, boolean>>>({});
+  const [promo, setPromo] = useState<string | null>(null);
+  // The visitor has used the form itself (not just looked at the page with saved details).
+  const [engaged, setEngaged] = useState(false);
+  // One key per attempt: the same details sent again (no answer came back) reuse it, and the server returns the order it made.
+  const attemptRef = useRef<{ sig: string; key: string } | null>(null);
+  const phoneLoggedRef = useRef(false);
+  return { edits, setEdits, touched, setTouched, promo, setPromo, engaged, setEngaged, attemptRef, phoneLoggedRef };
+}
+export type OrderDraft = ReturnType<typeof useOrderDraft>;
+
 type Props = {
   lang: Lang;
   settings: PublicSettings;
-  /** Prefix of every id, so two forms on one page (the page and the quick sheet) never share one. */
+  /** Prefix of every id, so two forms on one page (the page and a sheet) never share one. */
   idp: string;
   formId: string;
   lines: OrderLine[];
@@ -60,7 +78,11 @@ type Props = {
   freeOffer?: boolean;
   /** The product or the basket reacts to what the server refused (stock, offers). */
   onQuote?: (q: PublicQuote) => void;
-  origin: "product" | "quick" | "cart";
+  origin: "product" | "sheet" | "quick" | "cart";
+  /** Kept by the product page for its two copies of the form; each other form keeps its own. */
+  draft?: OrderDraft;
+  /** The same form is open in the order sheet over this one: this copy waits, so the price is asked and the form saved once, not twice. */
+  paused?: boolean;
   productId?: string;
   pixelItems: () => PixelItem[];
   restoredCartId?: string | null;
@@ -79,7 +101,7 @@ type Props = {
  * server and refused if the total the customer saw is not the one charged.
  */
 export function OrderForm(props: Props) {
-  const { lang, settings, idp, lines, ready, pagePrice, origin, productId } = props;
+  const { lang, settings, idp, lines, ready, pagePrice, origin, paused, productId } = props;
   const id = (k: string) => `${idp}-${k}`;
   const t = dict(lang);
   const router = useRouter();
@@ -90,30 +112,24 @@ export function OrderForm(props: Props) {
   const draftRaw = useSyncExternalStore(noopSubscribe, () => store.get(DRAFT) ?? "", () => "");
   const savedGov = useSyncExternalStore(noopSubscribe, () => getGov() ?? "", () => "");
   const known = useMemo<Partial<Form>>(() => ({ ...readJson(savedRaw), ...readJson(draftRaw) }), [savedRaw, draftRaw]);
-  const [edits, setEdits] = useState<Partial<Form>>({});
+  const own = useOrderDraft();
+  const { edits, setEdits, touched, setTouched, promo, setPromo, engaged, setEngaged, attemptRef, phoneLoggedRef } = props.draft ?? own;
   const f: Form = {
     name: edits.name ?? known.name ?? "",
     phone: edits.phone ?? known.phone ?? "",
     address: edits.address ?? known.address ?? "",
     governorate: edits.governorate ?? (known.governorate || savedGov || ""),
   };
-  const [touched, setTouched] = useState<Partial<Record<keyof Form, boolean>>>({});
   const [serverBad, setServerBad] = useState<string[]>([]);
   const [showPromo, setShowPromo] = useState(false);
   const [promoInput, setPromoInput] = useState("");
-  const [promo, setPromo] = useState<string | null>(null);
   const [answer, setAnswer] = useState<{ key: string; q: PublicQuote } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   // The order is made and the thank-you page is loading: the button stays off, a second tap is not a second order.
   const placed = useRef(false);
-  // One key per attempt: the same details sent again (no answer came back) reuse it, and the server returns the order it made.
-  const attempt = useRef<{ sig: string; key: string } | null>(null);
-  // The visitor has used the form itself (not just looked at the page with saved details).
-  const [engaged, setEngaged] = useState(false);
   // The button was tapped with fields still missing: they are listed next to it until filled.
   const [tried, setTried] = useState(false);
-  const phoneLogged = useRef(false);
 
   const phone = normalizePhone(f.phone);
   // A price answer counts only for the exact lines it was asked for.
@@ -126,7 +142,7 @@ export function OrderForm(props: Props) {
   }
 
   useEffect(() => {
-    if (!hydrated || !ready || lines.length === 0) return;
+    if (!hydrated || !ready || lines.length === 0 || paused) return;
     const ctrl = new AbortController();
     const key = quoteKey;
     let tries = 0;
@@ -151,14 +167,14 @@ export function OrderForm(props: Props) {
     };
     // absorb only reads values that are part of quoteKey.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [hydrated, quoteKey, ready]);
+  }, [hydrated, quoteKey, ready, paused]);
 
   // An unfinished form with a valid phone shows up in the back office, to be called once.
   // Only once the visitor has used the form: a phone saved from an earlier order is not a new start.
   useEffect(() => {
-    if (!engaged || !phone || lines.length === 0) return;
-    if (!phoneLogged.current) {
-      phoneLogged.current = true;
+    if (!engaged || !phone || lines.length === 0 || paused) return;
+    if (!phoneLoggedRef.current) {
+      phoneLoggedRef.current = true;
       track("checkout_phone_entered", { productId, props: { where: origin } });
     }
     const timer = setTimeout(() => {
@@ -191,7 +207,7 @@ export function OrderForm(props: Props) {
         .catch(() => {});
     }, 900);
     return () => clearTimeout(timer);
-  }, [engaged, phone, f.name, f.governorate, lines, productId, origin]);
+  }, [engaged, phone, f.name, f.governorate, lines, productId, origin, paused, phoneLoggedRef]);
 
   function start() {
     if (engaged) return;
@@ -279,7 +295,7 @@ export function OrderForm(props: Props) {
       const expectedTotal = q ? q.total : blind ? 0 : total;
       const details = { lines, phone: f.phone, name: f.name, governorate: f.governorate, address: f.address, promoCode: promo ?? undefined, expectedTotal };
       const sig = JSON.stringify(details);
-      if (attempt.current?.sig !== sig) attempt.current = { sig, key: randomId() };
+      if (attemptRef.current?.sig !== sig) attemptRef.current = { sig, key: randomId() };
       const a = currentAttribution();
       const res = await fetch("/api/orders", {
         method: "POST",
@@ -289,7 +305,7 @@ export function OrderForm(props: Props) {
         body: JSON.stringify({
           ...details,
           payment: "COD",
-          submitKey: attempt.current.key,
+          submitKey: attemptRef.current.key,
           cartToken: store.get(FORM_TOKEN) ?? undefined,
           restoredCartId: props.restoredCartId ?? undefined,
           visitorId: a.visitorId,
@@ -312,8 +328,9 @@ export function OrderForm(props: Props) {
         // What was just ordered leaves the basket, so the cart icon does not invite the same order twice.
         if (origin !== "cart") removeOrdered(lines);
         props.onPlaced?.();
-        // From the quick sheet, the thank-you page takes the sheet's history entry: Back returns to the list.
-        if (origin === "quick") router.replace(href(lang, `/commande/merci/${data.ref}`));
+        // From a sheet, the thank-you page takes the sheet's history entry: Back returns to the list (quick
+        // sheet) or to the product page (its order sheet), not to a closed sheet's #commande.
+        if (origin === "quick" || origin === "sheet") router.replace(href(lang, `/commande/merci/${data.ref}`));
         else router.push(href(lang, `/commande/merci/${data.ref}`));
         return;
       }
@@ -351,9 +368,11 @@ export function OrderForm(props: Props) {
   return (
     // A container: the fields go two by two as soon as two fit (a short form to the eye, as on the owner's reference shop); one column on the narrowest phones.
     <form id={props.formId} onSubmit={submit} noValidate className="@container flex flex-col gap-4">
+      {/* Honeypot: invisible to people, irresistible to bots, and out of the Tab order. */}
+      <input type="text" name="website" tabIndex={-1} autoComplete="off" className="absolute -start-[9999px] h-0 w-0 opacity-0" aria-hidden />
       {/* The four fields in one card: its title, then each field with its name and a star when it is needed.
-          Where the form already sits in a sheet (quick buy) or a framed panel (the basket from tablet width), the card does not draw a second frame. */}
-      <section className={origin === "quick" ? "border-t border-line pt-5" : origin === "cart" ? `${CARD} md:rounded-none md:border-0 md:p-0 md:shadow-none` : `${CARD} @md:p-5`} aria-labelledby={id("info-title")}>
+          Where the form already sits in a sheet (quick buy, the product page's order sheet) or a framed panel (the basket from tablet width), the card does not draw a second frame. */}
+      <section className={origin === "quick" || origin === "sheet" ? "border-t border-line pt-5" : origin === "cart" ? `${CARD} md:rounded-none md:border-0 md:p-0 md:shadow-none` : `${CARD} @md:p-5`} aria-labelledby={id("info-title")}>
         <h3 id={id("info-title")} className="text-[17px] font-bold leading-tight text-ink">{t.buy.deliveryInfo}</h3>
         {/* On a phone: the name and the address, long, each on its own line; the phone and the governorate, short, side by side
             (the phone's column a little wider, so the eight digits after +216 fit on a 360 px screen). Two by two once the form is wide. */}
@@ -536,9 +555,6 @@ export function OrderForm(props: Props) {
           )}
         </div>
       )}
-
-      {/* Honeypot: invisible to people, irresistible to bots. */}
-      <input type="text" name="website" tabIndex={-1} autoComplete="off" className="absolute -start-[9999px] h-0 w-0 opacity-0" aria-hidden />
     </form>
   );
 }

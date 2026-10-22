@@ -324,15 +324,16 @@ async function contacts(from: Date, to: Date) {
 
 /**
  * The basket and the product page's pictures: sessions that added to the
- * basket or opened it, orders by where they were placed (product page, quick
- * form on a card, basket), and how often the video and the full-screen
- * pictures were used.
+ * basket or opened it, orders by where they were placed (product page, its
+ * order sheet, quick form on a card, basket), and how often the video and
+ * the full-screen pictures were used.
  */
 async function basket(from: Date, to: Date) {
-  const [r] = await prisma.$queryRaw<{ added: bigint; viewed: bigint; product: bigint; unknown: bigint; quick: bigint; cart: bigint; videos: bigint; zooms: bigint }[]>`
+  const [r] = await prisma.$queryRaw<{ added: bigint; viewed: bigint; product: bigint; sheet: bigint; unknown: bigint; quick: bigint; cart: bigint; videos: bigint; zooms: bigint }[]>`
     SELECT COUNT(DISTINCT "sessionId") FILTER (WHERE name = 'add_to_cart') AS added,
       COUNT(DISTINCT "sessionId") FILTER (WHERE name = 'cart_viewed') AS viewed,
       COUNT(*) FILTER (WHERE name = 'order_placed' AND props->>'origin' = 'product') AS product,
+      COUNT(*) FILTER (WHERE name = 'order_placed' AND props->>'origin' = 'sheet') AS sheet,
       COUNT(*) FILTER (WHERE name = 'order_placed' AND props->>'origin' IS NULL) AS unknown,
       COUNT(*) FILTER (WHERE name = 'order_placed' AND props->>'origin' = 'quick') AS quick,
       COUNT(*) FILTER (WHERE name = 'order_placed' AND props->>'origin' = 'cart') AS cart,
@@ -340,7 +341,114 @@ async function basket(from: Date, to: Date) {
       COUNT(DISTINCT "sessionId") FILTER (WHERE name = 'gallery_zoomed') AS zooms
     FROM "AnalyticsEvent" WHERE "createdAt" >= ${from} AND "createdAt" < ${to}
       AND name IN ('add_to_cart', 'cart_viewed', 'order_placed', 'video_played', 'gallery_zoomed')`;
-  return { added: n(r.added), viewed: n(r.viewed), orders: { product: n(r.product), quick: n(r.quick), cart: n(r.cart), unknown: n(r.unknown) }, videos: n(r.videos), zooms: n(r.zooms) };
+  return { added: n(r.added), viewed: n(r.viewed), orders: { product: n(r.product), sheet: n(r.sheet), quick: n(r.quick), cart: n(r.cart), unknown: n(r.unknown) }, videos: n(r.videos), zooms: n(r.zooms) };
+}
+
+export type DetailsRow = {
+  /** null: every product together (an order holding two of them counts once). */
+  id: string | null;
+  name: string;
+  /** Product pages opened on a phone, one per visit (the quick form's view does not count). */
+  sessions: number;
+  /** Of those visits: the long pictures reached, and read to the last one. */
+  seen: number;
+  ended: number;
+  /** Taps on the gallery's link to the long pictures. */
+  links: number;
+  /** Taps on the bottom bar: scrolled to the form, opened the order sheet, or sent before the bar said which. */
+  bar: { scroll: number; sheet: number; other: number };
+  /** Order sheets opened, from the bottom bar or from the end of the page. */
+  opened: { bar: number; end: number };
+  /** Orders of those visits holding the product, by where they were placed, then what became of them. */
+  orders: { all: number; product: number; sheet: number; quick: number; cart: number; other: number };
+  confirmed: number;
+  delivered: number;
+  refused: number;
+  /** Visits that touched the bottom bar, and the orders placed in them. */
+  barSessions: number;
+  barOrders: number;
+};
+
+/**
+ * The long pictures on a phone, for each product that has some: how many
+ * visits reach them and read them to the end, how the bottom bar and the
+ * order sheet are used, and the orders of those visits (joined on the visit,
+ * so an order counts for a product only when its visit opened that page).
+ * `since` is when the pictures were first seen anywhere: before it they were
+ * not measured, and a visit then is no visit that missed them.
+ */
+async function details(from: Date, to: Date) {
+  const [rows, [first], [shop]] = await Promise.all([
+    prisma.$queryRawUnsafe<Record<string, bigint | string | null>[]>(
+      `WITH d AS (
+         SELECT DISTINCT "productId" AS id FROM "ProductImage" WHERE kind = 'DETAIL'
+       ), v AS (
+         SELECT e."productId" AS id, e."sessionId" AS sid,
+           bool_or(e.name = 'details_seen') AS seen,
+           bool_or(e.name = 'details_end') AS ended,
+           COUNT(*) FILTER (WHERE e.name = 'details_link_clicked') AS links,
+           COUNT(*) FILTER (WHERE e.name = 'sticky_clicked' AND e.props->>'mode' = 'scroll') AS bar_scroll,
+           COUNT(*) FILTER (WHERE e.name = 'sticky_clicked' AND e.props->>'mode' = 'sheet') AS bar_sheet,
+           COUNT(*) FILTER (WHERE e.name = 'sticky_clicked' AND COALESCE(e.props->>'mode', '') NOT IN ('scroll', 'sheet')) AS bar_other,
+           COUNT(*) FILTER (WHERE e.name = 'order_sheet_opened' AND e.props->>'from' = 'bar') AS open_bar,
+           COUNT(*) FILTER (WHERE e.name = 'order_sheet_opened' AND e.props->>'from' = 'end') AS open_end,
+           bool_or(e.name = 'sticky_clicked') AS tapped
+         FROM "AnalyticsEvent" e JOIN d ON d.id = e."productId"
+         WHERE e."createdAt" >= $1 AND e."createdAt" < $2 AND e.device = 'mobile' AND e."sessionId" <> 'server'
+           AND e.name IN ('product_viewed', 'details_seen', 'details_end', 'details_link_clicked', 'sticky_clicked', 'order_sheet_opened')
+         GROUP BY 1, 2
+         HAVING bool_or(e.name = 'product_viewed' AND COALESCE(e.props->>'where', '') <> 'quick')
+       ), o AS (
+         SELECT DISTINCT v.id, v.tapped, ord.id AS oid, ord.status, pl.props->>'origin' AS origin
+         FROM v
+         JOIN "Order" ord ON ord."sessionId" = v.sid AND ord."createdAt" >= $1 AND ord."createdAt" < $2
+         JOIN "OrderItem" i ON i."orderId" = ord.id AND i."productId" = v.id
+         LEFT JOIN "AnalyticsEvent" pl ON pl."orderId" = ord.id AND pl.name = 'order_placed'
+       ), vs AS (
+         SELECT id, COUNT(*) AS sessions, COUNT(*) FILTER (WHERE seen) AS seen, COUNT(*) FILTER (WHERE ended) AS ended,
+           SUM(links) AS links, SUM(bar_scroll) AS bar_scroll, SUM(bar_sheet) AS bar_sheet, SUM(bar_other) AS bar_other,
+           SUM(open_bar) AS open_bar, SUM(open_end) AS open_end, COUNT(*) FILTER (WHERE tapped) AS bar_sessions
+         FROM v GROUP BY GROUPING SETS ((id), ())
+       ), os AS (
+         SELECT id, COUNT(DISTINCT oid) AS orders,
+           COUNT(DISTINCT oid) FILTER (WHERE origin = 'product') AS o_product,
+           COUNT(DISTINCT oid) FILTER (WHERE origin = 'sheet') AS o_sheet,
+           COUNT(DISTINCT oid) FILTER (WHERE origin = 'quick') AS o_quick,
+           COUNT(DISTINCT oid) FILTER (WHERE origin = 'cart') AS o_cart,
+           COUNT(DISTINCT oid) FILTER (WHERE COALESCE(origin, '') NOT IN ('product', 'sheet', 'quick', 'cart')) AS o_other,
+           COUNT(DISTINCT oid) FILTER (WHERE status IN ${CONFIRMED_SQL}) AS confirmed,
+           COUNT(DISTINCT oid) FILTER (WHERE status IN ('DELIVERED','RETURNED')) AS delivered,
+           COUNT(DISTINCT oid) FILTER (WHERE status = 'REFUSED') AS refused,
+           COUNT(DISTINCT oid) FILTER (WHERE tapped) AS bar_orders
+         FROM o GROUP BY GROUPING SETS ((id), ())
+       )
+       SELECT vs.*, p.name, os.orders, os.o_product, os.o_sheet, os.o_quick, os.o_cart, os.o_other, os.confirmed, os.delivered, os.refused, os.bar_orders
+       FROM vs LEFT JOIN os ON os.id IS NOT DISTINCT FROM vs.id LEFT JOIN "Product" p ON p.id = vs.id
+       ORDER BY vs.id IS NOT NULL, vs.sessions DESC, p.name
+       LIMIT 101`,
+      from,
+      to,
+    ),
+    prisma.$queryRaw<{ at: Date | null }[]>`SELECT MIN("createdAt") AS at FROM "AnalyticsEvent" WHERE name = 'details_seen'`,
+    prisma.$queryRaw<{ products: bigint }[]>`SELECT COUNT(DISTINCT "productId") AS products FROM "ProductImage" WHERE kind = 'DETAIL'`,
+  ]);
+  const list: DetailsRow[] = rows.map((r) => ({
+    id: (r.id as string | null) ?? null,
+    name: r.id == null ? "Ensemble" : String(r.name ?? r.id),
+    sessions: n(r.sessions),
+    seen: n(r.seen),
+    ended: n(r.ended),
+    links: n(r.links),
+    bar: { scroll: n(r.bar_scroll), sheet: n(r.bar_sheet), other: n(r.bar_other) },
+    opened: { bar: n(r.open_bar), end: n(r.open_end) },
+    orders: { all: n(r.orders), product: n(r.o_product), sheet: n(r.o_sheet), quick: n(r.o_quick), cart: n(r.o_cart), other: n(r.o_other) },
+    confirmed: n(r.confirmed),
+    delivered: n(r.delivered),
+    refused: n(r.refused),
+    barSessions: n(r.bar_sessions),
+    barOrders: n(r.bar_orders),
+  }));
+  return { total: list.find((x) => x.id == null)!, products: list.filter((x) => x.id != null), withPictures: n(shop.products), since: first.at };
 }
 
 /**
@@ -414,7 +522,7 @@ async function profitability(from: Date, to: Date) {
 
 export async function getAnalytics(r: Range) {
   const [k, prev] = await Promise.all([kpis(r.from, r.to), kpis(r.prevFrom, r.prevTo)]);
-  const [days, steps, sources, campaigns, devices, prods, search, cats, govs, reasons, cust, cohortRows, hours, conf, contact, carts, bask, money] = await Promise.all([
+  const [days, steps, sources, campaigns, devices, prods, search, cats, govs, reasons, cust, cohortRows, hours, conf, contact, carts, bask, money, pictures] = await Promise.all([
     daily(r),
     funnel(r.from, r.to, k),
     bySource(r.from, r.to, false),
@@ -433,6 +541,7 @@ export async function getAnalytics(r: Range) {
     abandonedCarts(Math.max(1, r.days), 500),
     basket(r.from, r.to),
     profitability(r.from, r.to),
+    details(r.from, r.to),
   ]);
   const cartsInRange = carts.filter((c) => c.cart.updatedAt >= r.from && c.cart.updatedAt < r.to);
   return {
@@ -442,6 +551,7 @@ export async function getAnalytics(r: Range) {
     funnel: steps,
     basket: bask,
     profit: money,
+    details: pictures,
     sources,
     campaigns,
     devices,

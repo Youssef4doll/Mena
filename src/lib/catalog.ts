@@ -6,6 +6,7 @@ import type { CatalogProduct } from "./pricing";
 import { leadOffer, offerCompareAt, offerLastDay, offersApply } from "./offer-display";
 import { parseSpecs, parseVideo, soldStep } from "./product-content";
 import { complete, normalize, rank, tokenize, type Ranked } from "./search";
+import type { Lang } from "@/i18n/lang";
 
 /**
  * Storefront reads. Cached under one tag the back office expires on every
@@ -308,7 +309,8 @@ export const getHome = unstable_cache(
   { tags: [CATALOG_TAG], revalidate: TTL },
 );
 
-export const getProduct = unstable_cache(
+/** One cached row per product for both languages; `getProduct` keeps the long pictures of the page's. */
+const productRow = unstable_cache(
   async (slug: string) => {
     const p = await prisma.product.findFirst({
       where: { slug, active: true },
@@ -335,7 +337,7 @@ export const getProduct = unstable_cache(
         available: true,
         updatedAt: true,
         category: { select: { slug: true, name: true, nameAr: true } },
-        images: { orderBy: { sort: "asc" }, select: { mediaId: true, alt: true, kind: true, media: { select: { width: true, height: true, blur: true } } } },
+        images: { orderBy: { sort: "asc" }, select: { mediaId: true, alt: true, kind: true, lang: true, media: { select: { width: true, height: true, blur: true } } } },
         variants: { orderBy: { sort: "asc" }, select: { id: true, name: true, nameAr: true, colorHex: true, price: true, stockQty: true, available: true } },
         offers: {
           where: { active: true, OR: [{ endsAt: null }, { endsAt: { gt: new Date() } }] },
@@ -402,8 +404,8 @@ export const getProduct = unstable_cache(
       compareAt: p.compareAt != null && p.compareAt > p.price ? p.compareAt : null,
       category: p.category,
       images: p.images.filter((i) => i.kind === "GALLERY").map((i) => ({ id: i.mediaId, alt: i.alt, width: i.media.width, height: i.media.height, blur: i.media.blur })),
-      /** The long pictures under the description, in their order. */
-      detailImages: p.images.filter((i) => i.kind === "DETAIL").map((i) => ({ id: i.mediaId, alt: i.alt, width: i.media.width, height: i.media.height, blur: i.media.blur })),
+      /** The long pictures under the description, in their order, each with its page ("ar", "fr", or null for both). */
+      detailImages: p.images.filter((i) => i.kind === "DETAIL").map((i) => ({ lang: i.lang, image: { id: i.mediaId, alt: i.alt, width: i.media.width, height: i.media.height, blur: i.media.blur } })),
       sold: soldStep(sold.get(p.id) ?? 0),
       variants,
       stock: stockState(p),
@@ -415,9 +417,21 @@ export const getProduct = unstable_cache(
       related,
     };
   },
-  ["product-v7"],
+  ["product-v8"],
   { tags: [CATALOG_TAG], revalidate: TTL },
 );
+
+/**
+ * A product page. Its long pictures are the ones made for the page's language
+ * and the ones for both, in the shop's order: an Arabic page never shows a
+ * picture the shop marked as French. Without a language (the page's
+ * metadata, the quick form: neither shows them), all of them.
+ */
+export async function getProduct(slug: string, lang?: Lang) {
+  const p = await productRow(slug);
+  if (!p) return null;
+  return { ...p, detailImages: p.detailImages.filter((d) => !lang || !d.lang || d.lang === lang).map((d) => d.image) };
+}
 export type ProductPage = NonNullable<Awaited<ReturnType<typeof getProduct>>>;
 
 /** Others from the same category first; a small category is topped up with the shop's selection, so a page never ends on nothing. */

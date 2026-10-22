@@ -43,7 +43,8 @@ export async function generateMetadata({ params }: PageProps<"/[lang]/produit/[s
 export default async function ProductPageRoute({ params }: PageProps<"/[lang]/produit/[slug]">) {
   const { lang, slug } = await params;
   if (!isLang(lang)) notFound();
-  const [p, settings] = await Promise.all([getProduct(slug), getSettings()]);
+  // The long pictures of this page's language (and those for both): the gallery's link counts these.
+  const [p, settings] = await Promise.all([getProduct(slug, lang), getSettings()]);
   if (!p) {
     // Renamed: the old address leads to the new one, for good (Google moves its result over).
     const moved = await productMovedTo(slug);

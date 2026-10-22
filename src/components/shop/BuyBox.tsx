@@ -11,7 +11,7 @@ import { pixelAddToCart, pixelContact } from "@/lib/client/pixels";
 import { addToCart, type CartItem } from "@/lib/client/cart";
 import { formatTND } from "@/lib/money";
 import { discountPct, formatDay } from "@/lib/offer-display";
-import { OrderForm } from "./OrderForm";
+import { OrderForm, type OrderDraft } from "./OrderForm";
 import { VariantSelect } from "./VariantSelect";
 import { IconMinus, IconPlus, IconTruck, IconWhatsApp } from "./Icons";
 
@@ -111,10 +111,12 @@ export function addChoiceToCart(p: P, c: BuyChoice, where: string): boolean {
  * The whole purchase, on the product page: choose (offer or quantity, and
  * the option), then the cash-on-delivery form. "Acheter maintenant" orders
  * this product on the spot; "Ajouter au panier" keeps it for an order of
- * several products.
+ * several products. `origin` says which of the three places it is in (the
+ * page, the page's order sheet, the quick sheet on a card), for the order's
+ * statistics; the page and its sheet share one `draft` of what was typed.
  */
-export function BuyBox({ p, lang, settings, url, choice, idp = "bb", onAdded }: { p: P; lang: Lang; settings: PublicSettings; url: string; choice: BuyChoice; idp?: string; onAdded?: () => void }) {
-  // Ids are prefixed, so the quick form (in a sheet) and the product page's form never share one.
+export function BuyBox({ p, lang, settings, url, choice, idp = "bb", origin, draft, paused, onAdded }: { p: P; lang: Lang; settings: PublicSettings; url: string; choice: BuyChoice; idp?: string; origin: "product" | "sheet" | "quick"; draft?: OrderDraft; paused?: boolean; onAdded?: () => void }) {
+  // Ids are prefixed, so a form in a sheet and the product page's form never share one.
   const id = (k: string) => `${idp}-${k}`;
   const t = dict(lang);
   const router = useRouter();
@@ -272,7 +274,9 @@ export function BuyBox({ p, lang, settings, url, choice, idp = "bb", onAdded }: 
           priceVaries={priceVaries}
           freeOffer={offer?.freeDelivery}
           onQuote={onQuote}
-          origin={idp === "bb" ? "product" : "quick"}
+          origin={origin}
+          draft={draft}
+          paused={paused}
           productId={p.id}
           pixelItems={() => [{ id: p.id, name: p.name, price: offer ? Math.round(offer.price / offer.quantity) : unit, qty: offer ? offer.quantity : qty }]}
           restoredCartId={choice.restoredCartId}
@@ -282,7 +286,7 @@ export function BuyBox({ p, lang, settings, url, choice, idp = "bb", onAdded }: 
               askVariant();
               return false;
             }
-            addChoiceToCart(p, choice, idp === "bb" ? "product" : "quick");
+            addChoiceToCart(p, choice, origin);
             onAdded?.();
             return true;
           }}

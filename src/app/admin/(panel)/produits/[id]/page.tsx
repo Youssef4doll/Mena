@@ -23,7 +23,7 @@ export default async function ProductEditPage({ params }: PageProps<"/admin/prod
   const { id } = await params;
   const isNew = id === "nouveau";
   const [p, categories, suppliers, settings, order] = await Promise.all([
-    isNew ? null : prisma.product.findUnique({ where: { id }, select: { ...productForForm, images: { orderBy: { sort: "asc" }, select: { id: true, mediaId: true, alt: true, kind: true, sort: true } } } }),
+    isNew ? null : prisma.product.findUnique({ where: { id }, select: { ...productForForm, images: { orderBy: { sort: "asc" }, select: { id: true, mediaId: true, alt: true, kind: true, sort: true, lang: true } } } }),
     prisma.category.findMany({ orderBy: [{ sort: "asc" }, { name: "asc" }], select: { id: true, name: true, nameAr: true } }),
     prisma.supplier.findMany({ orderBy: { name: "asc" }, select: { id: true, name: true } }),
     getSettings(),
@@ -72,7 +72,7 @@ export default async function ProductEditPage({ params }: PageProps<"/admin/prod
         siteUrl={SITE_URL}
         oldSlugs={p?.oldSlugs ?? []}
         suppliers={suppliers}
-        images={p?.images.map((i) => ({ id: i.id, mediaId: i.mediaId, alt: i.alt ?? "", kind: i.kind, sort: i.sort })) ?? []}
+        images={p?.images.map((i) => ({ id: i.id, mediaId: i.mediaId, alt: i.alt ?? "", kind: i.kind, sort: i.sort, lang: i.lang === "ar" || i.lang === "fr" ? i.lang : null })) ?? []}
         initial={p ? toInput(p) : null}
       />
     </div>

@@ -36,6 +36,9 @@ export const IconChevron = ({ className = "h-4 w-4" }: P) => (
 export const IconChevronDown = ({ className = "h-4 w-4" }: P) => (
   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className={className} aria-hidden><path d="m6 9 6 6 6-6" strokeLinecap="round" strokeLinejoin="round" /></svg>
 );
+export const IconArrowDown = ({ className = base }: P) => (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className={className} aria-hidden><path d="M12 5v14M6.5 13.5 12 19l5.5-5.5" strokeLinecap="round" strokeLinejoin="round" /></svg>
+);
 export const IconPhone = ({ className = base }: P) => (
   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" className={className} aria-hidden><path d="M5 4h3.5l1.7 4.3-2.2 1.4a11 11 0 0 0 6.3 6.3l1.4-2.2L20 15.5V19a1 1 0 0 1-1 1A16 16 0 0 1 4 5a1 1 0 0 1 1-1Z" strokeLinejoin="round" /></svg>
 );

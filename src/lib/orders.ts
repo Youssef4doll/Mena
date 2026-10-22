@@ -67,8 +67,8 @@ export const placeOrderSchema = z.object({
     .object({ fbp: clickId(120).optional(), fbc: clickId(300).optional(), ttp: clickId(120).optional(), ttclid: clickId(300).optional(), gaClientId: clickId(60).optional() })
     .optional(),
   locale: z.enum(["fr", "ar"]).default("ar"),
-  /** Where the order was placed: the product page's form, the quick form on a card, the basket, or typed in the back office. Analytics only. */
-  origin: z.enum(["product", "quick", "cart", "admin"]).optional(),
+  /** Where the order was placed: the product page's form, the same form in the product page's order sheet, the quick form on a card, the basket, or typed in the back office. Analytics only. */
+  origin: z.enum(["product", "sheet", "quick", "cart", "admin"]).optional(),
   /** Honeypot: hidden from people, filled by bots. */
   website: z.string().max(200).optional(),
   /** Random, one per checkout attempt: the same attempt sent twice makes one order. */

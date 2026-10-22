@@ -1,8 +1,8 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useEffect, useEffectEvent, useLayoutEffect, useRef, useState, useSyncExternalStore, useTransition } from "react";
-import { deleteImage, deleteProduct, duplicateProduct, imagesChanged, moveImage, saveProduct, setImageAlt, translateTexts, type ProductInput } from "../actions";
+import { useEffect, useEffectEvent, useLayoutEffect, useOptimistic, useRef, useState, useSyncExternalStore, useTransition } from "react";
+import { deleteImage, deleteProduct, duplicateProduct, imagesChanged, moveImage, saveProduct, setImageAlt, setImageLang, translateTexts, type ProductInput } from "../actions";
 import { mergeTranslation, needsTranslation, textsOfProduct, withProductTexts, type ProductTexts } from "@/lib/translate-merge";
 import { parseTND, toInputTND, formatTND } from "@/lib/money";
 import { offerCompareAt } from "@/lib/offer-display";
@@ -17,7 +17,9 @@ import { afterSave, carriedDraft, carriedMessage, carryMessage, dropCarried, for
 import { linksIn, pictureName, sendPictures, type Kind, type Outgoing, type SendResult } from "./send-pictures";
 
 type Opt = { id: string; name: string; nameAr?: string | null };
-type Img = { id: string; mediaId: string; alt: string; kind: Kind; sort: number };
+/** The page a long picture shows on; null: both. */
+type PicLang = "ar" | "fr" | null;
+type Img = { id: string; mediaId: string; alt: string; kind: Kind; sort: number; lang: PicLang };
 
 const EMPTY: ProductInput = {
   name: "", nameAr: "", slug: "", summary: "", summaryAr: "", description: "", descriptionAr: "", specs: "", specsAr: "", videoUrl: "", keywords: "", seoTitle: "", seoTitleAr: "", seoDescription: "", seoDescriptionAr: "", price: 0, compareAt: null, cost: null, categoryId: null, supplierId: null,
@@ -802,7 +804,8 @@ const KIND = {
   },
   DETAIL: {
     title: "Images de description (longues)",
-    hint: "Les grandes images verticales qui expliquent le produit (avantages, mode d'emploi, dimensions), comme sur Amazon. Elles s'affichent l'une sous l'autre, en pleine largeur, sous la description. Largeur conseillée 1080 à 1600 px, toute hauteur.",
+    hint: "Les grandes images verticales qui expliquent le produit (avantages, mode d'emploi, dimensions), comme sur Amazon. Elles s'affichent l'une sous l'autre, en pleine largeur, sous le formulaire de commande. Largeur conseillée 1080 à 1600 px.",
+    tip: "Conseil : 3 à 5 images, l'avantage principal sur la première, en arabe pour la page arabe. Sur une image de 1200 px de large, un texte d'au moins 53 px de haut (il se lit alors à 16 px sur un téléphone) ; idéalement pas plus de 2 fois plus haute que large.",
     add: "Ajouter des images de description",
     none: "Aucune image de description pour le moment.",
   },
@@ -813,13 +816,15 @@ const KIND = {
  * first for the top of the page, tall strips for the description images.
  * Every button is a full finger wide.
  */
-function PictureList({ kind, items, busy, onMove, onRemove, onAlt }: {
+function PictureList({ kind, items, busy, onMove, onRemove, onAlt, onLang }: {
   kind: Kind;
-  items: { key: string; src: string; alt?: string; caption?: string; remote?: boolean }[];
+  items: { key: string; src: string; alt?: string; caption?: string; remote?: boolean; lang?: PicLang }[];
   busy: boolean;
   onMove: (key: string, dir: -1 | 1) => void;
   onRemove: (key: string) => void;
   onAlt?: (key: string, alt: string) => void;
+  /** Long pictures only: the page each one shows on. */
+  onLang?: (key: string, lang: PicLang) => void;
 }) {
   const step = "flex h-10 w-10 items-center justify-center rounded-lg text-sm disabled:opacity-30";
   if (kind === "DETAIL")
@@ -829,7 +834,19 @@ function PictureList({ kind, items, busy, onMove, onRemove, onAlt }: {
           <div key={it.key} className="flex items-center gap-2 rounded-xl border border-line p-2">
             <Thumb src={it.src} remote={it.remote} className="h-24 w-16 shrink-0 rounded-lg bg-sand object-cover object-top" />
             {onAlt ? (
-              <input defaultValue={it.alt} aria-label="Ce que dit l'image" placeholder="Ce que dit l'image (pour les malvoyants et Google)" className="h-10 min-w-0 flex-1 rounded-lg border border-line px-2 text-xs" onBlur={(e) => e.target.value !== it.alt && onAlt(it.key, e.target.value)} />
+              <span className="flex min-w-0 flex-1 flex-col gap-2">
+                <input defaultValue={it.alt} aria-label="Ce que dit l'image" placeholder="Ce que dit l'image (pour les malvoyants et Google)" className="h-10 min-w-0 rounded-lg border border-line px-2 text-xs" onBlur={(e) => e.target.value !== it.alt && onAlt(it.key, e.target.value)} />
+                {onLang && (
+                  <label className="flex min-w-0 items-center gap-1.5 text-xs text-muted">
+                    Langue
+                    <select value={it.lang ?? ""} onChange={(e) => onLang(it.key, e.target.value === "ar" || e.target.value === "fr" ? e.target.value : null)} className="h-11 min-w-0 flex-1 rounded-lg border border-line bg-white px-2 text-xs text-ink">
+                      <option value="">Les deux</option>
+                      <option value="ar">Arabe</option>
+                      <option value="fr">Français</option>
+                    </select>
+                  </label>
+                )}
+              </span>
             ) : (
               <span className="min-w-0 flex-1 truncate text-xs text-muted">{it.caption}</span>
             )}
@@ -930,6 +947,10 @@ function Images({ productId, images, kind, saving, onSending }: { productId: str
   const [progress, setProgress] = useState<string | null>(null);
   const [own, start] = useTransition();
   const pending = own || saving;
+  // A language picked shows at once, and goes back to the saved one if the save fails.
+  const [shownImages, pickLang] = useOptimistic(images, (list, c: { id: string; lang: PicLang }) => list.map((i) => (i.id === c.id ? { ...i, lang: c.lang } : i)));
+  // A page left with no long picture at all, said under the list (the shop may want it so).
+  const bare = kind === "DETAIL" && images.length > 0 ? (["ar", "fr"] as const).filter((l) => !shownImages.some((i) => !i.lang || i.lang === l)) : [];
   const k = KIND[kind];
   const run = (fn: () => Promise<{ ok: boolean; error?: string }>) =>
     start(async () => {
@@ -957,15 +978,26 @@ function Images({ productId, images, kind, saving, onSending }: { productId: str
   };
   return (
     <Card title={k.title} hint={k.hint}>
+      {"tip" in k && <p className="-mt-1 mb-2 text-xs text-muted">{k.tip}</p>}
       {images.length === 0 && <p className="text-sm text-muted">{k.none}</p>}
       <PictureList
         kind={kind}
-        items={images.map((img) => ({ key: img.id, src: `/api/img/${img.mediaId}/256`, alt: img.alt }))}
+        items={shownImages.map((img) => ({ key: img.id, src: `/api/img/${img.mediaId}/256`, alt: img.alt, lang: img.lang }))}
         busy={pending}
         onMove={(key, dir) => run(() => moveImage(key, dir))}
         onRemove={(key) => confirm(kind === "DETAIL" ? "Supprimer cette image ?" : "Supprimer cette photo ?") && run(() => deleteImage(key))}
         onAlt={(key, alt) => run(() => setImageAlt(key, alt))}
+        onLang={
+          kind === "DETAIL"
+            ? (key, lang) =>
+                run(() => {
+                  pickLang({ id: key, lang });
+                  return setImageLang(key, lang);
+                })
+            : undefined
+        }
       />
+      {bare.length > 0 && <p className="mt-2 text-xs text-muted">Aucune ne s&apos;affiche sur la page {bare[0] === "ar" ? "arabe" : "française"}.</p>}
       <AddPictures text={k.add} busy={pending} progress={progress} onFiles={(files) => add(files.map((file) => ({ kind, file })))} onLinks={(urls, clear) => add(urls.map((url) => ({ kind, url })), clear)} />
       {note && <p className="mt-2 text-sm text-muted">{note}</p>}
       {errors.length > 0 && (
@@ -982,6 +1014,7 @@ function QueuedImages({ kind, items, busy, onAdd, onMove, onRemove }: { kind: Ki
   const k = KIND[kind];
   return (
     <Card title={k.title} hint={k.hint}>
+      {"tip" in k && <p className="-mt-1 mb-2 text-xs text-muted">{k.tip}</p>}
       {items.length === 0 ? (
         <p className="text-sm text-muted">{k.none}</p>
       ) : (

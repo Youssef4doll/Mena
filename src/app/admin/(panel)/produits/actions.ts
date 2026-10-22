@@ -89,6 +89,15 @@ export async function setImageAlt(imageId: string, alt: string): Promise<Result>
   return { ok: true };
 }
 
+/** The page a long picture shows on: the Arabic one, the French one, or both (null). The top photos are on both. */
+export async function setImageLang(imageId: string, lang: string | null): Promise<Result> {
+  await requireAdmin();
+  const r = await prisma.productImage.updateMany({ where: { id: imageId, kind: "DETAIL" }, data: { lang: lang === "ar" || lang === "fr" ? lang : null } });
+  if (r.count === 0) return { ok: false, error: "Image introuvable." };
+  done();
+  return { ok: true };
+}
+
 export async function deleteImage(imageId: string): Promise<Result> {
   await requireAdmin();
   const img = await prisma.productImage.delete({ where: { id: imageId } });
@@ -170,7 +179,7 @@ export async function duplicateProduct(id: string): Promise<Result> {
   if (typeof id !== "string" || !/^[a-z0-9]{20,40}$/.test(id)) return { ok: false, error: "Produit introuvable." };
   const p = await prisma.product.findUnique({
     where: { id },
-    select: { ...productForForm, images: { orderBy: { sort: "asc" }, select: { mediaId: true, kind: true, sort: true, alt: true } } },
+    select: { ...productForForm, images: { orderBy: { sort: "asc" }, select: { mediaId: true, kind: true, sort: true, alt: true, lang: true } } },
   });
   if (!p) return { ok: false, error: "Produit introuvable : il a peut-être été supprimé." };
   // "<adresse>-copie", then "-copie-2", "-copie-3"…: the first one no product uses, as its address or a former one.
@@ -193,7 +202,7 @@ export async function duplicateProduct(id: string): Promise<Result> {
   });
   if (!r.ok) return r;
   if (p.images.length) {
-    await prisma.productImage.createMany({ data: p.images.map((i) => ({ productId: r.id, mediaId: i.mediaId, kind: i.kind, sort: i.sort, alt: i.alt, source: null })) });
+    await prisma.productImage.createMany({ data: p.images.map((i) => ({ productId: r.id, mediaId: i.mediaId, kind: i.kind, sort: i.sort, alt: i.alt, lang: i.lang, source: null })) });
   }
   done();
   return { ok: true, id: r.id };
