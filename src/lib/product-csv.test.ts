@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { COLUMNS, EMPTY_PRODUCT, decodeText, detectDelimiter, mergeRow, parseDelimited, productsToCsv, readOffers, readSheet, rowKey, splitSources, templateCsv, type ExportProduct } from "./product-csv";
+import { COLUMNS, EMPTY_PRODUCT, isArabicColumn, decodeText, detectDelimiter, mergeRow, parseDelimited, productsToCsv, readOffers, readSheet, rowKey, splitSources, templateCsv, type ExportProduct } from "./product-csv";
 
 test("reads Excel's French CSV: semicolons, quoted cells with line breaks and quotes", () => {
   const csv = 'nom;prix;description\r\n"Lampe; LED";59,900;"Ligne 1\r\nLigne ""2"""\r\n\r\nSac;35;\r\n';
@@ -130,7 +130,7 @@ test("an exported catalog reads back as the same products", () => {
     offers: [{ label: "1 unité", labelAr: "حبة وحدة", quantity: 1, price: 59_900, freeDelivery: false, endsOn: "", active: true }, { label: "Lot de 3", labelAr: "3 حبات", quantity: 3, price: 150_000, freeDelivery: true, endsOn: "", active: true }],
     category: { name: "Maison", nameAr: "الدار" }, supplier: "Ali", photos: ["https://mena.tn/api/img/abcdefghijklmnopqrst/1600"], detailPhotos: [],
   };
-  const csv = productsToCsv([p]);
+  const csv = productsToCsv([p], ";", { arabic: true });
   assert.ok(csv.startsWith("﻿"));
   const s = readSheet(csv);
   assert.equal(s.unknown.length, 0);
@@ -169,4 +169,31 @@ test("reads each option's colour code, keeps the old one when the column is left
   assert.equal(mergeRow(base, readSheet("adresse;variantes\na;Noir").rows[0].data, {}).variants[0].colorHex, "#000000");
   const p: ExportProduct = { ...EMPTY_PRODUCT, name: "A", slug: "a", price: 10_000, variants: [{ name: "Noir", nameAr: "", colorHex: "#1f2937", sku: "", price: null, stockQty: 0, available: true }], category: null, supplier: null, photos: [], detailPhotos: [] };
   assert.equal(readSheet(productsToCsv([p])).rows[0].data.variants?.[0].colorHex, "#1f2937");
+});
+
+test("the template and the export are in French; a French text changed without its Arabic has its Arabic translated again", () => {
+  const p: ExportProduct = {
+    ...EMPTY_PRODUCT, name: "Lampe", nameAr: "لمبة", slug: "lampe", price: 10_000, summary: "Douce", summaryAr: "ضو رطب", description: "Une lampe.", descriptionAr: "لمبة.",
+    offers: [{ id: "o1", label: "1 unité", labelAr: "حبة وحدة", quantity: 1, price: 10_000, freeDelivery: false, endsOn: "", active: true }],
+    category: { name: "Maison", nameAr: "الدار" }, supplier: null, photos: [], detailPhotos: [],
+  };
+  for (const csv of [productsToCsv([p]), templateCsv(true), templateCsv(false)]) {
+    const s = readSheet(csv);
+    assert.deepEqual(s.unknown, []);
+    assert.equal(s.columns.filter(isArabicColumn).length, 0);
+    assert.equal(s.columns.length, COLUMNS.filter((c) => !isArabicColumn(c.key)).length);
+    assert.deepEqual(s.rows.flatMap((r) => r.errors), []);
+  }
+  assert.ok(readSheet(productsToCsv([p], ";", { arabic: true })).columns.includes("nameAr"));
+
+  // The French export read back over the same product changes nothing, Arabic included.
+  const same = mergeRow(p, readSheet(productsToCsv([p])).rows[0].data, {});
+  assert.deepEqual([same.nameAr, same.summaryAr, same.descriptionAr, same.offers[0].labelAr], ["لمبة", "ضو رطب", "لمبة.", "حبة وحدة"]);
+  // A spreadsheet's line endings and spaces are not a change.
+  assert.equal(mergeRow({ ...p, description: "Une\nlampe." }, readSheet("adresse;description\nlampe;\"Une\r\nlampe. \"").rows[0].data, {}).descriptionAr, "لمبة.");
+  // A new description, an offer renamed: their Arabic goes, the rest stays.
+  const changed = mergeRow(p, readSheet("adresse;description;offres;offres_noms\nlampe;Une lampe tactile.;1 = 10;Une lampe").rows[0].data, {});
+  assert.deepEqual([changed.nameAr, changed.summaryAr, changed.descriptionAr, changed.offers[0].labelAr], ["لمبة", "ضو رطب", "", ""]);
+  // Unless the sheet gives the Arabic too.
+  assert.equal(mergeRow(p, readSheet("adresse;description;description_ar\nlampe;Une lampe tactile.;لمبة باللمس.").rows[0].data, {}).descriptionAr, "لمبة باللمس.");
 });

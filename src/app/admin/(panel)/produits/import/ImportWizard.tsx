@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useRef, useState, useTransition } from "react";
-import { COLUMNS, decodeText, readSheet, rowKey, type ParsedSheet } from "@/lib/product-csv";
+import { COLUMNS, decodeText, isArabicColumn, readSheet, rowKey, type ParsedSheet } from "@/lib/product-csv";
 import { formatTND } from "@/lib/money";
 import { shrinkForUpload } from "@/lib/client/shrink-image";
 import {
@@ -400,16 +400,21 @@ function Choice({ checked, onChange, title, children }: { checked: boolean; onCh
 function ColumnsHelp({ aiReady }: { aiReady: boolean }) {
   const groups = useMemo(() => {
     const m = new Map<string, typeof COLUMNS>();
-    for (const c of COLUMNS) m.set(c.group, [...(m.get(c.group) ?? []), c]);
+    for (const c of COLUMNS) if (!isArabicColumn(c.key)) m.set(c.group, [...(m.get(c.group) ?? []), c]);
     return [...m];
   }, []);
+  const arabic = COLUMNS.filter((c) => isArabicColumn(c.key)).map((c) => c.header);
   return (
     <details className="rounded-xl border border-line">
       <summary className="flex min-h-10 cursor-pointer items-center px-3 text-sm font-medium text-ink">Les colonnes</summary>
       <div className="flex flex-col gap-3 px-3 pb-3 text-sm">
         <p className="text-ink-2">
           Seules « nom » et « prix » sont obligatoires pour un nouveau produit ; les autres colonnes peuvent manquer ou rester vides. Pour un produit qui existe déjà, une case vide ne change rien.
-          L&apos;arabe peut rester vide : {aiReady ? "il se traduit pendant l'import ou après." : "il se traduit après l'import."}
+        </p>
+        <p className="text-ink-2">
+          Tout en français : l&apos;arabe {aiReady ? "se traduit pendant l'import" : "se traduit après l'import"}. Un texte français changé pour un produit existant fait traduire son arabe à nouveau.
+          Les colonnes arabes restent acceptées si vous les ajoutez ({arabic.join(", ")}).{" "}
+          <a href="/admin/produits/export?arabe=1" download className="text-sea underline underline-offset-4">Exporter avec l&apos;arabe</a>
         </p>
         {groups.map(([group, cols]) => (
           <div key={group}>
@@ -418,7 +423,7 @@ function ColumnsHelp({ aiReady }: { aiReady: boolean }) {
               {cols.map((c) => (
                 <div key={c.key} className="py-1.5">
                   <dt className="font-mono text-[13px] text-ink">{c.header}</dt>
-                  <dd className="text-xs text-muted">{c.help || (c.key.endsWith("Ar") ? "La même chose en arabe." : "")}</dd>
+                  <dd className="text-xs text-muted">{c.help}</dd>
                 </div>
               ))}
             </dl>
@@ -588,8 +593,13 @@ function AfterImport({ plan, runs, activateNew, activated, pending, onActivate }
   const done = new Set(activated?.ids ?? []);
   // A row that says "en_ligne" keeps its choice; the others follow the option.
   const offline = created.filter((c) => !(c.r.data.active ?? activateNew) && !done.has(c.id)).map((c) => c.id);
-  const toTranslate = created.filter((c) => !c.run.translated && rowNeedsTranslation(c.r.data));
-  const allWithoutArabic = toTranslate.every((c) => lacksArabic(textsOfRow(c.r.data)));
+  // Updated products whose French changed lost their old Arabic: they are translated with the new ones.
+  const redo = plan.flatMap((r) => {
+    const run = runs.get(r.line);
+    return run?.state === "saved" && !run.created && run.arabicToRedo && run.id ? [{ r, run, id: run.id }] : [];
+  });
+  const toTranslate = [...created.filter((c) => !c.run.translated && rowNeedsTranslation(c.r.data)), ...redo];
+  const allWithoutArabic = !redo.length && toTranslate.every((c) => lacksArabic(textsOfRow(c.r.data)));
   const chunks: string[][] = [];
   for (let i = 0; i < toTranslate.length; i += TRANSLATE_LINK) chunks.push(toTranslate.slice(i, i + TRANSLATE_LINK).map((c) => c.id));
   return (

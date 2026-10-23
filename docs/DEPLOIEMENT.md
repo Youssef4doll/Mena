@@ -27,7 +27,7 @@ Le code est sur [github.com/Youssef4doll/Mena](https://github.com/Youssef4doll/M
 | `ADMIN_EMAIL` | votre e-mail de connexion au back-office |
 | `ADMIN_PASSWORD` | un mot de passe d'au moins 10 caractères |
 | `NEXT_PUBLIC_SITE_URL` | `https://mena.tn` (votre domaine, sans `/` à la fin) |
-| `ANTHROPIC_API_KEY` | facultatif : la traduction automatique en arabe tunisien dans le back-office. Créez une clé sur [platform.claude.com](https://platform.claude.com) (*API Keys*). Elle reste sur le serveur, jamais dans le navigateur. Quelques centimes par produit traduit. |
+| `ANTHROPIC_API_KEY` | facultatif : la traduction automatique en arabe tunisien dans le back-office, et la fiche écrite par l'IA dans *Produits → Depuis Ecomness*. Créez une clé sur [platform.claude.com](https://platform.claude.com) (*API Keys*). Elle reste sur le serveur, jamais dans le navigateur. Quelques centimes par produit traduit. |
 | `NEXT_PUBLIC_DEFAULT_LANG` | facultatif. Sans elle, la boutique s'ouvre **en arabe** (`mena.tn/…`) et le français est sous `mena.tn/fr/…`. Mettez `fr` pour l'inverse. |
 
 4. *Deploy*. À chaque déploiement, la base est mise à jour et le compte admin suit `ADMIN_EMAIL` / `ADMIN_PASSWORD`. Pour changer de mot de passe : modifiez `ADMIN_PASSWORD`, puis *Redeploy*. Une variable ajoutée ou modifiée ne compte qu'au déploiement suivant.
@@ -85,16 +85,18 @@ La recherche de la boutique trouve un produit même avec une faute de frappe («
 
 **Beaucoup de produits d'un coup** (*Produits → Importer (CSV)*) :
 
-1. Téléchargez le *Modèle vide* ou l'*Exemple rempli* et remplissez-le dans Excel ou Google Sheets : une ligne par produit, seules les colonnes `nom` et `prix` sont obligatoires. Prix en dinars (`59,900`), `oui`/`non`, listes séparées par `;`. La liste complète des colonnes est sur la page (« Les colonnes »).
+1. Téléchargez le *Modèle vide* ou l'*Exemple rempli* et remplissez-le dans Excel ou Google Sheets : une ligne par produit, seules les colonnes `nom` et `prix` sont obligatoires. Tout en français : il n'y a pas de colonnes en arabe, l'arabe se traduit pendant l'import (avec la clé) ou après (*Traduire en lot*). Prix en dinars (`59,900`), `oui`/`non`, listes séparées par `;`. La liste complète des colonnes est sur la page (« Les colonnes »).
 2. **Photos** : dans la colonne `photos`, les liens des photos du fournisseur (`https://…`, liens Google Drive et Dropbox compris), ou les noms des fichiers, que vous choisissez ensuite avec « Choisir des photos » ou « Choisir un dossier ». La première est la photo principale.
 3. **Catégories et fournisseurs** : écrivez leur nom ; ceux qui n'existent pas encore sont créés.
 4. **Offres et options** : `1 = 59,900 ; 3 = 119,800 livraison offerte` dans `offres`, `Noir ; Blanc` dans `variantes`.
 5. Choisissez le fichier, ou collez les lignes copiées depuis le tableur (avec la ligne des titres). La page vérifie tout avant d'envoyer : produits nouveaux, mis à jour, lignes en erreur avec la raison.
 6. « Importer » : les produits arrivent quelques-uns à la fois, avec une barre de progression. Gardez la page ouverte. Les nouveaux produits sont créés hors ligne, sauf si vous cochez « Mettre en ligne tout de suite » ; à la fin, un bouton les met en ligne d'un coup.
 
-Un même fichier importé deux fois ne crée rien en double : une ligne dont l'adresse (faite à partir du nom) existe déjà met ce produit à jour, et une photo déjà importée n'est pas reprise. Une case vide ne change rien à un produit existant. *Exporter (CSV)* donne tout le catalogue dans le même format : modifiez-le dans Excel (prix, textes, stock) puis réimportez-le pour changer beaucoup de produits en une fois.
+Un même fichier importé deux fois ne crée rien en double : une ligne dont l'adresse (faite à partir du nom) existe déjà met ce produit à jour, et une photo déjà importée n'est pas reprise. Une case vide ne change rien à un produit existant. *Exporter (CSV)* donne tout le catalogue dans le même format, en français : modifiez-le dans Excel (prix, textes, stock) puis réimportez-le pour changer beaucoup de produits en une fois. Un texte français changé efface son ancien arabe, qui est retraduit (tout de suite avec la clé, sinon avec *Traduire en lot*). Pour relire l'arabe dans un tableur : « Exporter avec l'arabe » dans « Les colonnes » de la page d'import.
 
 Les photos sont gardées dans la base de données. La page d'import indique la place prise et la place estimée de l'import ; l'offre gratuite de Neon s'arrête à 0,5 Go (environ 3 000 photos de produit).
+
+**Des produits Ecomness** (*Produits → Depuis Ecomness*) : collez la liste de « My products » prise par votre extension (Instant Data Scraper…) : chaque produit est créé hors ligne avec sa photo en grand, son coût, son code ENP et son lien, au prix « coût × 2 + 10 DT, arrondi à ,900 » (règle à changer en haut, gardée sur cet ordinateur ; chaque prix se change dans sa ligne). Puis, pour chaque produit, ouvrez sa page chez Ecomness, Ctrl+A, Ctrl+C, et collez-la au même endroit : toutes ses photos en grand, et la fiche écrite en français et en arabe tunisien à partir de la page seulement (avec la clé `ANTHROPIC_API_KEY` ; sans clé, avec claude.ai : copier la demande, coller la réponse). Le produit déjà créé depuis la liste est complété (reconnu par son code), pas copié. Relisez dans l'éditeur, puis mettez en ligne. Les idées de grandes images donnent une demande prête pour Gemini : joignez la photo du produit, collez la demande.
 
 **Le texte arabe de beaucoup de produits** (*Produits → Traduire en lot*) : la page liste les produits dont un texte n'existe que dans une langue. Avec une clé `ANTHROPIC_API_KEY`, un bouton les traduit tous. Sans clé, elle prépare des lots de 8 produits : « Copier la demande », collez-la dans [claude.ai](https://claude.ai) (gratuit), collez la réponse, « Mettre les traductions ». Seuls les champs vides sont remplis ; rien de ce qui est déjà écrit n'est remplacé.
 

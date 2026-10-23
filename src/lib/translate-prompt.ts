@@ -20,17 +20,23 @@ export const Answer = z.object({
   offers: z.array(z.object({ label: z.string(), labelAr: z.string() })),
 });
 
-export const SYSTEM = `You write the product texts of Mena, an online shop in Tunisia that sells with cash on delivery. Many customers are older people reading on a phone.
+/** Who reads the texts and in which words; the product pages written from a supplier's page say it the same way. */
+export const SHOP_VOICE = `You write the product texts of Mena, an online shop in Tunisia that sells with cash on delivery. Many customers are older people reading on a phone.
 
 Arabic texts are in Tunisian Arabic (derja), written in Arabic letters, the way Tunisian shops write to their customers: everyday words an older Tunisian understands at once (for example توّا، برشا، متاع، كي، باش، يتشحن، الكرطونة). Not formal Modern Standard Arabic, and not Moroccan, Algerian, Egyptian or Gulf dialect. Product names may keep a common French or English word when that is what Tunisians say (LED, USB-C, sèche-cheveux → سشوار).
-French texts are plain, correct French.
+French texts are plain, correct French.`;
+
+/** How the search keywords are written, for a translation and for a page written from a supplier's. */
+export const KEYWORDS_RULE = `"keywords": 8 to 20 comma-separated search terms a Tunisian customer might type for this product and that the texts support: synonyms in French, in Tunisian Arabic, in Tunisian written in Latin letters (arabizi, e.g. "lamba" for لمبة), and frequent misspellings. Lower case, no duplicates.`;
+
+export const SYSTEM = `${SHOP_VOICE}
 
 Rules:
 - Translate faithfully. Never add a fact, a number, a feature, a promise, a guarantee or a superlative that the source does not contain. Keep every number, unit, size and brand exactly.
 - No exclamation marks, no emojis.
 - "specs" fields keep one "label: value" per line, the same lines in the same order.
 - Keep paragraph breaks (blank lines) in descriptions.
-- "keywords": 8 to 20 comma-separated search terms a Tunisian customer might type for this product and that the texts support: synonyms in French, in Tunisian Arabic, in Tunisian written in Latin letters (arabizi, e.g. "lamba" for لمبة), and frequent misspellings. Lower case, no duplicates.
+- ${KEYWORDS_RULE}
 - Return every field. A field you were not asked to write is returned exactly as given.`;
 
 export const taskFor = (mode: TranslateMode) =>

@@ -3,6 +3,7 @@ import { lookup } from "node:dns/promises";
 import { isIP } from "node:net";
 import sharp from "sharp";
 import { prisma } from "./prisma";
+import { originalImageUrl } from "./supplier-page";
 
 /** Stored at most this wide; /api/img resizes down from it. Long description pictures stop at MAX_H tall (WebP's limit is 16 383). */
 const MAX_W = 1600;
@@ -37,10 +38,11 @@ const MAX_FETCH = 20 * 1024 * 1024;
 
 /**
  * Share links that point to a page, turned into the picture itself:
- * Google Drive ("…/file/d/ID/view") and Dropbox ("?dl=0").
+ * Google Drive ("…/file/d/ID/view") and Dropbox ("?dl=0"); and a site's
+ * resized copy ("…/_next/image?url=…&w=384") turned into the original.
  */
 export function directImageUrl(raw: string): string {
-  const url = raw.trim();
+  const url = originalImageUrl(raw) ?? raw.trim();
   let u: URL;
   try {
     u = new URL(url);

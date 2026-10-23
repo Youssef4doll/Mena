@@ -62,6 +62,14 @@ export const COLUMNS: Column[] = [
   { key: "seoDescriptionAr", header: "description_google_ar", aliases: ["seo description ar", "meta description ar"], group: "Google", help: "", example: "" },
 ];
 
+/**
+ * The Arabic columns. The template and the export leave them out: the owner
+ * writes French only, and the Arabic is translated (during the import with an
+ * API key, or afterwards). An import still reads them when a file has them.
+ */
+export const isArabicColumn = (k: ColumnKey) => k.endsWith("Ar");
+const written = (arabic: boolean) => COLUMNS.filter((c) => arabic || !isArabicColumn(c.key));
+
 /** "Nom (arabe)", "nom_ar", "NOM-AR" → "nomar": headers typed by hand still match. */
 export function normHeader(h: string): string {
   return h.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, "");
@@ -410,6 +418,10 @@ export const EMPTY_PRODUCT: ProductInput = {
   supplierRef: "", supplierUrl: "", stockMode: "SUPPLIER", stockQty: 0, available: true, active: false, featured: false, variants: [], offers: [],
 };
 
+const PAIRS = [["name", "nameAr"], ["summary", "summaryAr"], ["description", "descriptionAr"], ["specs", "specsAr"], ["seoTitle", "seoTitleAr"], ["seoDescription", "seoDescriptionAr"]] as const;
+/** Spaces and line endings a spreadsheet changes do not count as a change. */
+const differs = (a: string, b: string) => a.replace(/\s+/g, " ").trim() !== b.replace(/\s+/g, " ").trim();
+
 const TEXT_KEYS = ["name", "nameAr", "summary", "summaryAr", "description", "descriptionAr", "specs", "specsAr", "keywords", "videoUrl", "seoTitle", "seoTitleAr", "seoDescription", "seoDescriptionAr", "supplierRef", "supplierUrl"] as const;
 
 /**
@@ -420,6 +432,8 @@ const TEXT_KEYS = ["name", "nameAr", "summary", "summaryAr", "description", "des
 export function mergeRow(base: ProductInput | null, d: RowData, refs: { categoryId?: string | null; supplierId?: string | null }, activateNew = false): ProductInput {
   const p: ProductInput = { ...(base ?? EMPTY_PRODUCT), variants: [...(base?.variants ?? [])], offers: [...(base?.offers ?? [])] };
   for (const k of TEXT_KEYS) if (d[k] !== undefined) p[k] = d[k]!;
+  // A French text changed by a sheet without its Arabic: the old Arabic no longer says the same thing, it is translated again.
+  if (base) for (const [fr, ar] of PAIRS) if (d[fr] !== undefined && d[ar] === undefined && differs(base[fr], d[fr]!)) p[ar] = "";
   p.slug = base?.slug || rowKey(d);
   if (d.price !== undefined) p.price = d.price;
   if (d.compareAt !== undefined) p.compareAt = d.compareAt;
@@ -459,7 +473,7 @@ export function mergeRow(base: ProductInput | null, d: RowData, refs: { category
       return {
         ...(was?.id ? { id: was.id } : {}),
         label: o.label ?? was?.label ?? auto.label,
-        labelAr: o.labelAr ?? was?.labelAr ?? auto.labelAr,
+        labelAr: o.labelAr ?? (o.label !== undefined && was && differs(was.label, o.label) ? "" : (was?.labelAr ?? auto.labelAr)),
         quantity: o.quantity,
         price: o.price,
         freeDelivery: o.freeDelivery,
@@ -491,10 +505,11 @@ const quote = (raw: string, sep: string) => {
   return /["\n\r]/.test(v) || v.includes(sep) || /^\s|\s$/.test(v) ? `"${v.replace(/"/g, '""')}"` : v;
 };
 
-/** The catalog in the import format, ";"-separated with a BOM so Excel in French opens it with its accents and Arabic. */
-export function productsToCsv(products: ExportProduct[], sep = ";"): string {
-  const keys = COLUMNS.map((c) => c.key);
-  const lines = [COLUMNS.map((c) => c.header).join(sep)];
+/** The catalog in the import format, ";"-separated with a BOM so Excel in French opens it with its accents (and the Arabic, when asked). */
+export function productsToCsv(products: ExportProduct[], sep = ";", { arabic = false } = {}): string {
+  const cols = written(arabic);
+  const keys = cols.map((c) => c.key);
+  const lines = [cols.map((c) => c.header).join(sep)];
   for (const p of products) {
     const ownPrices = p.variants.some((v) => v.price != null);
     const counted = p.stockMode === "TRACKED";
@@ -518,15 +533,16 @@ export function productsToCsv(products: ExportProduct[], sep = ";"): string {
 }
 
 /** The empty template, or the template with two filled example lines. */
-export function templateCsv(withExamples: boolean, sep = ";"): string {
-  const lines = [COLUMNS.map((c) => c.header).join(sep)];
+export function templateCsv(withExamples: boolean, sep = ";", { arabic = false } = {}): string {
+  const cols = written(arabic);
+  const lines = [cols.map((c) => c.header).join(sep)];
   if (withExamples) {
-    lines.push(COLUMNS.map((c) => quote(c.example, sep)).join(sep));
+    lines.push(cols.map((c) => quote(c.example, sep)).join(sep));
     const second: Partial<Record<ColumnKey, string>> = {
       name: "Diffuseur d'huiles essentielles 300 ml", price: "79,000", cost: "41,500", category: "Maison", categoryAr: "الدار",
       photos: "diffuseur-1.jpg ; diffuseur-2.jpg", summary: "Brume fine, sept couleurs, arrêt automatique.", stock: "12", active: "non", available: "oui", featured: "non",
     };
-    lines.push(COLUMNS.map((c) => quote(second[c.key] ?? "", sep)).join(sep));
+    lines.push(cols.map((c) => quote(second[c.key] ?? "", sep)).join(sep));
   }
   return `﻿${lines.join("\r\n")}\r\n`;
 }

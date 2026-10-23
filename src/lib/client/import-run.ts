@@ -19,6 +19,8 @@ export type RowRun = {
   id?: string;
   created?: boolean;
   translated?: boolean;
+  /** An updated product whose French changed: its old Arabic was removed and waits for a translation. */
+  arabicToRedo?: boolean;
   /** Pictures the product already had, per kind: the new ones go after them. */
   base?: Record<Kind, number>;
   /** One per picture of the job, in the same order. */
@@ -223,7 +225,7 @@ export class ImportRun {
       const images = r.images as Record<Kind, number> | undefined;
       // A first try that was saved but whose answer was lost: the retry finds the product it made, and it is still a new one.
       const created = Boolean(r.created) || (tries > 1 && Boolean(job.isNew));
-      this.set(job.line, { state: "saved", id: String(r.id), created, translated: Boolean(r.translated), base: { GALLERY: images?.GALLERY ?? 0, DETAIL: images?.DETAIL ?? 0 } });
+      this.set(job.line, { state: "saved", id: String(r.id), created, translated: Boolean(r.translated), arabicToRedo: Boolean(r.arabicToRedo), base: { GALLERY: images?.GALLERY ?? 0, DETAIL: images?.DETAIL ?? 0 } });
       return true;
     } catch (e) {
       if (!(e instanceof SessionExpired)) throw e;

@@ -8,7 +8,8 @@ import { csvResponse } from "@/lib/csv";
 /**
  * The catalog as a CSV file in the import format: open it in Excel or Google
  * Sheets, change prices or texts, import it again. ?modele=vide gives the
- * empty template, ?modele=exemple the template with two example lines.
+ * empty template, ?modele=exemple the template with two example lines. In
+ * French only; ?arabe=1 adds the Arabic columns, to read them in a sheet.
  */
 export async function GET(request: Request) {
   const refused = await refuseUnlessAdmin(request);
@@ -16,7 +17,8 @@ export async function GET(request: Request) {
   const url = new URL(request.url);
   const model = url.searchParams.get("modele");
   const day = new Date().toISOString().slice(0, 10);
-  if (model) return csvResponse(model === "exemple" ? "exemple-import-produits.csv" : "modele-import-produits.csv", templateCsv(model === "exemple"));
+  const arabic = url.searchParams.get("arabe") === "1";
+  if (model) return csvResponse(model === "exemple" ? "exemple-import-produits.csv" : "modele-import-produits.csv", templateCsv(model === "exemple", ";", { arabic }));
 
   // Pictures are listed by their address on this shop; importing the file again links them, it never copies them.
   const base = (SITE_URL.startsWith("http://localhost") ? url.origin : SITE_URL).replace(/\/$/, "");
@@ -37,5 +39,5 @@ export async function GET(request: Request) {
     photos: p.images.filter((i) => i.kind === "GALLERY").map((i) => `${base}/api/img/${i.mediaId}/1600`),
     detailPhotos: p.images.filter((i) => i.kind === "DETAIL").map((i) => `${base}/api/img/${i.mediaId}/1600`),
   }));
-  return csvResponse(`produits-mena-${day}.csv`, productsToCsv(rows));
+  return csvResponse(`produits-mena-${day}${arabic ? "-avec-arabe" : ""}.csv`, productsToCsv(rows, ";", { arabic }));
 }

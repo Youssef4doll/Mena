@@ -92,6 +92,7 @@ export default async function ProductsPage({ searchParams }: PageProps<"/admin/p
         actions={
           <>
             <IntentLink href="/admin/produits/nouveau" className={btn.sea}>Nouveau produit</IntentLink>
+            <Link href="/admin/produits/fournisseur" className={btn.ghost}>Depuis Ecomness</Link>
             <Link href="/admin/produits/import" className={btn.ghost}>Importer (CSV)</Link>
             {/* A file to save, not a page: the browser downloads it. */}
             <a href="/admin/produits/export" download className={btn.ghost}>Exporter (CSV)</a>

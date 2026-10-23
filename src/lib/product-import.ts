@@ -3,7 +3,7 @@ import { z } from "zod";
 import { prisma } from "./prisma";
 import { slugify } from "./slug";
 import { mergeRow, rowKey, type RowData } from "./product-csv";
-import { productForForm, toInput, writeProduct } from "./product-write";
+import { productForForm, toInput, writeProduct, type ProductInput } from "./product-write";
 import { needsTranslation, textsOfProduct, withProductTexts } from "./translate-merge";
 import { translateProduct, translationReady } from "./translate";
 import { normHeader } from "./product-csv";
@@ -84,7 +84,7 @@ async function supplierId(name: string): Promise<string> {
 }
 
 export type ImportRowResult =
-  | { ok: true; id: string; slug: string; created: boolean; translated: boolean; images: { GALLERY: number; DETAIL: number } }
+  | { ok: true; id: string; slug: string; created: boolean; translated: boolean; arabicToRedo: boolean; images: { GALLERY: number; DETAIL: number } }
   | { ok: false; error: string };
 
 /**
@@ -108,7 +108,11 @@ export async function importRow(row: RowData, opts: { activateNew: boolean; tran
     ...(row.category ? { categoryId: await categoryId(row.category, row.categoryAr) } : {}),
     ...(row.supplier ? { supplierId: await supplierId(row.supplier) } : {}),
   };
-  let input = mergeRow(found ? toInput(found) : null, row, refs, opts.activateNew);
+  const base = found ? toInput(found) : null;
+  let input = mergeRow(base, row, refs, opts.activateNew);
+  // French changed without its Arabic: the old Arabic was removed, to be translated again.
+  const arabicOf = (p: ProductInput) => [p.nameAr, p.summaryAr, p.descriptionAr, p.specsAr, p.seoTitleAr, p.seoDescriptionAr, ...p.offers.map((o) => o.labelAr)];
+  const removed = base != null && arabicOf(base).some((v, i) => v.trim() && !arabicOf(input)[i]?.trim());
 
   let translated = false;
   if (opts.translate && translationReady() && needsTranslation(textsOfProduct(input))) {
@@ -123,5 +127,5 @@ export async function importRow(row: RowData, opts: { activateNew: boolean; tran
   const w = await writeProduct(found?.id ?? null, input);
   if (!w.ok) return w;
   const count = (k: "GALLERY" | "DETAIL") => found?.images.filter((i) => i.kind === k).length ?? 0;
-  return { ok: true, id: w.id, slug: w.slug, created: w.created, translated, images: { GALLERY: count("GALLERY"), DETAIL: count("DETAIL") } };
+  return { ok: true, id: w.id, slug: w.slug, created: w.created, translated, arabicToRedo: removed && !translated, images: { GALLERY: count("GALLERY"), DETAIL: count("DETAIL") } };
 }
