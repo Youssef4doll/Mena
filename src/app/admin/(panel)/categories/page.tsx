@@ -2,17 +2,23 @@ import { prisma } from "@/lib/prisma";
 import { Card, PageTitle, input, label } from "@/components/admin/ui";
 import { ActionForm, ConfirmButton } from "@/components/admin/FormBits";
 import { saveCategory, deleteCategory } from "../simple-actions";
+import { translationReady } from "@/lib/translate";
+import { lacksArabic } from "@/lib/category-ar";
+import { CategoryArabic } from "./CategoryArabic";
 
 export const metadata = { title: "Catégories" };
 
 export default async function CategoriesPage() {
   const cats = await prisma.category.findMany({ orderBy: [{ sort: "asc" }, { name: "asc" }], include: { _count: { select: { products: true } } } });
+  const missing = cats.map((c) => ({ id: c.id, name: c.name, nameAr: c.nameAr ?? "", headline: c.headline ?? "", headlineAr: c.headlineAr ?? "" })).filter(lacksArabic);
   return (
     <>
       <PageTitle title="Catégories" sub="Chaque catégorie est une grande carte sur l'accueil, avec son titre et son image (sinon la photo d'un de ses produits). Une catégorie sans produit en ligne n'apparaît pas." />
+      <CategoryArabic missing={missing} aiReady={translationReady()} />
       <div className="grid gap-4 lg:grid-cols-2">
         {cats.map((c) => (
-          <Card key={c.id} title={c.name} aside={<span className="text-xs text-muted">{c._count.products} produit(s)</span>}>
+          // Keyed by its Arabic too: a translation written from above shows in the fields at once.
+          <Card key={`${c.id}:${c.nameAr ?? ""}:${c.headlineAr ?? ""}`} title={c.name} aside={<span className="text-xs text-muted">{c._count.products} produit(s)</span>}>
             <CategoryFields c={c} />
             {c._count.products === 0 && <div className="mt-2"><ConfirmButton action={deleteCategory.bind(null, c.id)} label="Supprimer" confirmText="Supprimer cette catégorie ?" /></div>}
           </Card>

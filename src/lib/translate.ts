@@ -7,7 +7,7 @@ export type { ProductTexts, TranslateMode };
 
 /**
  * Product texts translated by Claude: French ↔ Tunisian Arabic, plus the
- * search keywords customers type. Server only: the key (ANTHROPIC_API_KEY)
+ * search keywords customers type and the title and description for Google. Server only: the key (ANTHROPIC_API_KEY)
  * never leaves the server, and the back office receives only the texts, to
  * read again before saving.
  */
@@ -28,10 +28,14 @@ const SCHEMA = {
     specs: pair,
     specsAr: pair,
     keywords: pair,
+    seoTitle: pair,
+    seoTitleAr: pair,
+    seoDescription: pair,
+    seoDescriptionAr: pair,
     variants: { type: "array", items: { type: "object", properties: { name: pair, nameAr: pair }, required: ["name", "nameAr"], additionalProperties: false } },
     offers: { type: "array", items: { type: "object", properties: { label: pair, labelAr: pair }, required: ["label", "labelAr"], additionalProperties: false } },
   },
-  required: ["name", "nameAr", "summary", "summaryAr", "description", "descriptionAr", "specs", "specsAr", "keywords", "variants", "offers"],
+  required: ["name", "nameAr", "summary", "summaryAr", "description", "descriptionAr", "specs", "specsAr", "keywords", "seoTitle", "seoTitleAr", "seoDescription", "seoDescriptionAr", "variants", "offers"],
   additionalProperties: false,
 };
 

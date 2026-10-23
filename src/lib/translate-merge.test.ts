@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { mergeTranslation, type ProductTexts } from "./translate-merge";
+import { mergeTranslation, needsTranslation, type ProductTexts } from "./translate-merge";
 
 const before: ProductTexts = {
   name: "Lampe de chevet tactile",
@@ -12,6 +12,10 @@ const before: ProductTexts = {
   specs: "",
   specsAr: "",
   keywords: "",
+  seoTitle: "",
+  seoTitleAr: "",
+  seoDescription: "Ma description pour Google.",
+  seoDescriptionAr: "",
   variants: [{ name: "Noir", nameAr: "" }],
   offers: [{ label: "1 unité", labelAr: "" }],
 };
@@ -26,6 +30,10 @@ const answer: ProductTexts = {
   specs: "invente",
   specsAr: "مخترع",
   keywords: "lampe, lamba, لمبة",
+  seoTitle: "Lampe de chevet tactile LED",
+  seoTitleAr: "لمبة سرير باللمس",
+  seoDescription: "Changée",
+  seoDescriptionAr: "وصف لغوغل",
   variants: [{ name: "Noir", nameAr: "أكحل" }],
   offers: [{ label: "1 unité", labelAr: "حبة وحدة" }],
 };
@@ -60,4 +68,22 @@ test("keywords already typed by the shop are kept; lists of another length are i
   const out = mergeTranslation({ ...before, keywords: "veilleuse" }, { ...answer, variants: [] }, "fill");
   assert.equal(out.keywords, "veilleuse");
   assert.deepEqual(out.variants, before.variants);
+});
+
+test("the Google title and description are written in both languages when both are empty, translated otherwise, never replaced", () => {
+  const out = mergeTranslation(before, answer, "fill");
+  assert.deepEqual([out.seoTitle, out.seoTitleAr], ["Lampe de chevet tactile LED", "لمبة سرير باللمس"]);
+  assert.deepEqual([out.seoDescription, out.seoDescriptionAr], ["Ma description pour Google.", "وصف لغوغل"]);
+  const filled = { ...before, seoTitle: "Mon titre", seoTitleAr: "عنواني" };
+  assert.deepEqual([mergeTranslation(filled, answer, "fill").seoTitle, mergeTranslation(filled, answer, "fill").seoTitleAr], ["Mon titre", "عنواني"]);
+  assert.equal(mergeTranslation(filled, answer, "to-ar").seoTitleAr, "لمبة سرير باللمس");
+  // On one line, within what the product accepts.
+  assert.equal(mergeTranslation(before, { ...answer, seoTitle: "Lampe\nde chevet " + "x".repeat(200) }, "fill").seoTitle.length, 120);
+});
+
+test("a product without its Google texts has something to translate", () => {
+  const done = { ...before, nameAr: "x", summary: "x", specs: "", keywords: "k", seoTitle: "t", seoTitleAr: "t", seoDescription: "d", seoDescriptionAr: "d", variants: [{ name: "Noir", nameAr: "x" }], offers: [{ label: "1", labelAr: "x" }] };
+  assert.equal(needsTranslation(done), false);
+  assert.equal(needsTranslation({ ...done, seoTitle: "", seoTitleAr: "" }), true);
+  assert.equal(needsTranslation({ ...done, seoDescriptionAr: "" }), true);
 });

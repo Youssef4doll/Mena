@@ -8,7 +8,8 @@ import { isWebAddress, type RowData } from "@/lib/product-csv";
 import {
   DEFAULT_RULE, frenchCategory, imagesFromHtml, pageText, priceFromRule, productCode, readSupplierList, type ListItem, type PriceRule,
 } from "@/lib/supplier-page";
-import { imagePrompt, manualDraftRequest, readDraftAnswer, type Draft, type ImageIdea } from "@/lib/supplier-prompt";
+import { manualDraftRequest, readDraftAnswer, type Draft } from "@/lib/supplier-prompt";
+import { ImageIdeas } from "@/components/admin/ImageIdeas";
 import { ImportRun, type Job, type Outcome, type Snapshot } from "@/lib/client/import-run";
 import type { Picture } from "@/lib/client/import-plan";
 import { Badge, Card, btn, input, label } from "@/components/admin/ui";
@@ -516,6 +517,10 @@ function PageMode({ html, text, aiReady, categories, onReset }: { html: string; 
       ...pair(Boolean(m?.filled.summary), "summary"),
       ...pair(Boolean(m?.filled.description), "description"),
       ...pair(Boolean(m?.filled.specs), "specs"),
+      // What Google shows, as written for this product, unless the product has its own already.
+      ...((all || !m?.filled.seo) && (draft.seoTitle || draft.seoDescription)
+        ? { seoTitle: draft.seoTitle, seoTitleAr: draft.seoTitleAr, seoDescription: draft.seoDescription, seoDescriptionAr: draft.seoDescriptionAr }
+        : {}),
       price,
       ...(cost != null ? { cost } : {}),
       ...(form.category ? { category: form.category } : {}),
@@ -670,7 +675,11 @@ function PageMode({ html, text, aiReady, categories, onReset }: { html: string; 
         </Card>
       )}
 
-      {draft && draft.imageIdeas.length > 0 && <ImageIdeas ideas={draft.imageIdeas} photo={photos[0] ?? null} />}
+      {draft && draft.imageIdeas.length > 0 && (
+        <Card title="Grandes images à faire (Gemini, ChatGPT…)" hint="Chaque image vient d'un vrai point de la page, comme sur Amazon. Faites-les d'abord pour les produits qui se vendent. Vous les retrouvez dans l'éditeur du produit, partie « Images de description ».">
+          <ImageIdeas ideas={draft.imageIdeas} photo={photos[0] ?? null} />
+        </Card>
+      )}
     </div>
   );
 }
@@ -679,8 +688,8 @@ function PageMode({ html, text, aiReady, categories, onReset }: { html: string; 
 function DraftTexts({ draft }: { draft: Draft }) {
   const side = (lang: "fr" | "ar") => {
     const t = lang === "fr"
-      ? { name: draft.name, summary: draft.summary, description: draft.description, specs: draft.specs, variants: draft.variants.map((v) => v.name) }
-      : { name: draft.nameAr, summary: draft.summaryAr, description: draft.descriptionAr, specs: draft.specsAr, variants: draft.variants.map((v) => v.nameAr) };
+      ? { name: draft.name, summary: draft.summary, description: draft.description, specs: draft.specs, variants: draft.variants.map((v) => v.name), seoTitle: draft.seoTitle, seoDescription: draft.seoDescription }
+      : { name: draft.nameAr, summary: draft.summaryAr, description: draft.descriptionAr, specs: draft.specsAr, variants: draft.variants.map((v) => v.nameAr), seoTitle: draft.seoTitleAr, seoDescription: draft.seoDescriptionAr };
     return (
       <div dir={lang === "ar" ? "rtl" : "ltr"} lang={lang} className="flex min-w-0 flex-col gap-2 rounded-xl border border-line p-3">
         <p className="font-semibold text-ink">{t.name || "—"}</p>
@@ -688,6 +697,12 @@ function DraftTexts({ draft }: { draft: Draft }) {
         {t.description && <p className="whitespace-pre-line text-ink-2">{t.description}</p>}
         {t.specs && <p className="whitespace-pre-line text-xs text-muted">{t.specs}</p>}
         {t.variants.some(Boolean) && <p className="text-xs text-muted">{t.variants.filter(Boolean).join(" · ")}</p>}
+        {(t.seoTitle || t.seoDescription) && (
+          <div className="rounded-lg bg-white p-2 text-[13px]">
+            <p className="text-[#1a0dab]">{t.seoTitle}</p>
+            <p className="text-[#4d5156]">{t.seoDescription}</p>
+          </div>
+        )}
       </div>
     );
   };
@@ -738,41 +753,5 @@ function ManualDraft({ request, onDraft }: { request: string; onDraft: (d: Draft
       {bad && <p className="text-clay">Réponse incomplète : copiez toute la réponse de l&apos;IA, du premier « {"{"} » au dernier « {"}"} ».</p>}
       <button type="button" className={`${btn.sea} self-start`} disabled={!reply.trim()} onClick={use}>Utiliser cette réponse</button>
     </div>
-  );
-}
-
-/** The tall pictures to make in an image generator: one request per idea, to paste with the product's photo. */
-function ImageIdeas({ ideas, photo }: { ideas: ImageIdea[]; photo: string | null }) {
-  const [copied, setCopied] = useState<string | null>(null);
-  async function copy(key: string, text: string) {
-    try {
-      await navigator.clipboard.writeText(text);
-      setCopied(key);
-    } catch {
-      window.prompt("Copiez la demande :", text);
-    }
-  }
-  return (
-    <Card
-      title="Grandes images à faire (Gemini, ChatGPT…)"
-      hint="Chaque idée vient d'un vrai point de la page. Dans l'outil d'images : joignez la photo du produit, collez la demande. Ajoutez ensuite l'image dans l'éditeur, partie « Images de description », avec sa langue. Faites-les d'abord pour les produits qui se vendent."
-    >
-      <div className="flex flex-col gap-3">
-        {photo && <a href={photo} target="_blank" rel="noopener" className="self-start text-sm text-sea underline underline-offset-4">Ouvrir la photo principale (à enregistrer puis joindre)</a>}
-        <ol className="flex flex-col divide-y divide-line">
-          {ideas.map((idea, i) => (
-            <li key={i} className="flex flex-col gap-1.5 py-2.5 text-sm">
-              <p dir="rtl" lang="ar" className="font-semibold text-ink">{idea.headlineAr}</p>
-              <p className="text-ink-2">{idea.headlineFr}</p>
-              <p className="text-xs text-muted">{idea.scene}</p>
-              <div className="flex flex-wrap gap-2">
-                <button type="button" className={btn.ghost} onClick={() => copy(`${i}ar`, imagePrompt(idea, "ar"))}>{copied === `${i}ar` ? "Copiée" : "Copier la demande (arabe)"}</button>
-                <button type="button" className={btn.ghost} onClick={() => copy(`${i}fr`, imagePrompt(idea, "fr"))}>{copied === `${i}fr` ? "Copiée" : "Copier la demande (français)"}</button>
-              </div>
-            </li>
-          ))}
-        </ol>
-      </div>
-    </Card>
   );
 }

@@ -4,7 +4,8 @@ import { batchRequest, idsParam, readBatchReply, splitBatches, storedTexts, text
 import { mergeTranslation, type ProductTexts } from "./translate-merge";
 
 const texts = (name: string, more: Partial<ProductTexts> = {}): ProductTexts => ({
-  name, nameAr: "", summary: "", summaryAr: "", description: "", descriptionAr: "", specs: "", specsAr: "", keywords: "", variants: [], offers: [], ...more,
+  name, nameAr: "", summary: "", summaryAr: "", description: "", descriptionAr: "", specs: "", specsAr: "", keywords: "",
+  seoTitle: "", seoTitleAr: "", seoDescription: "", seoDescriptionAr: "", variants: [], offers: [], ...more,
 });
 const product = (n: number, more: Partial<ProductTexts> = {}) => ({ id: `id${n}`, texts: texts(`Produit ${n}`, more) });
 // What the assistant sends back for a product: the Arabic name and keywords filled.
@@ -72,6 +73,7 @@ test("keeps the finished products of a reply cut short, and ignores refs of anot
 test("reads stored rows with empty Arabic columns as empty texts", () => {
   const t = storedTexts({
     name: "Lampe", nameAr: null, summary: "", summaryAr: null, description: "D", descriptionAr: null, specs: "", specsAr: null, keywords: "",
+    seoTitle: "", seoTitleAr: null, seoDescription: "", seoDescriptionAr: null,
     variants: [{ name: "Noir", nameAr: null }], offers: [{ label: "1 unité", labelAr: "حبة" }],
   });
   assert.equal(t.nameAr, "");

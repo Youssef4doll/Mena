@@ -10,6 +10,8 @@ import { addProductImage } from "@/lib/product-images";
 import { productForForm, toInput, writeProduct, type ProductInput } from "@/lib/product-write";
 import Anthropic from "@anthropic-ai/sdk";
 import { translateProduct, translationReady, type ProductTexts, type TranslateMode } from "@/lib/translate";
+import { ideasForProduct } from "@/lib/image-ideas-ai";
+import type { IdeaTexts, ImageIdea } from "@/lib/image-ideas";
 
 type Result = { ok: true; id?: string; message?: string } | { ok: false; error: string };
 
@@ -144,6 +146,10 @@ const texts = z.object({
   specs: z.string().max(4000),
   specsAr: z.string().max(4000),
   keywords: z.string().max(1000),
+  seoTitle: z.string().max(120),
+  seoTitleAr: z.string().max(120),
+  seoDescription: z.string().max(320),
+  seoDescriptionAr: z.string().max(320),
   variants: z.array(z.object({ name: z.string().max(60), nameAr: z.string().max(60) })).max(60),
   offers: z.array(z.object({ label: z.string().max(80), labelAr: z.string().max(80) })).max(8),
 });
@@ -165,6 +171,29 @@ export async function translateTexts(raw: ProductTexts, mode: TranslateMode): Pr
     if (e instanceof Anthropic.RateLimitError) return { ok: false, error: "Trop de traductions d'un coup : réessayez dans une minute." };
     if (e instanceof Anthropic.APIError) return { ok: false, error: "Le service de traduction ne répond pas pour le moment. Réessayez plus tard." };
     return { ok: false, error: e instanceof Error ? e.message : "Traduction impossible." };
+  }
+}
+
+const ideaTexts = z.object({
+  name: z.string().max(140), nameAr: z.string().max(140), summary: z.string().max(300),
+  description: z.string().max(8000), descriptionAr: z.string().max(8000), specs: z.string().max(4000),
+});
+
+/** The tall pictures of a product, planned by the AI from its texts (as in the form, saved or not). Nothing is saved. */
+export async function planImages(raw: IdeaTexts): Promise<{ ok: true; ideas: ImageIdea[] } | { ok: false; error: string }> {
+  await requireAdmin();
+  if (!translationReady()) return { ok: false, error: "IA non configurée : ajoutez la variable ANTHROPIC_API_KEY dans Vercel, puis redéployez." };
+  const parsed = ideaTexts.safeParse(raw);
+  if (!parsed.success) return { ok: false, error: "Textes trop longs." };
+  if (!parsed.data.name.trim() && !parsed.data.nameAr.trim()) return { ok: false, error: "Écrivez d'abord le nom et la description du produit." };
+  try {
+    const ideas = await ideasForProduct(parsed.data);
+    return ideas.length ? { ok: true, ideas } : { ok: false, error: "Pas assez d'informations dans les textes du produit." };
+  } catch (e) {
+    if (e instanceof Anthropic.AuthenticationError) return { ok: false, error: "La clé ANTHROPIC_API_KEY est refusée : vérifiez-la dans Vercel." };
+    if (e instanceof Anthropic.RateLimitError) return { ok: false, error: "Trop de demandes d'un coup : réessayez dans une minute." };
+    if (e instanceof Anthropic.APIError) return { ok: false, error: "L'IA ne répond pas pour le moment. Réessayez plus tard." };
+    return { ok: false, error: e instanceof Error ? e.message : "Impossible pour le moment." };
   }
 }
 

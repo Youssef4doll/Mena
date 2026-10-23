@@ -1,5 +1,6 @@
 import { z } from "zod";
-import { KEYWORDS_RULE, SHOP_VOICE } from "./translate-prompt";
+import { KEYWORDS_RULE, SEO_RULE, SHOP_VOICE } from "./translate-prompt";
+import { IDEAS_RULE, IDEA_SCHEMA, Idea, cleanIdeas } from "./image-ideas";
 
 /**
  * A product page of Mena written from a supplier's page: the request, shared
@@ -10,7 +11,6 @@ import { KEYWORDS_RULE, SHOP_VOICE } from "./translate-prompt";
  */
 
 const variant = z.object({ name: z.string(), nameAr: z.string(), colorHex: z.string() });
-const idea = z.object({ headlineAr: z.string(), headlineFr: z.string(), scene: z.string() });
 
 export const Draft = z.object({
   name: z.string(),
@@ -22,14 +22,17 @@ export const Draft = z.object({
   specs: z.string(),
   specsAr: z.string(),
   keywords: z.string(),
+  seoTitle: z.string().default(""),
+  seoTitleAr: z.string().default(""),
+  seoDescription: z.string().default(""),
+  seoDescriptionAr: z.string().default(""),
   category: z.string(),
   supplierPrice: z.string(),
   supplierRef: z.string(),
   variants: z.array(variant),
-  imageIdeas: z.array(idea),
+  imageIdeas: z.array(Idea).default([]),
 });
 export type Draft = z.infer<typeof Draft>;
-export type ImageIdea = z.infer<typeof idea>;
 
 const str = { type: "string" } as const;
 /** The same fields for the API's structured answer. */
@@ -37,11 +40,11 @@ export const DRAFT_SCHEMA = {
   type: "object",
   properties: {
     name: str, nameAr: str, summary: str, summaryAr: str, description: str, descriptionAr: str, specs: str, specsAr: str, keywords: str,
-    category: str, supplierPrice: str, supplierRef: str,
+    seoTitle: str, seoTitleAr: str, seoDescription: str, seoDescriptionAr: str, category: str, supplierPrice: str, supplierRef: str,
     variants: { type: "array", items: { type: "object", properties: { name: str, nameAr: str, colorHex: str }, required: ["name", "nameAr", "colorHex"], additionalProperties: false } },
-    imageIdeas: { type: "array", items: { type: "object", properties: { headlineAr: str, headlineFr: str, scene: str }, required: ["headlineAr", "headlineFr", "scene"], additionalProperties: false } },
+    imageIdeas: { type: "array", items: IDEA_SCHEMA },
   },
-  required: ["name", "nameAr", "summary", "summaryAr", "description", "descriptionAr", "specs", "specsAr", "keywords", "category", "supplierPrice", "supplierRef", "variants", "imageIdeas"],
+  required: ["name", "nameAr", "summary", "summaryAr", "description", "descriptionAr", "specs", "specsAr", "keywords", "seoTitle", "seoTitleAr", "seoDescription", "seoDescriptionAr", "category", "supplierPrice", "supplierRef", "variants", "imageIdeas"],
   additionalProperties: false,
 };
 
@@ -54,16 +57,17 @@ Rules:
 - Leave out what is for resellers only: stock, margins, commissions, sales counts, supplier names and codes, the conditions between the supplier and the shop, and the other products of the page.
 - Keep every number, unit, size and brand exactly. Correct obvious spelling mistakes.
 - No exclamation marks, no emojis, no whole words in capitals.
-- "name" / "nameAr": what the product is, then what sets it apart (size, capacity, model), 3 to 9 words, at most 80 characters. A brand only when the page makes it a selling point.
+- "name" / "nameAr": built like a good Amazon title, but short enough for a phone: what the product is (the words a buyer searches), then what sets it apart (size, capacity, power, model, number of pieces), 3 to 9 words, at most 80 characters. The brand first only when the page makes it a selling point.
 - "summary" / "summaryAr": one sentence of at most 160 characters: what the product does for the buyer.
-- "description" / "descriptionAr": 2 to 4 short paragraphs separated by a blank line: the main use and what the buyer gains, then how it works or what it is made of, then what is in the box when the page says so.
+- "description" / "descriptionAr", laid out like Amazon's "About this item" for a phone: first one or two sentences on what it is and the main benefit; then a blank line and 3 to 5 lines that each start with "- ", one benefit per line, the benefit first and then the fact from the page that proves it (for example "- Se range partout : plié, il fait 8 cm d'épaisseur."); then, when the page says what is in the box, a blank line and "Dans la boîte : …" (in Arabic "في الكرطونة: …").
 - "specs" / "specsAr": one "label: value" per line, only values the page gives (dimensions, weight, material, power, battery, capacity, colours, contents), the same lines in the same order in both languages. "" when the page gives none.
 - ${KEYWORDS_RULE}
+- ${SEO_RULE}
 - "category": the name of one of the shop's categories listed below when one fits, written exactly as listed; otherwise a short new French category name (1 to 3 words).
 - "supplierPrice": the price the supplier asks the shop for one unit, as written on the page with its currency (for example "54 TND"); "" when the page gives none or when you are not sure which price it is.
 - "supplierRef": the supplier's code of the product as written (for example ENP-4J6HKB7H), or "".
 - "variants": the options a buyer must choose between, as the page lists them (colours, sizes, models): French name, Tunisian Arabic name, and for a colour its colour as "#rrggbb" ("" otherwise). [] when the page lists none.
-- "imageIdeas": 3 to 5 ideas for the tall pictures shown under the description, each about one real feature or benefit from the page, the most convincing first: "headlineAr" (Tunisian Arabic, at most 6 words), "headlineFr" (the same in French) and "scene" (English, one or two sentences for an image generator: what the picture shows, such as a close-up of a part, the product in use or its size next to a common object, with the product exactly as in its photo). Only scenes the page supports.
+- ${IDEAS_RULE}
 - Return every field.`;
 
 export type DraftInput = { text: string; categories: string[] };
@@ -77,8 +81,9 @@ ${input.text}
 """`;
 
 const SKELETON = JSON.stringify({
-  name: "", nameAr: "", summary: "", summaryAr: "", description: "", descriptionAr: "", specs: "", specsAr: "", keywords: "", category: "", supplierPrice: "", supplierRef: "",
-  variants: [{ name: "", nameAr: "", colorHex: "" }], imageIdeas: [{ headlineAr: "", headlineFr: "", scene: "" }],
+  name: "", nameAr: "", summary: "", summaryAr: "", description: "", descriptionAr: "", specs: "", specsAr: "", keywords: "",
+  seoTitle: "", seoTitleAr: "", seoDescription: "", seoDescriptionAr: "", category: "", supplierPrice: "", supplierRef: "",
+  variants: [{ name: "", nameAr: "", colorHex: "" }], imageIdeas: [{ kind: "hero", headlineAr: "", headlineFr: "", points: [{ ar: "", fr: "" }], scene: "", sceneBefore: "" }],
 });
 
 /** The whole request as one text to paste into a chat assistant. */
@@ -101,15 +106,13 @@ export function cleanDraft(d: Draft): Draft {
   return {
     name: line(d.name, 140), nameAr: line(d.nameAr, 140), summary: line(d.summary, 300), summaryAr: line(d.summaryAr, 300),
     description: block(d.description, 8000), descriptionAr: block(d.descriptionAr, 8000), specs: block(d.specs, 4000), specsAr: block(d.specsAr, 4000),
-    keywords: line(d.keywords, 1000), category: line(d.category, 60), supplierPrice: line(d.supplierPrice, 40), supplierRef: line(d.supplierRef, 120),
+    keywords: line(d.keywords, 1000), seoTitle: line(d.seoTitle, 120), seoTitleAr: line(d.seoTitleAr, 120),
+    seoDescription: line(d.seoDescription, 320), seoDescriptionAr: line(d.seoDescriptionAr, 320), category: line(d.category, 60), supplierPrice: line(d.supplierPrice, 40), supplierRef: line(d.supplierRef, 120),
     variants: d.variants
       .map((v) => ({ name: line(v.name, 60), nameAr: line(v.nameAr, 60), colorHex: HEX.test(v.colorHex.trim().toLowerCase()) ? v.colorHex.trim().toLowerCase() : "" }))
       .filter((v) => v.name && !seen.has(v.name.toLowerCase()) && seen.add(v.name.toLowerCase()))
       .slice(0, 60),
-    imageIdeas: d.imageIdeas
-      .map((i) => ({ headlineAr: line(i.headlineAr, 80), headlineFr: line(i.headlineFr, 80), scene: line(i.scene, 600) }))
-      .filter((i) => i.scene && (i.headlineAr || i.headlineFr))
-      .slice(0, 6),
+    imageIdeas: cleanIdeas(d.imageIdeas),
   };
 }
 
@@ -124,17 +127,4 @@ export function readDraftAnswer(reply: string): Draft | null {
   } catch {
     return null;
   }
-}
-
-/**
- * A request for an image generator (Gemini, ChatGPT…) to paste with the
- * product's photo attached: the tall picture of one idea, with its headline
- * in the page's language.
- */
-export function imagePrompt(idea: ImageIdea, lang: "ar" | "fr"): string {
-  const headline = lang === "ar" ? idea.headlineAr : idea.headlineFr;
-  return `Create a tall product picture (portrait, 2:3, 1200 × 1800 px) for an online shop. Use the product from the attached photo exactly as it is: same shape, colours, parts and proportions; add nothing to it and remove nothing from it.
-Scene: ${idea.scene}
-At the top, on a light plain area, write this text large and bold in a dark colour, spelled exactly as given${lang === "ar" ? ", in Arabic letters from right to left" : ""}: «${headline}»
-No other text, no logo, no price, no badge, no watermark.`;
 }

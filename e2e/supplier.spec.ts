@@ -94,7 +94,9 @@ test("an Ecomness list becomes offline products, and a product page completes on
     await page.getByRole("button", { name: "Utiliser cette réponse" }).click();
     await expect(page.getByRole("heading", { name: `Compléter « Chaise pliante ${run} »` })).toBeVisible();
     await expect(page.getByTestId("supplier-texts")).toContainText("كرسي خفيف بالألومينيوم.");
-    await expect(page.getByText("Se plie en deux", { exact: true })).toBeVisible();
+    // The picture to make, its request written out in full (Arabic text on the picture by default).
+    await expect(page.getByTestId("image-ideas").getByText("يتطوى على زوز", { exact: true })).toBeVisible();
+    await expect(page.getByLabel(/^Demande : 1\./)).toHaveValue(/«يتطوى على زوز»/);
     // Its price stays the one set from the list.
     await expect(page.getByTestId("supplier-price")).toHaveValue("49.900");
     await page.getByTestId("supplier-create").click();

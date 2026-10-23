@@ -32,7 +32,7 @@ export async function writeDraft(text: string): Promise<{ ok: true; draft: Draft
 /** A product of the shop that a pasted product already is, with what it already has. */
 export type Match = {
   id: string; slug: string; name: string; active: boolean; price: number; cost: number | null; category: string | null; supplierUrl: string;
-  filled: { summary: boolean; description: boolean; specs: boolean; variants: boolean }; photos: number;
+  filled: { summary: boolean; description: boolean; specs: boolean; variants: boolean; seo: boolean }; photos: number;
 };
 
 /** `slugTaken`: the address the name gives belongs to another product (another supplier code), so a new one needs its own. */
@@ -55,7 +55,7 @@ export async function matchProducts(raw: { ref: string; slug: string }[]): Promi
     where: { OR: [...(refs.length ? [{ supplierRef: { in: refs, mode: "insensitive" as const } }] : []), ...(slugs.length ? [{ slug: { in: slugs } }, { oldSlugs: { hasSome: slugs } }] : [])] },
     orderBy: { createdAt: "asc" },
     select: {
-      id: true, slug: true, oldSlugs: true, name: true, active: true, price: true, cost: true, supplierRef: true, supplierUrl: true, summary: true, description: true, specs: true,
+      id: true, slug: true, oldSlugs: true, name: true, active: true, price: true, cost: true, supplierRef: true, supplierUrl: true, summary: true, description: true, specs: true, seoTitle: true, seoDescription: true,
       category: { select: { name: true } }, _count: { select: { variants: true, images: { where: { kind: "GALLERY" } } } },
     },
   });
@@ -67,7 +67,7 @@ export async function matchProducts(raw: { ref: string; slug: string }[]): Promi
     if (!p) return { match: null, slugTaken: Boolean(atSlug) };
     return { slugTaken: false, match: {
       id: p.id, slug: p.slug, name: p.name, active: p.active, price: p.price, cost: p.cost, category: p.category?.name ?? null, supplierUrl: p.supplierUrl ?? "",
-      filled: { summary: Boolean(p.summary.trim()), description: Boolean(p.description.trim()), specs: Boolean(p.specs.trim()), variants: p._count.variants > 0 },
+      filled: { summary: Boolean(p.summary.trim()), description: Boolean(p.description.trim()), specs: Boolean(p.specs.trim()), variants: p._count.variants > 0, seo: Boolean(p.seoTitle.trim() || p.seoDescription.trim()) },
       photos: p._count.images,
     } };
   });

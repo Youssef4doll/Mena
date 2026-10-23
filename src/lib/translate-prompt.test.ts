@@ -5,7 +5,7 @@ import { mergeTranslation, type ProductTexts } from "./translate-merge";
 
 const texts: ProductTexts = {
   name: "Lampe de chevet", nameAr: "", summary: "", summaryAr: "", description: "", descriptionAr: "",
-specs: "", specsAr: "", keywords: "", variants: [{ name: "Noir", nameAr: "" }], offers: [],
+specs: "", specsAr: "", keywords: "", seoTitle: "", seoTitleAr: "", seoDescription: "", seoDescriptionAr: "", variants: [{ name: "Noir", nameAr: "" }], offers: [],
 };
 const answer = { ...texts, nameAr: "لمبة متاع بيت النوم", keywords: "lampe, lamba", variants: [{ name: "Noir", nameAr: "كحلة" }] };
 

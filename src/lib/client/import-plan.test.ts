@@ -83,7 +83,9 @@ test("tells a product without Arabic from one that only lacks its keywords", () 
   const both = readSheet("nom;nom_ar;prix;offres\nLampe;لمبة;10;2 = 18").rows[0].data;
   assert.equal(lacksArabic(textsOfRow(both)), false, "automatic offer labels have their Arabic");
   assert.equal(rowNeedsTranslation(both), true, "no keywords yet");
-  const done = readSheet("nom;nom_ar;prix;mots_cles\nLampe;لمبة;10;veilleuse").rows[0].data;
+  const noGoogle = readSheet("nom;nom_ar;prix;mots_cles\nLampe;لمبة;10;veilleuse").rows[0].data;
+  assert.equal(rowNeedsTranslation(noGoogle), true, "no title or description for Google yet");
+  const done = readSheet("nom;nom_ar;prix;mots_cles;titre_google;titre_google_ar;description_google;description_google_ar\nLampe;لمبة;10;veilleuse;Lampe;لمبة;Une lampe.;لمبة.").rows[0].data;
   assert.equal(rowNeedsTranslation(done), false);
 });
 

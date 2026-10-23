@@ -1,9 +1,11 @@
 "use client";
 
+import dynamic from "next/dynamic";
 import { useRouter } from "next/navigation";
 import { useEffect, useEffectEvent, useLayoutEffect, useOptimistic, useRef, useState, useSyncExternalStore, useTransition } from "react";
 import { deleteImage, deleteProduct, duplicateProduct, imagesChanged, moveImage, saveProduct, setImageAlt, setImageLang, translateTexts, type ProductInput } from "../actions";
 import { mergeTranslation, needsTranslation, textsOfProduct, withProductTexts, type ProductTexts } from "@/lib/translate-merge";
+import type { IdeaTexts } from "@/lib/image-ideas";
 import { parseTND, toInputTND, formatTND } from "@/lib/money";
 import { offerCompareAt } from "@/lib/offer-display";
 import { slugify } from "@/lib/slug";
@@ -395,7 +397,7 @@ function Form({ id, version, nextId, initial, images, categories, suppliers, sho
   return (
     <div ref={root} className="grid gap-4 lg:grid-cols-[1fr_360px]">
       <div className="flex min-w-0 flex-col gap-4">
-        <Card title="Texte" hint="La boutique s'affiche d'abord en arabe. Écrivez dans une langue : la traduction automatique écrit l'autre (en arabe tunisien), et les mots-clés de recherche. Relisez toujours ce qu'elle écrit.">
+        <Card title="Texte" hint="La boutique s'affiche d'abord en arabe. Écrivez dans une langue : la traduction automatique écrit l'autre (en arabe tunisien), les mots-clés de recherche, et le titre et la description pour Google quand ils sont vides. Relisez toujours ce qu'elle écrit.">
           <div className="grid gap-3">
             <div className="flex flex-wrap items-center gap-2 rounded-xl bg-sea-soft p-2.5" data-testid="translate-bar">
               {aiReady ? (
@@ -449,7 +451,7 @@ function Form({ id, version, nextId, initial, images, categories, suppliers, sho
               <label className={label}>Description détaillée (français)<textarea rows={7} className={`${input} h-auto py-2`} value={p.description} onChange={(e) => set("description", e.target.value)} /></label>
               <label className={label}>Description détaillée (arabe)<textarea rows={7} dir="rtl" className={`${input} h-auto py-2`} value={p.descriptionAr} onChange={(e) => set("descriptionAr", e.target.value)} /></label>
             </div>
-            <p className="-mt-1 text-xs text-muted">Affichée sous le formulaire de commande, juste après les images de description. Une ligne vide sépare deux paragraphes.</p>
+            <p className="-mt-1 text-xs text-muted">Affichée sous le formulaire de commande, juste après les images de description. Une ligne vide sépare deux paragraphes ; une ligne qui commence par « - » s&apos;affiche dans une liste cochée (les points forts, comme sur Amazon).</p>
             <div className="grid gap-3 sm:grid-cols-2">
               <label className={label}>Caractéristiques (français)<textarea rows={5} className={`${input} h-auto py-2`} value={p.specs} onChange={(e) => set("specs", e.target.value)} placeholder={"Matière : inox\nDimensions : 32 × 20 cm\nDans la boîte : 1 lampe, 1 câble USB-C"} /></label>
               <label className={label}>Caractéristiques (arabe)<textarea rows={5} dir="rtl" className={`${input} h-auto py-2`} value={p.specsAr} onChange={(e) => set("specsAr", e.target.value)} placeholder={"المادة: إينوكس\nالقياس: 32 × 20 صم\nفي الكرطونة: لمبة وكابل USB-C"} /></label>
@@ -472,13 +474,22 @@ function Form({ id, version, nextId, initial, images, categories, suppliers, sho
 
         <Seo p={p} set={set} price={unitOffer ?? price ?? 0} category={categories.find((c) => c.id === p.categoryId) ?? null} shopName={shopName} siteUrl={siteUrl} everywhere={everywhere} oldSlugs={oldSlugs} />
 
-        {(["GALLERY", "DETAIL"] as const).map((kind) =>
-          id ? (
-            <Images key={kind} productId={id} kind={kind} images={images.filter((i) => i.kind === kind)} saving={saving} onSending={(d) => setSending((n) => n + d)} />
+        {(["GALLERY", "DETAIL"] as const).map((kind) => {
+          const mainPhoto = images.find((i) => i.kind === "GALLERY");
+          const planner =
+            kind === "DETAIL" ? (
+              <PlannerSection
+                texts={{ name: p.name, nameAr: p.nameAr, summary: p.summary, description: p.description, descriptionAr: p.descriptionAr, specs: p.specs }}
+                aiReady={aiReady}
+                photo={mainPhoto ? `/api/img/${mainPhoto.mediaId}/1600` : null}
+              />
+            ) : null;
+          return id ? (
+            <Images key={kind} productId={id} kind={kind} images={images.filter((i) => i.kind === kind)} saving={saving} onSending={(d) => setSending((n) => n + d)} extra={planner} />
           ) : (
-            <QueuedImages key={kind} kind={kind} items={queued.filter((q) => q.item.kind === kind)} busy={busy} onAdd={queue} onMove={moveQueued} onRemove={unqueue} />
-          ),
-        )}
+            <QueuedImages key={kind} kind={kind} items={queued.filter((q) => q.item.kind === kind)} busy={busy} onAdd={queue} onMove={moveQueued} onRemove={unqueue} extra={planner} />
+          );
+        })}
 
         <Card title="Offres" hint="Ce que le client choisit en haut du formulaire de commande : « 1 unité », « 2 unités », « Achetez 2, la 3e offerte »… Le prix est le total pour la quantité. Sans offre, le client choisit simplement une quantité. Prix barré : sur l'offre de 1 unité, l'ancien prix du produit s'il est rempli ; sur les lots, le prix de l'offre de 1 unité multiplié par la quantité (sans offre de 1 unité active, rien n'est barré). Une date de fin n'est montrée que si vous la fixez.">
           <p className={`-mt-1 mb-2 text-xs ${ownPriced ? "text-danger" : "text-muted"}`}>
@@ -745,7 +756,7 @@ function Seo({ p, set, price, category, shopName, siteUrl, everywhere, oldSlugs 
     description: productDescription(base, lang, everywhere),
   });
   return (
-    <Card title="Google et recherche" hint="Laissez vide pour que la boutique compose le titre et la description à partir du nom, de la catégorie, de la description courte et du prix ; l'aperçu montre le résultat. Google affiche environ 60 caractères de titre et 155 de description.">
+    <Card title="Google et recherche" hint="Écrits par la traduction automatique (« Traduire ce qui manque ») quand ils sont vides, comme sur Amazon : les mots que les clients cherchent d'abord, un vrai avantage, le paiement à la livraison. Vides, la boutique les compose à partir du nom, de la catégorie, de la description courte et du prix ; l'aperçu montre le résultat. Google affiche environ 60 caractères de titre et 155 de description.">
       <div className="grid gap-3">
         <label className={label}>
           Mots-clés de recherche
@@ -941,7 +952,7 @@ function AddPictures({ text, busy, progress, onFiles, onLinks }: { text: string;
  * The form waits for the pictures before saving, and the card waits for the
  * save: a save draws the form again, and this card's messages with it.
  */
-function Images({ productId, images, kind, saving, onSending }: { productId: string; images: Img[]; kind: Kind; saving: boolean; onSending: (d: 1 | -1) => void }) {
+function Images({ productId, images, kind, saving, onSending, extra }: { productId: string; images: Img[]; kind: Kind; saving: boolean; onSending: (d: 1 | -1) => void; extra?: React.ReactNode }) {
   const [errors, setErrors] = useState<string[]>([]);
   const [note, setNote] = useState<string | null>(null);
   const [progress, setProgress] = useState<string | null>(null);
@@ -1005,12 +1016,13 @@ function Images({ productId, images, kind, saving, onSending }: { productId: str
           {errors.map((e, i) => <li key={i}>{e}</li>)}
         </ul>
       )}
+      {extra}
     </Card>
   );
 }
 
 /** The photos of a product not saved yet: previews from the device, sent in this order on the first save. */
-function QueuedImages({ kind, items, busy, onAdd, onMove, onRemove }: { kind: Kind; items: Queued[]; busy: boolean; onAdd: (add: Outgoing[]) => void; onMove: (key: string, dir: -1 | 1) => void; onRemove: (key: string) => void }) {
+function QueuedImages({ kind, items, busy, onAdd, onMove, onRemove, extra }: { kind: Kind; items: Queued[]; busy: boolean; onAdd: (add: Outgoing[]) => void; onMove: (key: string, dir: -1 | 1) => void; onRemove: (key: string) => void; extra?: React.ReactNode }) {
   const k = KIND[kind];
   return (
     <Card title={k.title} hint={k.hint}>
@@ -1024,7 +1036,22 @@ function QueuedImages({ kind, items, busy, onAdd, onMove, onRemove }: { kind: Ki
         </>
       )}
       <AddPictures text={k.add} busy={busy} progress={null} onFiles={(files) => onAdd(files.map((file) => ({ kind, file })))} onLinks={(urls, clear) => { onAdd(urls.map((url) => ({ kind, url }))); clear(); }} />
+      {extra}
     </Card>
+  );
+}
+
+/** Loaded when opened: the editor stays light for the owner who does not make pictures. */
+const ImagePlanner = dynamic(() => import("@/components/admin/ImageIdeas").then((m) => m.ImagePlanner), { ssr: false, loading: () => <p className="text-sm text-muted">Chargement…</p> });
+
+/** Under the long pictures: the pictures to make with an image generator, planned from the product's texts. */
+function PlannerSection(props: { texts: IdeaTexts; aiReady: boolean; photo: string | null }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <details className="mt-3 rounded-xl border border-sea/30 bg-sea-soft/20" onToggle={(e) => setOpen(e.currentTarget.open)}>
+      <summary className="flex min-h-11 cursor-pointer items-center px-3 text-sm font-medium text-sea-2">Faire ces images avec l&apos;IA (Gemini) : avant / après, points forts, dimensions…</summary>
+      {open && <div className="px-3 pb-3"><ImagePlanner {...props} /></div>}
+    </details>
   );
 }
 

@@ -1,20 +1,26 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { cleanDraft, imagePrompt, manualDraftRequest, readDraftAnswer, type Draft } from "./supplier-prompt";
+import { cleanDraft, manualDraftRequest, readDraftAnswer, type Draft } from "./supplier-prompt";
 
 const draft: Draft = {
   name: "Chaise de plage pliante", nameAr: "كرسي بحر يتطوى", summary: "Se plie en deux secondes.", summaryAr: "يتطوى في ثانيتين.",
   description: "Une chaise légère.\n\n\n\nCadre en aluminium.", descriptionAr: "كرسي خفيف.", specs: "Poids : 2 kg", specsAr: "الوزن: 2 كغ",
-  keywords: "chaise, kursi", category: "Maison", supplierPrice: "50 TND", supplierRef: "ENP-4J6HKB7H",
+  keywords: "chaise, kursi", seoTitle: "Chaise de plage pliante légère", seoTitleAr: "كرسي بحر يتطوى", seoDescription: "Se plie en deux secondes. Paiement à la livraison.", seoDescriptionAr: "يتطوى في ثانيتين. الدفع عند الاستلام.", category: "Maison", supplierPrice: "50 TND", supplierRef: "ENP-4J6HKB7H",
   variants: [{ name: "Beige", nameAr: "بيج", colorHex: "#D8C3A5" }, { name: "beige", nameAr: "", colorHex: "" }, { name: "Vert", nameAr: "خضرا", colorHex: "green" }],
-  imageIdeas: [{ headlineAr: "يتطوى في ثانيتين", headlineFr: "Se plie en deux secondes", scene: "The chair folded flat next to a beach bag." }, { headlineAr: "", headlineFr: "", scene: "x" }],
+  imageIdeas: [
+    { kind: "hero", headlineAr: "يتطوى في ثانيتين", headlineFr: "Se plie en deux secondes", points: [], scene: "The chair folded flat next to a beach bag.", sceneBefore: "" },
+    { kind: "hero", headlineAr: "", headlineFr: "", points: [], scene: "x", sceneBefore: "" },
+  ],
 };
 
 test("one request with the rules, the expected fields, the categories and the page", () => {
   const r = manualDraftRequest({ text: "Chaise de Plage Pliante\nPrix : 50 TND", categories: ["Maison", "Sport"] });
   assert.ok(r.includes("Tunisian Arabic"));
   assert.ok(r.includes("Never add a fact"));
-  assert.ok(r.includes('"imageIdeas":[{"headlineAr":""'));
+  assert.ok(r.includes('"imageIdeas":[{"kind":"hero"'));
+  assert.ok(r.includes('"seoTitle":""'));
+  assert.ok(r.includes("About this item"));
+  assert.ok(r.includes("before_after"));
   assert.ok(r.includes('["Maison","Sport"]'));
   assert.ok(r.includes("Prix : 50 TND"));
 });
@@ -38,10 +44,10 @@ test("names stay on one line and long texts are cut", () => {
   assert.equal(d.variants.length, 60);
 });
 
-test("an image request keeps the product as in its photo and spells the headline of the page's language", () => {
-  const ar = imagePrompt(draft.imageIdeas[0], "ar");
-  assert.ok(ar.includes("exactly as it is"));
-  assert.ok(ar.includes("«يتطوى في ثانيتين»"));
-  assert.ok(ar.includes("right to left"));
-  assert.ok(imagePrompt(draft.imageIdeas[0], "fr").includes("«Se plie en deux secondes»"));
+test("a reply without Google texts or picture ideas still reads", () => {
+  const { seoTitle, seoTitleAr, seoDescription, seoDescriptionAr, imageIdeas, ...older } = draft;
+  void [seoTitle, seoTitleAr, seoDescription, seoDescriptionAr, imageIdeas];
+  const d = readDraftAnswer(JSON.stringify(older))!;
+  assert.deepEqual([d.seoTitle, d.imageIdeas], ["", []]);
+  assert.equal(readDraftAnswer(JSON.stringify(draft))!.seoDescriptionAr, "يتطوى في ثانيتين. الدفع عند الاستلام.");
 });

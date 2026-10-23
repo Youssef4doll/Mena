@@ -27,7 +27,7 @@ export function TranslateBatch({ products, aiReady, chosen }: { products: Item[]
     <>
       <Card>
         <p className="text-sm text-ink-2">
-          {count(items.length, "produit a", "produits ont")} un texte dans une seule langue, ou pas encore de mots-clés de recherche.
+          {count(items.length, "produit a", "produits ont")} un texte dans une seule langue, ou pas encore de mots-clés de recherche ou de titre et description pour Google.
         </p>
         <p className="mt-1 text-sm text-ink-2">Seuls les champs vides sont remplis : rien de ce qui est déjà écrit n&apos;est remplacé.</p>
         <p className="mt-1 text-sm font-medium text-ink">Relisez les textes arabes : la traduction peut se tromper.</p>

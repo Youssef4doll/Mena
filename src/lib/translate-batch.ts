@@ -28,6 +28,7 @@ export function idsParam(v: string | string[] | undefined): string[] | null {
 /** The texts a translation reads, as stored: options and offers in the order the shop shows them. */
 export const textsSelect = {
   name: true, nameAr: true, summary: true, summaryAr: true, description: true, descriptionAr: true, specs: true, specsAr: true, keywords: true,
+  seoTitle: true, seoTitleAr: true, seoDescription: true, seoDescriptionAr: true,
   variants: { orderBy: [{ sort: "asc" }, { id: "asc" }], select: { id: true, name: true, nameAr: true } },
   offers: { orderBy: [{ sort: "asc" }, { id: "asc" }], select: { id: true, label: true, labelAr: true } },
 } satisfies Prisma.ProductSelect;
@@ -35,6 +36,7 @@ export const textsSelect = {
 type Stored = {
   name: string; nameAr: string | null; summary: string; summaryAr: string | null; description: string; descriptionAr: string | null;
   specs: string; specsAr: string | null; keywords: string;
+  seoTitle: string; seoTitleAr: string | null; seoDescription: string; seoDescriptionAr: string | null;
   variants: { name: string; nameAr: string | null }[];
   offers: { label: string; labelAr: string | null }[];
 };
@@ -44,6 +46,7 @@ export function storedTexts(p: Stored): ProductTexts {
   return {
     name: p.name, nameAr: p.nameAr ?? "", summary: p.summary, summaryAr: p.summaryAr ?? "", description: p.description, descriptionAr: p.descriptionAr ?? "",
     specs: p.specs, specsAr: p.specsAr ?? "", keywords: p.keywords,
+    seoTitle: p.seoTitle, seoTitleAr: p.seoTitleAr ?? "", seoDescription: p.seoDescription, seoDescriptionAr: p.seoDescriptionAr ?? "",
     variants: p.variants.map((v) => ({ name: v.name, nameAr: v.nameAr ?? "" })),
     offers: p.offers.map((o) => ({ label: o.label, labelAr: o.labelAr ?? "" })),
   };
@@ -63,12 +66,16 @@ export const translationSchema = z.object({
   specs: z.string().max(4000),
   specsAr: z.string().max(4000),
   keywords: z.string().max(1000),
+  seoTitle: line(120).default(""),
+  seoTitleAr: line(120).default(""),
+  seoDescription: line(320).default(""),
+  seoDescriptionAr: line(320).default(""),
   variants: z.array(z.object({ name: line(60), nameAr: line(60) })).max(60),
   offers: z.array(z.object({ label: line(80), labelAr: line(80) })).max(8),
 });
 
-const FRENCH = ["name", "summary", "description", "specs", "keywords"] as const;
-const ARABIC = ["nameAr", "summaryAr", "descriptionAr", "specsAr"] as const;
+const FRENCH = ["name", "summary", "description", "specs", "keywords", "seoTitle", "seoDescription"] as const;
+const ARABIC = ["nameAr", "summaryAr", "descriptionAr", "specsAr", "seoTitleAr", "seoDescriptionAr"] as const;
 
 export type TextWrites = {
   product: Partial<Record<(typeof FRENCH)[number], string> & Record<(typeof ARABIC)[number], string | null>>;

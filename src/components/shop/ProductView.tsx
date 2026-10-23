@@ -9,6 +9,7 @@ import type { PublicSettings } from "@/lib/settings-schema";
 import { track } from "@/lib/client/track";
 import { pixelViewContent } from "@/lib/client/pixels";
 import { formatTND } from "@/lib/money";
+import { descriptionBlocks } from "@/lib/description";
 import { governorateLabel } from "@/lib/governorates";
 import { discountPct, leadOffer } from "@/lib/offer-display";
 import { deliveryRangeLabel, deliverySpan } from "@/lib/delivery";
@@ -259,11 +260,23 @@ export function ProductView({ p, lang, settings, url }: { p: P; lang: Lang; sett
           )}
           {description && (
             <div className="flex max-w-3xl flex-col gap-3 text-[17px] leading-relaxed text-ink-2">
-              {description.split(/\n{2,}/).map((para, i) => (
-                <p key={i} className="whitespace-pre-line" dir="auto">
-                  {para}
-                </p>
-              ))}
+              {/* Lines starting with "- " read as a list of ticks, like Amazon's "About this item". */}
+              {descriptionBlocks(description).map((b, i) =>
+                b.kind === "text" ? (
+                  <p key={i} className="whitespace-pre-line" dir="auto">
+                    {b.text}
+                  </p>
+                ) : (
+                  <ul key={i} className="flex flex-col gap-2.5">
+                    {b.items.map((item, j) => (
+                      <li key={j} className="flex items-start gap-2.5" dir="auto">
+                        <IconCheck className="mt-1 h-5 w-5 shrink-0 text-olive" />
+                        <span className="min-w-0">{item}</span>
+                      </li>
+                    ))}
+                  </ul>
+                ),
+              )}
             </div>
           )}
         </section>

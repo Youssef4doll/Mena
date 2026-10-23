@@ -7,6 +7,7 @@ import { productForForm, toInput, writeProduct, type ProductInput } from "./prod
 import { needsTranslation, textsOfProduct, withProductTexts } from "./translate-merge";
 import { translateProduct, translationReady } from "./translate";
 import { normHeader } from "./product-csv";
+import { arabicCategory } from "./category-ar";
 
 /**
  * The server half of the CSV import. The browser reads the file and sends
@@ -56,7 +57,8 @@ export async function prepareImport(categories: { name: string; nameAr?: string 
   for (const c of categories) {
     const slug = slugify(c.name);
     if (!slug || cats.some((x) => sameName(x.name, c.name) || x.slug === slug)) continue;
-    const made = await prisma.category.upsert({ where: { slug }, create: { name: c.name.trim(), nameAr: c.nameAr?.trim() || null, slug, sort: ++sort }, update: {}, select: { id: true, name: true, slug: true, sort: true } });
+    // A common aisle gets its Arabic name at once; the others are translated on the Categories page.
+    const made = await prisma.category.upsert({ where: { slug }, create: { name: c.name.trim(), nameAr: c.nameAr?.trim() || arabicCategory(c.name) || null, slug, sort: ++sort }, update: {}, select: { id: true, name: true, slug: true, sort: true } });
     cats.push(made);
   }
   const sups = await prisma.supplier.findMany({ select: { id: true, name: true } });
@@ -74,7 +76,7 @@ async function categoryId(name: string, nameAr?: string): Promise<string | null>
   if (hit) return hit.id;
   if (!slug) return null;
   // Not prepared (a row sent on its own): made here, safely if two rows ask at once.
-  const made = await prisma.category.upsert({ where: { slug }, create: { name: name.trim(), nameAr: nameAr?.trim() || null, slug }, update: {}, select: { id: true } });
+  const made = await prisma.category.upsert({ where: { slug }, create: { name: name.trim(), nameAr: nameAr?.trim() || arabicCategory(name) || null, slug }, update: {}, select: { id: true } });
   return made.id;
 }
 
