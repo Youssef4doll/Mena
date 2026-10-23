@@ -3,10 +3,11 @@
 import { z } from "zod";
 import Anthropic from "@anthropic-ai/sdk";
 import type { Prisma } from "@prisma/client";
-import { revalidatePath, revalidateTag, updateTag } from "next/cache";
+import { revalidatePath, revalidateTag } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { requireAdmin } from "@/lib/admin-auth";
 import { CATALOG_TAG } from "@/lib/catalog";
+import { refreshCatalog } from "@/lib/catalog-refresh";
 import { translateProduct, translationReady } from "@/lib/translate";
 import { mergeTranslation, needsTranslation, type ProductTexts } from "@/lib/translate-merge";
 import { PRODUCT_ID, storedTexts, textWrites, textsSelect, translationSchema } from "@/lib/translate-batch";
@@ -110,10 +111,10 @@ export async function translateStored(id: string): Promise<{ ok: true; result: O
   }
 }
 
-/** Once a run is over: the shop, the product list and this page show the new texts at once. */
+/** Once a run is over: the product list and this page show the new texts at once, the shop rebuilds its pages in the background. */
 export async function translationsDone(): Promise<{ ok: true }> {
   await requireAdmin();
-  updateTag(CATALOG_TAG);
+  await refreshCatalog();
   revalidatePath("/admin/produits");
   return { ok: true };
 }

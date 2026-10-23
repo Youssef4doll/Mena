@@ -1,24 +1,26 @@
 "use server";
 
 import { z } from "zod";
-import { revalidatePath, updateTag } from "next/cache";
+import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { requireAdmin } from "@/lib/admin-auth";
-import { CATALOG_TAG } from "@/lib/catalog";
+import { refreshCatalog } from "@/lib/catalog-refresh";
 
-function done() {
-  updateTag(CATALOG_TAG);
+/** The products changed: see refreshCatalog. */
+async function done(productIds: string[] = []) {
+  await refreshCatalog(productIds);
   revalidatePath("/admin/produits");
 }
 
 /**
- * Once at the end of an import: each row only marked the shop stale, this
- * makes the shop and the product list show everything at once (and this page
- * its new storage figures, in the same response).
+ * Once at the end of an import: the shop rebuilds its pages in the background
+ * (customers are not kept waiting meanwhile), the product list shows
+ * everything at once, and this page its new storage figures, in the same
+ * response.
  */
 export async function finishImport(): Promise<{ ok: true }> {
   await requireAdmin();
-  done();
+  await done();
   return { ok: true };
 }
 
@@ -30,6 +32,6 @@ export async function activateProducts(raw: string[]): Promise<{ ok: true; count
   const parsed = ids.safeParse(raw);
   if (!parsed.success) return { ok: false, error: "Liste de produits invalide." };
   const r = await prisma.product.updateMany({ where: { id: { in: parsed.data } }, data: { active: true } });
-  done();
+  await done(parsed.data);
   return { ok: true, count: r.count };
 }

@@ -4,7 +4,8 @@ import { IMG_WIDTHS } from "@/lib/image-loader";
 
 /**
  * Product pictures, resized on first request and then served from the CDN
- * for a year (the id changes when the picture does). Only the widths the
+ * for a year (the id changes when the picture does): `s-maxage` is what keeps
+ * them on the CDN, `max-age` in the phone. Only the widths the
  * loader asks for are produced, so the cache holds a handful per image.
  */
 export async function GET(_request: Request, ctx: RouteContext<"/api/img/[id]/[w]">) {
@@ -17,7 +18,7 @@ export async function GET(_request: Request, ctx: RouteContext<"/api/img/[id]/[w
   return new Response(new Uint8Array(out), {
     headers: {
       "content-type": "image/webp",
-      "cache-control": "public, max-age=31536000, immutable",
+      "cache-control": "public, max-age=31536000, s-maxage=31536000, immutable",
       "content-length": String(out.length),
     },
   });

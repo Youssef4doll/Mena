@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound, permanentRedirect } from "next/navigation";
 import { dict, href, isLang, languages, pick } from "@/i18n";
-import { getProduct, productMovedTo } from "@/lib/catalog";
+import { getProduct, productMovedTo, productSlugs } from "@/lib/catalog";
 import { getSettings } from "@/lib/settings";
 import { publicSettings } from "@/lib/settings-schema";
 import { ProductView } from "@/components/shop/ProductView";
@@ -14,8 +14,14 @@ import { deliversEverywhere } from "@/lib/governorates";
 
 export const revalidate = 60;
 
-export function generateStaticParams() {
-  return [];
+/**
+ * Built with each new version of the site (a new version starts with an empty
+ * cache): the first customer on a product after an update gets a ready page
+ * instead of waiting for it to be made. A product beyond these, or added
+ * later, is made on its first visit.
+ */
+export async function generateStaticParams() {
+  return (await productSlugs(300)).map((slug) => ({ slug }));
 }
 
 export async function generateMetadata({ params }: PageProps<"/[lang]/produit/[slug]">): Promise<Metadata> {

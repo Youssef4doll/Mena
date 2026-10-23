@@ -106,6 +106,8 @@ Les photos sont gardées dans la base de données. La page d'import indique la p
 
 **Travailler vite dans la liste** : prix, stock, « Dispo », « En ligne », « Sélection » et catégorie se changent directement dans la ligne (Entrée enregistre, Échap annule). Cochez plusieurs produits pour les mettre en ligne ou hors ligne, les changer de catégorie ou les supprimer d'un coup. Dans un produit : Ctrl+S enregistre, « Précédent » / « Suivant » passent au produit voisin, « Enregistrer, puis suivant » enchaîne, « Dupliquer » crée une copie hors ligne d'un produit proche. Si le produit a été modifié ailleurs pendant qu'il était ouvert (liste, import, traduction, autre onglet), l'enregistrement est refusé avec un message, au lieu d'effacer ce changement.
 
+**Après une modification** : la fiche du produit modifié change tout de suite. L'accueil, les listes et les autres fiches restent affichés aussitôt aux clients, puis se mettent à jour d'eux-mêmes en quelques secondes : rechargez la page pour les voir changer. Aucun client n'attend pendant ce temps.
+
 Une boutique en ligne ne contient pas de produits de démonstration. Pour voir à quoi elle ressemble pleine, lancez `npm run db:seed:demo` en local ; *Produits → Supprimer la démo* les retire.
 
 ## 7. Les liens des publicités

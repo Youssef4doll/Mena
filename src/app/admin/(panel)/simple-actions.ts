@@ -5,6 +5,7 @@ import { revalidatePath, updateTag } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { requireAdmin } from "@/lib/admin-auth";
 import { CATALOG_TAG } from "@/lib/catalog";
+import { refreshCatalog } from "@/lib/catalog-refresh";
 import { slugify } from "@/lib/slug";
 import { normalizeCode } from "@/lib/promo";
 import { parseTND } from "@/lib/money";
@@ -124,8 +125,8 @@ export async function togglePromo(id: string, active: boolean): Promise<Result> 
 
 export async function moderateReview(id: string, status: "APPROVED" | "REJECTED"): Promise<Result> {
   await requireAdmin();
-  await prisma.review.update({ where: { id }, data: { status } });
-  updateTag(CATALOG_TAG);
+  const r = await prisma.review.update({ where: { id }, data: { status }, select: { productId: true } });
+  await refreshCatalog([r.productId]);
   revalidatePath("/admin/avis");
   return { ok: true };
 }

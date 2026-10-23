@@ -9,11 +9,16 @@ import { complete, normalize, rank, tokenize, type Ranked } from "./search";
 import type { Lang } from "@/i18n/lang";
 
 /**
- * Storefront reads. Cached under one tag the back office expires on every
- * catalog edit, so a price change shows at once and a busy page costs nothing.
- * Stock shown here may lag by up to a minute; the checkout re-reads it.
+ * Storefront reads, cached so a busy page costs nothing. Every read carries
+ * one tag the back office marks stale on each catalog edit (pages are still
+ * served at once and rebuilt in the background), and a product's page also
+ * its own, expired when that product changes, so the change shows at once
+ * (see refreshCatalog). Stock shown here may lag by up to a minute; the
+ * checkout re-reads it.
  */
 export const CATALOG_TAG = "catalog";
+/** The cache tag of one product's page, by its address. */
+export const productTag = (slug: string) => `product:${slug}`;
 const TTL = 60;
 
 const cardSelect = {
@@ -309,117 +314,121 @@ export const getHome = unstable_cache(
   { tags: [CATALOG_TAG], revalidate: TTL },
 );
 
-/** One cached row per product for both languages; `getProduct` keeps the long pictures of the page's. */
-const productRow = unstable_cache(
-  async (slug: string) => {
-    const p = await prisma.product.findFirst({
-      where: { slug, active: true },
-      select: {
-        id: true,
-        slug: true,
-        name: true,
-        nameAr: true,
-        summary: true,
-        summaryAr: true,
-        description: true,
-        descriptionAr: true,
-        specs: true,
-        specsAr: true,
-        videoUrl: true,
-        seoTitle: true,
-        seoTitleAr: true,
-        seoDescription: true,
-        seoDescriptionAr: true,
-        price: true,
-        compareAt: true,
-        stockMode: true,
-        stockQty: true,
-        available: true,
-        updatedAt: true,
-        category: { select: { slug: true, name: true, nameAr: true } },
-        images: { orderBy: { sort: "asc" }, select: { mediaId: true, alt: true, kind: true, lang: true, media: { select: { width: true, height: true, blur: true } } } },
-        variants: { orderBy: { sort: "asc" }, select: { id: true, name: true, nameAr: true, colorHex: true, price: true, stockQty: true, available: true } },
-        offers: {
-          where: { active: true, OR: [{ endsAt: null }, { endsAt: { gt: new Date() } }] },
-          orderBy: [{ sort: "asc" }, { quantity: "asc" }],
-          select: { id: true, label: true, labelAr: true, quantity: true, price: true, freeDelivery: true, endsAt: true },
-        },
+/** A product with all its page needs, in both languages. */
+async function loadProduct(slug: string) {
+  const p = await prisma.product.findFirst({
+    where: { slug, active: true },
+    select: {
+      id: true,
+      slug: true,
+      name: true,
+      nameAr: true,
+      summary: true,
+      summaryAr: true,
+      description: true,
+      descriptionAr: true,
+      specs: true,
+      specsAr: true,
+      videoUrl: true,
+      seoTitle: true,
+      seoTitleAr: true,
+      seoDescription: true,
+      seoDescriptionAr: true,
+      price: true,
+      compareAt: true,
+      stockMode: true,
+      stockQty: true,
+      available: true,
+      updatedAt: true,
+      category: { select: { slug: true, name: true, nameAr: true } },
+      images: { orderBy: { sort: "asc" }, select: { mediaId: true, alt: true, kind: true, lang: true, media: { select: { width: true, height: true, blur: true } } } },
+      variants: { orderBy: { sort: "asc" }, select: { id: true, name: true, nameAr: true, colorHex: true, price: true, stockQty: true, available: true } },
+      offers: {
+        where: { active: true, OR: [{ endsAt: null }, { endsAt: { gt: new Date() } }] },
+        orderBy: [{ sort: "asc" }, { quantity: "asc" }],
+        select: { id: true, label: true, labelAr: true, quantity: true, price: true, freeDelivery: true, endsAt: true },
       },
-    });
-    if (!p) return null;
-    const [reviews, agg, related, offerSales, sold] = await Promise.all([
-      prisma.review.findMany({
-        where: { productId: p.id, status: "APPROVED" },
-        orderBy: { createdAt: "desc" },
-        take: 20,
-        select: { id: true, rating: true, text: true, authorName: true, governorate: true, createdAt: true },
-      }),
-      prisma.review.aggregate({ where: { productId: p.id, status: "APPROVED" }, _avg: { rating: true }, _count: { _all: true } }),
-      relatedTo(p.id, p.category?.slug ?? null),
-      p.offers.length > 1
-        ? prisma.orderItem.groupBy({
-            by: ["offerId"],
-            where: { offerId: { in: p.offers.map((o) => o.id) }, order: { status: { not: "CANCELLED" }, createdAt: { gte: new Date(Date.now() - 60 * 86_400_000) } } },
-            _count: { _all: true },
-          })
-        : Promise.resolve([] as { offerId: string | null; _count: { _all: number } }[]),
-      soldFor([p.id]),
-    ]);
-    // "Le plus choisi" is a fact or it is not shown: the offer ordered most in
-    // 60 days, with at least 3 orders and clearly ahead of the next one.
-    const ranked = [...offerSales].sort((a, b) => b._count._all - a._count._all);
-    const mostChosen = ranked[0] && ranked[0]._count._all >= 3 && ranked[0]._count._all > (ranked[1]?._count._all ?? 0) ? ranked[0].offerId : null;
-    const tracked = p.stockMode === "TRACKED";
-    const variants = p.variants.map((v) => ({
-      id: v.id,
-      name: v.name,
-      nameAr: v.nameAr,
-      /** A dot beside the name in the list; null for an option without a colour. */
-      colorHex: v.colorHex,
-      price: v.price ?? p.price,
-      soldOut: tracked ? v.stockQty <= 0 : !v.available || !p.available,
-      lowQty: tracked && v.stockQty > 0 && v.stockQty <= 5 ? v.stockQty : null,
-      /** Units that can be ordered; null when the supplier has stock. Used to grey out packs, never printed. */
-      maxUnits: tracked ? Math.max(0, v.stockQty) : !v.available || !p.available ? 0 : null,
-    }));
-    const maxUnits = variants.length ? (variants.some((v) => v.maxUnits == null) ? null : Math.max(0, ...variants.map((v) => v.maxUnits ?? 0))) : tracked ? Math.max(0, p.stockQty) : p.available ? null : 0;
-    const offers = offersApply(p.price, p.variants) ? p.offers : [];
-    return {
-      id: p.id,
-      slug: p.slug,
-      name: p.name,
-      nameAr: p.nameAr,
-      summary: p.summary,
-      summaryAr: p.summaryAr,
-      description: p.description,
-      descriptionAr: p.descriptionAr,
-      specs: parseSpecs(p.specs),
-      specsAr: p.specsAr?.trim() ? parseSpecs(p.specsAr) : null,
-      video: parseVideo(p.videoUrl),
-      seoTitle: p.seoTitle,
-      seoTitleAr: p.seoTitleAr,
-      seoDescription: p.seoDescription,
-      seoDescriptionAr: p.seoDescriptionAr,
-      price: p.price,
-      compareAt: p.compareAt != null && p.compareAt > p.price ? p.compareAt : null,
-      category: p.category,
-      images: p.images.filter((i) => i.kind === "GALLERY").map((i) => ({ id: i.mediaId, alt: i.alt, width: i.media.width, height: i.media.height, blur: i.media.blur })),
-      /** The long pictures under the description, in their order, each with its page ("ar", "fr", or null for both). */
-      detailImages: p.images.filter((i) => i.kind === "DETAIL").map((i) => ({ lang: i.lang, image: { id: i.mediaId, alt: i.alt, width: i.media.width, height: i.media.height, blur: i.media.blur } })),
-      sold: soldStep(sold.get(p.id) ?? 0),
-      variants,
-      stock: stockState(p),
-      updatedAt: p.updatedAt.toISOString(),
-      reviews: reviews.map((r) => ({ ...r, createdAt: r.createdAt.toISOString() })),
-      rating: agg._count._all > 0 ? { avg: agg._avg.rating ?? 0, count: agg._count._all } : null,
-      maxUnits,
-      offers: offers.map(({ endsAt, ...o }) => ({ ...o, lastDay: endsAt ? offerLastDay(endsAt) : null, compareAt: offerCompareAt(offers, o, p.compareAt), mostChosen: o.id === mostChosen })),
-      related,
-    };
-  },
-  ["product-v8"],
-  { tags: [CATALOG_TAG], revalidate: TTL },
-);
+    },
+  });
+  if (!p) return null;
+  const [reviews, agg, related, offerSales, sold] = await Promise.all([
+    prisma.review.findMany({
+      where: { productId: p.id, status: "APPROVED" },
+      orderBy: { createdAt: "desc" },
+      take: 20,
+      select: { id: true, rating: true, text: true, authorName: true, governorate: true, createdAt: true },
+    }),
+    prisma.review.aggregate({ where: { productId: p.id, status: "APPROVED" }, _avg: { rating: true }, _count: { _all: true } }),
+    relatedTo(p.id, p.category?.slug ?? null),
+    p.offers.length > 1
+      ? prisma.orderItem.groupBy({
+          by: ["offerId"],
+          where: { offerId: { in: p.offers.map((o) => o.id) }, order: { status: { not: "CANCELLED" }, createdAt: { gte: new Date(Date.now() - 60 * 86_400_000) } } },
+          _count: { _all: true },
+        })
+      : Promise.resolve([] as { offerId: string | null; _count: { _all: number } }[]),
+    soldFor([p.id]),
+  ]);
+  // "Le plus choisi" is a fact or it is not shown: the offer ordered most in
+  // 60 days, with at least 3 orders and clearly ahead of the next one.
+  const ranked = [...offerSales].sort((a, b) => b._count._all - a._count._all);
+  const mostChosen = ranked[0] && ranked[0]._count._all >= 3 && ranked[0]._count._all > (ranked[1]?._count._all ?? 0) ? ranked[0].offerId : null;
+  const tracked = p.stockMode === "TRACKED";
+  const variants = p.variants.map((v) => ({
+    id: v.id,
+    name: v.name,
+    nameAr: v.nameAr,
+    /** A dot beside the name in the list; null for an option without a colour. */
+    colorHex: v.colorHex,
+    price: v.price ?? p.price,
+    soldOut: tracked ? v.stockQty <= 0 : !v.available || !p.available,
+    lowQty: tracked && v.stockQty > 0 && v.stockQty <= 5 ? v.stockQty : null,
+    /** Units that can be ordered; null when the supplier has stock. Used to grey out packs, never printed. */
+    maxUnits: tracked ? Math.max(0, v.stockQty) : !v.available || !p.available ? 0 : null,
+  }));
+  const maxUnits = variants.length ? (variants.some((v) => v.maxUnits == null) ? null : Math.max(0, ...variants.map((v) => v.maxUnits ?? 0))) : tracked ? Math.max(0, p.stockQty) : p.available ? null : 0;
+  const offers = offersApply(p.price, p.variants) ? p.offers : [];
+  return {
+    id: p.id,
+    slug: p.slug,
+    name: p.name,
+    nameAr: p.nameAr,
+    summary: p.summary,
+    summaryAr: p.summaryAr,
+    description: p.description,
+    descriptionAr: p.descriptionAr,
+    specs: parseSpecs(p.specs),
+    specsAr: p.specsAr?.trim() ? parseSpecs(p.specsAr) : null,
+    video: parseVideo(p.videoUrl),
+    seoTitle: p.seoTitle,
+    seoTitleAr: p.seoTitleAr,
+    seoDescription: p.seoDescription,
+    seoDescriptionAr: p.seoDescriptionAr,
+    price: p.price,
+    compareAt: p.compareAt != null && p.compareAt > p.price ? p.compareAt : null,
+    category: p.category,
+    images: p.images.filter((i) => i.kind === "GALLERY").map((i) => ({ id: i.mediaId, alt: i.alt, width: i.media.width, height: i.media.height, blur: i.media.blur })),
+    /** The long pictures under the description, in their order, each with its page ("ar", "fr", or null for both). */
+    detailImages: p.images.filter((i) => i.kind === "DETAIL").map((i) => ({ lang: i.lang, image: { id: i.mediaId, alt: i.alt, width: i.media.width, height: i.media.height, blur: i.media.blur } })),
+    sold: soldStep(sold.get(p.id) ?? 0),
+    variants,
+    stock: stockState(p),
+    updatedAt: p.updatedAt.toISOString(),
+    reviews: reviews.map((r) => ({ ...r, createdAt: r.createdAt.toISOString() })),
+    rating: agg._count._all > 0 ? { avg: agg._avg.rating ?? 0, count: agg._count._all } : null,
+    maxUnits,
+    offers: offers.map(({ endsAt, ...o }) => ({ ...o, lastDay: endsAt ? offerLastDay(endsAt) : null, compareAt: offerCompareAt(offers, o, p.compareAt), mostChosen: o.id === mostChosen })),
+    related,
+  };
+}
+
+/**
+ * One cached row per product for both languages; `getProduct` keeps the long
+ * pictures of the page's. Tagged with the product's address too, so the
+ * back office rebuilds the page of a product it changed without making every
+ * other page wait (see refreshCatalog).
+ */
+const productRow = (slug: string) => unstable_cache(loadProduct, ["product-v8"], { tags: [CATALOG_TAG, productTag(slug)], revalidate: TTL })(slug);
 
 /**
  * A product page. Its long pictures are the ones made for the page's language
@@ -439,6 +448,11 @@ async function relatedTo(id: string, categorySlug: string | null) {
   const same = categorySlug ? await cards({ id: { not: id }, category: { slug: categorySlug } }, NEWEST, 8) : [];
   const more = same.length < 4 ? await cards({ id: { notIn: [id, ...same.map((c) => c.id)] } }, NEWEST, 8 - same.length) : [];
   return outLast([...same, ...more]);
+}
+
+/** The products on sale, most recently changed first: their pages are built with each new version of the site. */
+export async function productSlugs(limit: number) {
+  return (await prisma.product.findMany({ where: { active: true }, orderBy: { updatedAt: "desc" }, take: limit, select: { slug: true } })).map((p) => p.slug);
 }
 
 /** A product's former address → its current one (the shop renamed it): old links and Google results still arrive. */

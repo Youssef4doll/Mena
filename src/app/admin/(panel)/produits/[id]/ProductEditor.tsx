@@ -368,7 +368,7 @@ function Form({ id, version, nextId, initial, images, categories, suppliers, sho
         // Signed out meanwhile: the page cannot be drawn again until the admin signs in, the message says so.
         if (sentPics.added > 0 && !sentPics.expired) {
           before = drawn();
-          await imagesChanged();
+          await imagesChanged(r.id);
         }
         done = afterPictures(saved, sentPics);
       }
@@ -978,7 +978,7 @@ function Images({ productId, images, kind, saving, onSending, extra }: { product
         const after = images.reduce((n, i) => Math.max(n, i.sort + 1), 0);
         const r = await sendPictures(productId, items, { GALLERY: after, DETAIL: after }, (n, total) => setProgress(`Envoi ${n}/${total}…`), DEVICE);
         setProgress(null);
-        if (r.added > 0 && !r.expired) await imagesChanged();
+        if (r.added > 0 && !r.expired) await imagesChanged(productId);
         setErrors(r.expired ? [EXPIRED] : r.errors);
         if (r.skipped > 0) setNote(r.skipped === 1 ? "Cette image est déjà dans le produit." : `${r.skipped} images étaient déjà dans le produit.`);
         if (!r.expired && r.errors.length === 0) clear?.();

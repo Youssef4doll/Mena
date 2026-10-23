@@ -1,10 +1,10 @@
 "use server";
 
 import { z } from "zod";
-import { revalidatePath, updateTag } from "next/cache";
+import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { requireAdmin } from "@/lib/admin-auth";
-import { CATALOG_TAG } from "@/lib/catalog";
+import { refreshCatalog } from "@/lib/catalog-refresh";
 import { formatTND } from "@/lib/money";
 import { PRODUCT_ID } from "@/lib/translate-batch";
 import { MAX_BULK, bulkMessage } from "./list-params";
@@ -65,7 +65,7 @@ export async function quickUpdate(productId: string, raw: QuickPatch): Promise<R
   if (d.available != null && p.stockMode !== "SUPPLIER") return { ok: false, error: "Ce produit compte son stock : changez la quantité." };
   if (!catOk) return { ok: false, error: "Catégorie introuvable : rechargez la page." };
   await prisma.product.update({ where: { id: pid.data }, data: d, select: { id: true } });
-  updateTag(CATALOG_TAG);
+  await refreshCatalog([pid.data]);
   return { ok: true };
 }
 
@@ -79,8 +79,9 @@ const bulkPatch = z.union([
 ]);
 export type BulkPatchInput = z.infer<typeof bulkPatch>;
 
-function done() {
-  updateTag(CATALOG_TAG);
+/** The products changed (or the addresses of those deleted): see refreshCatalog. */
+async function done(productIds: string[], slugs: string[] = []) {
+  await refreshCatalog(productIds, slugs);
   revalidatePath("/admin/produits");
 }
 
@@ -98,7 +99,7 @@ export async function bulkUpdate(rawIds: string[], raw: BulkPatchInput): Promise
     const cat = await prisma.category.findUnique({ where: { id: patch.categoryId }, select: { name: true } });
     if (!cat) return { ok: false, error: "Catégorie introuvable : rechargez la page." };
     const r = await prisma.product.updateMany({ where, data: patch });
-    done();
+    await done(list.data);
     return { ok: true, message: bulkMessage(patch, r.count, { categoryName: cat.name }) };
   }
   if ("available" in patch) {
@@ -107,11 +108,11 @@ export async function bulkUpdate(rawIds: string[], raw: BulkPatchInput): Promise
       prisma.product.updateMany({ where: { ...where, stockMode: "SUPPLIER" }, data: patch }),
       prisma.product.count({ where: { ...where, stockMode: "TRACKED" } }),
     ]);
-    done();
+    await done(list.data);
     return { ok: true, message: bulkMessage(patch, r.count, { skipped }) };
   }
   const r = await prisma.product.updateMany({ where, data: patch });
-  done();
+  await done(list.data);
   return { ok: true, message: bulkMessage(patch, r.count) };
 }
 
@@ -120,9 +121,12 @@ export async function bulkDelete(rawIds: string[]): Promise<Result> {
   await requireAdmin();
   const list = ids.safeParse(rawIds);
   if (!list.success) return { ok: false, error: `Sélection invalide (${MAX_BULK} produits au plus).` };
-  const imgs = await prisma.productImage.findMany({ where: { productId: { in: list.data } }, select: { mediaId: true } });
+  const [imgs, gone] = await Promise.all([
+    prisma.productImage.findMany({ where: { productId: { in: list.data } }, select: { mediaId: true } }),
+    prisma.product.findMany({ where: { id: { in: list.data } }, select: { slug: true, oldSlugs: true } }),
+  ]);
   const r = await prisma.product.deleteMany({ where: { id: { in: list.data } } });
   await prisma.media.deleteMany({ where: { id: { in: [...new Set(imgs.map((i) => i.mediaId))] }, images: { none: {} } } });
-  done();
+  await done([], gone.flatMap((p) => [p.slug, ...p.oldSlugs]));
   return { ok: true, message: bulkMessage("delete", r.count) };
 }

@@ -1,10 +1,10 @@
 "use server";
 
 import { z } from "zod";
-import { revalidatePath, updateTag } from "next/cache";
+import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { requireAdmin } from "@/lib/admin-auth";
-import { CATALOG_TAG } from "@/lib/catalog";
+import { refreshCatalog } from "@/lib/catalog-refresh";
 import { storeImage, MAX_UPLOAD } from "@/lib/media";
 import { addProductImage } from "@/lib/product-images";
 import { productForForm, toInput, writeProduct, type ProductInput } from "@/lib/product-write";
@@ -17,8 +17,9 @@ type Result = { ok: true; id?: string; message?: string } | { ok: false; error: 
 
 export type { ProductInput } from "@/lib/product-write";
 
-function done() {
-  updateTag(CATALOG_TAG);
+/** The products changed (or the addresses of those deleted): see refreshCatalog. */
+async function done(productIds: string[] = [], slugs: string[] = []) {
+  await refreshCatalog(productIds, slugs);
   revalidatePath("/admin/produits");
 }
 
@@ -27,7 +28,7 @@ export async function saveProduct(id: string | null, raw: ProductInput, loadedAt
   await requireAdmin();
   const r = await writeProduct(id, raw, typeof loadedAt === "number" && Number.isFinite(loadedAt) ? loadedAt : undefined);
   if (!r.ok) return r;
-  done();
+  await done([r.id]);
   return { ok: true, id: r.id, message: "Produit enregistré." };
 }
 
@@ -50,7 +51,7 @@ export async function uploadImages(productId: string, form: FormData): Promise<R
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : "Image refusée." };
   }
-  done();
+  await done([productId]);
   return { ok: true };
 }
 
@@ -58,14 +59,14 @@ export async function importImage(productId: string, url: string, kindRaw: Kind 
   await requireAdmin();
   const r = await addProductImage(productId, kindOf(kindRaw), { url: url.trim() });
   if (!r.ok) return r;
-  done();
+  await done([productId]);
   return r.skipped ? { ok: true, message: "Cette image est déjà dans le produit." } : { ok: true };
 }
 
 /** After pictures sent through the images route: the shop and this page show them at once. */
-export async function imagesChanged(): Promise<Result> {
+export async function imagesChanged(productId?: string): Promise<Result> {
   await requireAdmin();
-  done();
+  await done(typeof productId === "string" ? [productId] : []);
   return { ok: true };
 }
 
@@ -80,23 +81,24 @@ export async function moveImage(imageId: string, dir: -1 | 1): Promise<Result> {
   if (j < 0 || j >= all.length) return { ok: true };
   [all[i], all[j]] = [all[j], all[i]];
   await prisma.$transaction(all.map((x, n) => prisma.productImage.update({ where: { id: x.id }, data: { sort: n } })));
-  done();
+  await done([img.productId]);
   return { ok: true };
 }
 
 export async function setImageAlt(imageId: string, alt: string): Promise<Result> {
   await requireAdmin();
-  await prisma.productImage.update({ where: { id: imageId }, data: { alt: alt.slice(0, 140) || null } });
-  done();
+  const img = await prisma.productImage.update({ where: { id: imageId }, data: { alt: alt.slice(0, 140) || null }, select: { productId: true } });
+  await done([img.productId]);
   return { ok: true };
 }
 
 /** The page a long picture shows on: the Arabic one, the French one, or both (null). The top photos are on both. */
 export async function setImageLang(imageId: string, lang: string | null): Promise<Result> {
   await requireAdmin();
-  const r = await prisma.productImage.updateMany({ where: { id: imageId, kind: "DETAIL" }, data: { lang: lang === "ar" || lang === "fr" ? lang : null } });
-  if (r.count === 0) return { ok: false, error: "Image introuvable." };
-  done();
+  const img = await prisma.productImage.findFirst({ where: { id: imageId, kind: "DETAIL" }, select: { productId: true } });
+  if (!img) return { ok: false, error: "Image introuvable." };
+  await prisma.productImage.update({ where: { id: imageId }, data: { lang: lang === "ar" || lang === "fr" ? lang : null } });
+  await done([img.productId]);
   return { ok: true };
 }
 
@@ -105,34 +107,34 @@ export async function deleteImage(imageId: string): Promise<Result> {
   const img = await prisma.productImage.delete({ where: { id: imageId } });
   const stillUsed = await prisma.productImage.count({ where: { mediaId: img.mediaId } });
   if (!stillUsed) await prisma.media.delete({ where: { id: img.mediaId } }).catch(() => {});
-  done();
+  await done([img.productId]);
   return { ok: true };
 }
 
 export async function toggleActive(id: string, active: boolean): Promise<Result> {
   await requireAdmin();
   await prisma.product.update({ where: { id }, data: { active } });
-  done();
+  await done([id]);
   return { ok: true };
 }
 
 /** Deleting keeps past orders intact: their lines are snapshots. */
 export async function deleteProduct(id: string): Promise<Result> {
   await requireAdmin();
-  const imgs = await prisma.productImage.findMany({ where: { productId: id }, select: { mediaId: true } });
+  const p = await prisma.product.findUnique({ where: { id }, select: { slug: true, oldSlugs: true, images: { select: { mediaId: true } } } });
   await prisma.product.delete({ where: { id } });
-  await prisma.media.deleteMany({ where: { id: { in: imgs.map((i) => i.mediaId) }, images: { none: {} } } });
-  done();
+  await prisma.media.deleteMany({ where: { id: { in: (p?.images ?? []).map((i) => i.mediaId) }, images: { none: {} } } });
+  await done([], p ? [p.slug, ...p.oldSlugs] : []);
   return { ok: true };
 }
 
 export async function deleteDemo(): Promise<Result> {
   await requireAdmin();
-  const demo = await prisma.product.findMany({ where: { isDemo: true }, select: { id: true, images: { select: { mediaId: true } } } });
+  const demo = await prisma.product.findMany({ where: { isDemo: true }, select: { slug: true, oldSlugs: true, images: { select: { mediaId: true } } } });
   const media = demo.flatMap((p) => p.images.map((i) => i.mediaId));
   await prisma.product.deleteMany({ where: { isDemo: true } });
   await prisma.media.deleteMany({ where: { id: { in: media }, images: { none: {} } } });
-  done();
+  await done([], demo.flatMap((p) => [p.slug, ...p.oldSlugs]));
   return { ok: true, message: `${demo.length} produits de démonstration supprimés.` };
 }
 
@@ -233,6 +235,6 @@ export async function duplicateProduct(id: string): Promise<Result> {
   if (p.images.length) {
     await prisma.productImage.createMany({ data: p.images.map((i) => ({ productId: r.id, mediaId: i.mediaId, kind: i.kind, sort: i.sort, alt: i.alt, lang: i.lang, source: null })) });
   }
-  done();
+  await done();
   return { ok: true, id: r.id };
 }

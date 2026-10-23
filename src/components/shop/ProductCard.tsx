@@ -6,6 +6,7 @@ import { formatTND } from "@/lib/money";
 import { Img } from "./Img";
 import { QuickBuy } from "./QuickBuy";
 import { ListClicks } from "./ListClicks";
+import { OpeningHint } from "./OpeningHint";
 import { IconGift, IconStar, IconTruck } from "./Icons";
 
 /**
@@ -14,7 +15,9 @@ import { IconGift, IconStar, IconTruck } from "./Icons";
  * best pack, free delivery, or a really low stock), the stars and orders of
  * real customers in one quiet line, and the button that orders it on the
  * spot. The picture, name and price open the product page. Cards of a row
- * share their rows (subgrid), so prices line up without empty space.
+ * share their rows (subgrid), so prices line up without empty space. The
+ * page behind a card is loaded ahead once the card is on screen (a cached
+ * page: cheap), so it opens at once when tapped.
  */
 export function ProductCard({ p, lang, priority = false, className = "", compact = false, pos = 0 }: { p: Card; lang: Lang; priority?: boolean; className?: string; compact?: boolean; pos?: number }) {
   const t = dict(lang);
@@ -35,9 +38,10 @@ export function ProductCard({ p, lang, priority = false, className = "", compact
   const sold = compact ? null : p.sold;
   return (
     <div className={`group row-span-4 grid grid-rows-subgrid content-start gap-y-0 ${className}`}>
-      <Link href={href(lang, `/produit/${p.slug}`)} className="row-span-3 grid grid-rows-subgrid gap-y-0 rounded-2xl" prefetch={false} data-slug={p.slug} data-pos={pos}>
+      <Link href={href(lang, `/produit/${p.slug}`)} className="row-span-3 grid grid-rows-subgrid gap-y-0 rounded-2xl" data-slug={p.slug} data-pos={pos}>
         <div className="relative aspect-square overflow-hidden rounded-2xl border border-line bg-white">
           <Img image={p.images[0] ?? null} alt={p.images[0]?.alt ?? name} sizes="(min-width: 1024px) 25vw, (min-width: 640px) 33vw, 50vw" priority={priority} className={`transition duration-500 group-hover:scale-[1.03] ${out ? "opacity-60 grayscale" : ""}`} />
+          <OpeningHint />
           {(out || pct > 0) && <span className={`absolute start-2.5 top-2.5 rounded-full px-2.5 text-[14px] font-bold leading-7 text-white ${out ? "bg-ink/85" : "bg-deal"}`}>{out ? t.product.out : <span className="ltr-nums">−{pct}%</span>}</span>}
         </div>
         <h3 className="mt-2.5 line-clamp-2 text-[16px] font-normal leading-snug text-ink underline-offset-2 group-hover:underline">{name}</h3>
