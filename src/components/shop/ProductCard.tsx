@@ -17,8 +17,13 @@ import { IconGift, IconStar, IconTruck } from "./Icons";
  * spot. The picture, name and price open the product page. Cards of a row
  * share their rows (subgrid), so prices line up without empty space. The
  * page behind a card is loaded ahead once the card is on screen (a cached
- * page: cheap), so it opens at once when tapped.
+ * page: cheap), so it opens at once when tapped. On a computer: five to a
+ * row on a laptop, the second photo when the mouse is over the card, a
+ * slimmer button.
  */
+/** Two to a row on a phone, three on a tablet, four, then five on a laptop (the container stops at 1152 px). */
+const SIZES = "(min-width: 1280px) 220px, (min-width: 1024px) 25vw, (min-width: 640px) 33vw, 50vw";
+
 export function ProductCard({ p, lang, priority = false, className = "", compact = false, pos = 0 }: { p: Card; lang: Lang; priority?: boolean; className?: string; compact?: boolean; pos?: number }) {
   const t = dict(lang);
   const name = pick(lang, p.name, p.nameAr);
@@ -39,8 +44,14 @@ export function ProductCard({ p, lang, priority = false, className = "", compact
   return (
     <div className={`group row-span-4 grid grid-rows-subgrid content-start gap-y-0 ${className}`}>
       <Link href={href(lang, `/produit/${p.slug}`)} className="row-span-3 grid grid-rows-subgrid gap-y-0 rounded-2xl" data-slug={p.slug} data-pos={pos}>
-        <div className="relative aspect-square overflow-hidden rounded-2xl border border-line bg-white">
-          <Img image={p.images[0] ?? null} alt={p.images[0]?.alt ?? name} sizes="(min-width: 1024px) 25vw, (min-width: 640px) 33vw, 50vw" priority={priority} className={`transition duration-500 group-hover:scale-[1.03] ${out ? "opacity-60 grayscale" : ""}`} />
+        <div className="relative aspect-square overflow-hidden rounded-2xl border border-line bg-white transition-shadow duration-300 group-hover:shadow-[0_10px_28px_-16px_rgb(0_0_0/.45)]">
+          <Img image={p.images[0] ?? null} alt={p.images[0]?.alt ?? name} sizes={SIZES} priority={priority} className={`transition duration-500 group-hover:scale-[1.03] ${out ? "opacity-60 grayscale" : ""}`} />
+          {/* With a mouse only: never downloaded on a phone (not displayed there, so never loaded). */}
+          {p.images[1] && (
+            <div className="absolute inset-0 hidden opacity-0 transition-opacity duration-300 pointer-fine:block group-hover:opacity-100" aria-hidden>
+              <Img image={p.images[1]} alt="" sizes={SIZES} className={out ? "opacity-60 grayscale" : ""} />
+            </div>
+          )}
           <OpeningHint />
           {(out || pct > 0) && <span className={`absolute start-2.5 top-2.5 rounded-full px-2.5 text-[14px] font-bold leading-7 text-white ${out ? "bg-ink/85" : "bg-deal"}`}>{out ? t.product.out : <span className="ltr-nums">−{pct}%</span>}</span>}
         </div>
@@ -99,7 +110,7 @@ export function ProductCard({ p, lang, priority = false, className = "", compact
 export function ProductGrid({ products, lang, priorityFirst = 0, list = "grid", q }: { products: Card[]; lang: Lang; priorityFirst?: number; list?: string; q?: string }) {
   return (
     <ListClicks list={list} q={q}>
-      <div className="grid grid-cols-2 gap-x-3 gap-y-8 sm:grid-cols-3 lg:grid-cols-4 lg:gap-x-5 lg:gap-y-10">
+      <div className="grid grid-cols-2 gap-x-3 gap-y-8 sm:grid-cols-3 lg:grid-cols-4 lg:gap-x-5 xl:grid-cols-5">
         {products.map((p, i) => (
           <ProductCard key={p.id} p={p} lang={lang} priority={i < priorityFirst} pos={i} />
         ))}
@@ -114,13 +125,15 @@ export function ProductGrid({ products, lang, priorityFirst = 0, list = "grid", 
  * only, for the suggestions under a product page.
  */
 export function ProductRow({ products, lang, compact = false, list = "row" }: { products: Card[]; lang: Lang; compact?: boolean; list?: string }) {
-  // On a computer, only full rows of four; a phone still swipes through all of them.
-  const keep = products.length >= 8 ? 8 : products.length >= 4 ? 4 : products.length;
+  // On a computer, only full rows (of four, of five from 1280 px when there are five); a phone still swipes through all of them.
+  const full = (n: number) => (products.length >= 2 * n ? 2 * n : products.length >= n ? n : products.length);
+  const four = full(4);
+  const five = full(5);
   return (
     <ListClicks list={list}>
-      <div className="-mx-4 grid auto-cols-[46%] grid-flow-col grid-rows-[repeat(4,auto)] gap-x-3 overflow-x-auto scroll-px-4 px-4 pb-2 snap-x no-scrollbar sm:auto-cols-[30%] md:mx-0 md:auto-cols-auto md:grid-flow-row md:grid-cols-4 md:grid-rows-none md:gap-x-5 md:gap-y-10 md:overflow-visible md:px-0 md:pb-0">
+      <div className={`-mx-4 grid auto-cols-[46%] grid-flow-col grid-rows-[repeat(4,auto)] gap-x-3 overflow-x-auto scroll-px-4 px-4 pb-2 snap-x no-scrollbar sm:auto-cols-[30%] md:mx-0 md:auto-cols-auto md:grid-flow-row md:grid-cols-4 md:grid-rows-none md:gap-x-5 md:gap-y-10 md:overflow-visible md:px-0 md:pb-0 ${products.length >= 5 ? "xl:grid-cols-5 xl:gap-y-8" : ""}`}>
         {products.map((p, i) => (
-          <ProductCard key={p.id} p={p} lang={lang} compact={compact} pos={i} className={`snap-start ${i >= keep ? "md:hidden" : ""}`} />
+          <ProductCard key={p.id} p={p} lang={lang} compact={compact} pos={i} className={`snap-start ${i >= four ? "md:hidden" : ""} ${i >= five ? "xl:hidden" : i >= four ? "xl:grid" : ""}`} />
         ))}
       </div>
     </ListClicks>

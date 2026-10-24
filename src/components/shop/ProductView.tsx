@@ -18,7 +18,7 @@ import { Gallery, slidesOf } from "./Gallery";
 import { BuyBox, useBuyChoice, type BuyChoice } from "./BuyBox";
 import { useOrderDraft } from "./OrderForm";
 import { OrderSheet } from "./OrderSheet";
-import { IconCheck, IconChevronDown, IconTruck } from "./Icons";
+import { IconCash, IconCheck, IconChevronDown, IconTruck } from "./Icons";
 
 type P = Omit<ProductPage, "related">;
 
@@ -136,7 +136,7 @@ export function ProductView({ p, lang, settings, url }: { p: P; lang: Lang; sett
     h?.focus({ preventScroll: true });
   }
 
-  function openSheet(from: "bar" | "end") {
+  function openSheet(from: "bar" | "end" | "side") {
     track("order_sheet_opened", { productId: p.id, props: { from } });
     setSheet(true);
   }
@@ -232,53 +232,63 @@ export function ProductView({ p, lang, settings, url }: { p: P; lang: Lang; sett
         </div>
       </div>
 
-      {/* The long pictures first, one under the other (they sell): edge to edge on a phone, wide on a computer, as on the
-          owner's reference shop; then the description as the shop wrote it, at a readable line length.
-          With pictures, the title has the gallery link's words. */}
+      {/* The long pictures first, one under the other (they sell): edge to edge on a phone; on a computer in a column
+          about a phone's width (they are made for one, and a screen-wide picture took two screens), with the description
+          beside them and the price and the button staying in view while they are read. Without pictures, the description
+          alone at a readable line length. With pictures, the title has the gallery link's words. */}
       {(description || hasDetails) && (
         <section id="details" className="mx-auto mt-10 flex max-w-5xl flex-col gap-4 border-t border-line pt-8" aria-labelledby="desc-title">
           <TabTitle id="desc-title" ref={detailsTitle}>
             {hasDetails ? t.product.detailsTitle : t.product.description}
           </TabTitle>
-          {hasDetails && (
-            <div ref={picturesRef} className="relative -mx-4 flex flex-col overflow-hidden md:mx-0 md:rounded-2xl">
-              {details.map((img) => (
-                <Image
-                  key={img.id}
-                  src={`/api/img/${img.id}`}
-                  alt={img.alt ?? ""}
-                  width={img.width}
-                  height={img.height}
-                  sizes="(min-width: 1088px) 1088px, 100vw"
-                  className="block h-auto w-full"
-                  {...(img.blur ? { placeholder: "blur" as const, blurDataURL: img.blur } : {})}
-                />
-              ))}
-              {/* The last picture's last line: once on screen, the pictures were seen to the end. */}
-              <span ref={picturesEnd} aria-hidden className="pointer-events-none absolute inset-x-0 bottom-0 h-px" />
-            </div>
-          )}
-          {description && (
-            <div className="flex max-w-3xl flex-col gap-3 text-[17px] leading-relaxed text-ink-2">
-              {/* Lines starting with "- " read as a list of ticks, like Amazon's "About this item". */}
-              {descriptionBlocks(description).map((b, i) =>
-                b.kind === "text" ? (
-                  <p key={i} className="whitespace-pre-line" dir="auto">
-                    {b.text}
-                  </p>
-                ) : (
-                  <ul key={i} className="flex flex-col gap-2.5">
-                    {b.items.map((item, j) => (
-                      <li key={j} className="flex items-start gap-2.5" dir="auto">
-                        <IconCheck className="mt-1 h-5 w-5 shrink-0 text-olive" />
-                        <span className="min-w-0">{item}</span>
-                      </li>
-                    ))}
-                  </ul>
-                ),
-              )}
-            </div>
-          )}
+          <div className={hasDetails ? "flex flex-col gap-4 lg:grid lg:grid-cols-[500px_minmax(0,1fr)] lg:gap-12" : "contents"}>
+            {hasDetails && (
+              <div ref={picturesRef} className="relative -mx-4 flex flex-col self-start overflow-hidden md:mx-auto md:w-full md:max-w-[540px] md:rounded-2xl lg:mx-0 lg:max-w-none">
+                {details.map((img) => (
+                  <Image
+                    key={img.id}
+                    src={`/api/img/${img.id}`}
+                    alt={img.alt ?? ""}
+                    width={img.width}
+                    height={img.height}
+                    sizes="(min-width: 1024px) 500px, (min-width: 768px) 540px, 100vw"
+                    className="block h-auto w-full"
+                    {...(img.blur ? { placeholder: "blur" as const, blurDataURL: img.blur } : {})}
+                  />
+                ))}
+                {/* The last picture's last line: once on screen, the pictures were seen to the end. */}
+                <span ref={picturesEnd} aria-hidden className="pointer-events-none absolute inset-x-0 bottom-0 h-px" />
+              </div>
+            )}
+            {(description || (hasDetails && !out)) && (
+              <div className="flex min-w-0 flex-col gap-6 max-lg:contents">
+                {description && (
+                  <div className={`flex max-w-3xl flex-col gap-3 text-[17px] leading-relaxed text-ink-2 ${hasDetails ? "md:mx-auto md:w-full md:max-w-[540px] lg:mx-0 lg:max-w-none" : ""}`}>
+                    {/* Lines starting with "- " read as a list of ticks, like Amazon's "About this item". */}
+                    {descriptionBlocks(description).map((b, i) =>
+                      b.kind === "text" ? (
+                        <p key={i} className="whitespace-pre-line" dir="auto">
+                          {b.text}
+                        </p>
+                      ) : (
+                        <ul key={i} className="flex flex-col gap-2.5">
+                          {b.items.map((item, j) => (
+                            <li key={j} className="flex items-start gap-2.5" dir="auto">
+                              <IconCheck className="mt-1 h-5 w-5 shrink-0 text-olive" />
+                              <span className="min-w-0">{item}</span>
+                            </li>
+                          ))}
+                        </ul>
+                      ),
+                    )}
+                  </div>
+                )}
+                {hasDetails && !out && (
+                  <SideOrder lang={lang} settings={settings} name={name} price={pay.price} from={pay.from} free={Boolean(choice.offer?.freeDelivery)} onOrder={() => openSheet("side")} />
+                )}
+              </div>
+            )}
+          </div>
         </section>
       )}
 
@@ -436,6 +446,33 @@ function EndOrder({ ref, lang, settings, price, from, free, onOrder }: { ref: Re
       </p>
       <DeliveryLine lang={lang} settings={settings} free={free} price={price} />
       <button ref={ref} type="button" onClick={onOrder} aria-haspopup="dialog" className="flex min-h-[58px] w-full items-center justify-center gap-2.5 rounded-full bg-buy px-5 py-2 text-[19px] font-bold leading-tight text-night shadow-[inset_0_-3px_0_var(--color-buy-2)] transition [--focus-ring:var(--color-night)] hover:bg-buy-2 active:scale-[.99]">
+        <IconTruck className="h-6 w-6 shrink-0" />
+        {t.product.orderNow}
+      </button>
+    </div>
+  );
+}
+
+/**
+ * Computer only, beside the long pictures: the name, what the current choice
+ * costs, delivery, payment on delivery and the button, staying in view while
+ * the pictures are read (a phone has its bar at the bottom instead).
+ */
+function SideOrder({ lang, settings, name, price, from, free, onOrder }: { lang: Lang; settings: PublicSettings; name: string; price: number; from: boolean; free: boolean; onOrder: () => void }) {
+  const t = dict(lang);
+  return (
+    <div className="sticky top-40 flex flex-col gap-3 rounded-[24px] border border-line bg-white p-5 shadow-[0_10px_30px_-20px_rgb(0_0_0/.4)] max-lg:hidden" data-testid="side-order">
+      <p className="line-clamp-2 text-[17px] font-bold leading-snug text-ink">{name}</p>
+      <p className="flex items-baseline justify-between gap-3">
+        <span className="text-[16px] text-ink-2">{from ? t.product.from : t.buy.price}</span>
+        <span className="whitespace-nowrap text-[26px] font-bold leading-none text-ink price-nums ltr-nums">{formatTND(price, lang)}</span>
+      </p>
+      <DeliveryLine lang={lang} settings={settings} free={free} price={price} />
+      <p className="flex items-start gap-2 text-[16px] text-ink-2">
+        <IconCash className="mt-0.5 h-5 w-5 shrink-0 text-sea" />
+        {t.trust.cod}
+      </p>
+      <button type="button" onClick={onOrder} aria-haspopup="dialog" className="mt-1 flex min-h-[54px] w-full items-center justify-center gap-2.5 rounded-full bg-buy px-5 py-2 text-[18px] font-bold leading-tight text-night shadow-[inset_0_-3px_0_var(--color-buy-2)] transition [--focus-ring:var(--color-night)] hover:bg-buy-2 active:scale-[.99]">
         <IconTruck className="h-6 w-6 shrink-0" />
         {t.product.orderNow}
       </button>
