@@ -33,7 +33,7 @@ export default async function ThanksRoute({ params }: PageProps<"/[lang]/command
             {ref}
           </strong>
         </p>
-        {o && o.status === "PENDING" && <ThanksPhone lang={lang} firstName={o.firstName} whatsapp={settings.contact.whatsapp || null} orderRef={o.ref} />}
+        {o && o.status === "PENDING" && <ThanksPhone lang={lang} firstName={o.firstName} whatsapp={settings.contact.whatsapp || null} orderRef={o.ref} shopPhone={settings.shop.phone || null} />}
       </div>
 
       {o && (
@@ -62,7 +62,7 @@ export default async function ThanksRoute({ params }: PageProps<"/[lang]/command
                   <span>
                     <span className="ltr-nums">{i.qty} × </span>
                     {pick(lang, i.name, i.product?.nameAr)}
-                    {i.variantName && <span className="text-muted"> · {i.variantName}</span>}
+                    {i.variantName && <span className="text-muted"> · {pick(lang, i.variantName, i.variant?.name === i.variantName ? i.variant.nameAr : null)}</span>}
                     {i.offerLabel && <span className="text-muted"> · {pick(lang, i.offerLabel, i.offerLabelAr)}</span>}
                   </span>
                   <span className="shrink-0 whitespace-nowrap price-nums ltr-nums">{formatTND(i.lineTotal, lang)}</span>

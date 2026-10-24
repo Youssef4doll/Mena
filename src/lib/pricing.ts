@@ -1,5 +1,6 @@
 import type { DeliveryZone } from "./settings-schema";
 import { evaluatePromo, type PromoInput, type PromoResult } from "./promo";
+import { offerLine } from "./offer-label";
 
 /**
  * The one place a basket becomes a price. Pure: it is handed the catalog rows
@@ -205,8 +206,9 @@ export function priceCart(args: {
         qty: offer.quantity,
         lineTotal: offer.price,
         offerId: offer.id,
-        offerLabel: offer.label,
-        offerLabelAr: offer.labelAr,
+        // What the order, its messages and its tracking page say: the quantity, and the name only when it agrees.
+        offerLabel: offerLine(offer, "fr"),
+        offerLabelAr: offerLine(offer, "ar"),
         freeDelivery: offer.freeDelivery,
       });
       continue;

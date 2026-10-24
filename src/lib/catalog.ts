@@ -5,7 +5,7 @@ import { prisma } from "./prisma";
 import type { CatalogProduct } from "./pricing";
 import { leadOffer, offerCompareAt, offerLastDay, offersApply } from "./offer-display";
 import { parseSpecs, parseVideo, soldStep } from "./product-content";
-import { complete, normalize, rank, tokenize, type Ranked } from "./search";
+import { complete, normalize, rank, tokenize, withSynonyms, type Ranked } from "./search";
 import type { Lang } from "@/i18n/lang";
 
 /**
@@ -75,7 +75,7 @@ export type ProductCard = {
   /** The card's price includes delivery (its offer says so). */
   freeDelivery: boolean;
   /** The pack that saves the most per unit, as the shop named it. */
-  deal: { label: string; labelAr: string | null; quantity: number; freeDelivery: boolean } | null;
+  deal: { label: string; labelAr: string | null; quantity: number; price: number; freeDelivery: boolean } | null;
 };
 
 type PriceRow = {
@@ -121,11 +121,11 @@ export function cardDeal(p: PriceRow, now = Date.now()): Pick<ProductCard, "free
   if (!lead) return { freeDelivery: false, deal: null };
   const leadUnit = lead.price / lead.quantity;
   const best = live
-    .filter((o) => o.quantity > lead.quantity && o.price / o.quantity < leadUnit && o.label)
+    .filter((o) => o.quantity > lead.quantity && o.price / o.quantity < leadUnit)
     .sort((a, b) => a.price / a.quantity - b.price / b.quantity)[0];
   return {
     freeDelivery: Boolean(lead.freeDelivery),
-    deal: best ? { label: best.label!, labelAr: best.labelAr ?? null, quantity: best.quantity, freeDelivery: Boolean(best.freeDelivery) } : null,
+    deal: best ? { label: best.label ?? "", labelAr: best.labelAr ?? null, quantity: best.quantity, price: best.price, freeDelivery: Boolean(best.freeDelivery) } : null,
   };
 }
 
@@ -455,6 +455,20 @@ export async function productSlugs(limit: number) {
   return (await prisma.product.findMany({ where: { active: true }, orderBy: { updatedAt: "desc" }, take: limit, select: { slug: true } })).map((p) => p.slug);
 }
 
+/** A category's former address → its current one (renamed in the back office): old links and Google results still arrive. */
+export const categoryMovedTo = unstable_cache(
+  async (slug: string) => (await prisma.category.findFirst({ where: { oldSlugs: { has: slug }, active: true }, select: { slug: true } }))?.slug ?? null,
+  ["category-moved-v1"],
+  { tags: [CATALOG_TAG], revalidate: TTL },
+);
+
+/** Whether a product on sale has an offer delivered free: the delivery and terms pages then say so, as the product pages do. */
+export const hasFreeDeliveryOffers = unstable_cache(
+  async () => (await prisma.productOffer.count({ where: { active: true, freeDelivery: true, product: { active: true }, OR: [{ endsAt: null }, { endsAt: { gt: new Date() } }] } })) > 0,
+  ["free-offers-v1"],
+  { tags: [CATALOG_TAG], revalidate: TTL },
+);
+
 /** A product's former address → its current one (the shop renamed it): old links and Google results still arrive. */
 export const productMovedTo = unstable_cache(
   async (slug: string) => (await prisma.product.findFirst({ where: { oldSlugs: { has: slug }, active: true }, select: { slug: true } }))?.slug ?? null,
@@ -483,9 +497,10 @@ const getSearchIndex = unstable_cache(
         id: r.id,
         featured: r.featured,
         fields: [
-          { tokens: tokenize(`${r.name} ${r.nameAr ?? ""}`), weight: 3 },
-          { tokens: tokenize(r.keywords), weight: 2.5 },
-          { tokens: tokenize(`${r.category?.name ?? ""} ${r.category?.nameAr ?? ""}`), weight: 1.5 },
+          // Names, keywords and category also under their other names ("maquillage" → "مكياج"; see search.ts).
+          { tokens: withSynonyms(tokenize(`${r.name} ${r.nameAr ?? ""}`)), weight: 3 },
+          { tokens: withSynonyms(tokenize(r.keywords)), weight: 2.5 },
+          { tokens: withSynonyms(tokenize(`${r.category?.name ?? ""} ${r.category?.nameAr ?? ""}`)), weight: 1.5 },
           // "montre dorée", "لمبة كحلة": the options are words of the product too.
           { tokens: tokenize(r.variants.map((v) => `${v.name} ${v.nameAr ?? ""}`).join(" ")), weight: 1.5 },
           { tokens: tokenize(`${r.summary} ${r.summaryAr ?? ""}`), weight: 1 },
@@ -500,7 +515,7 @@ const getSearchIndex = unstable_cache(
       },
     };
   },
-  ["search-index-v2"],
+  ["search-index-v3"],
   { tags: [CATALOG_TAG], revalidate: 300 },
 );
 

@@ -9,7 +9,7 @@ export async function customerOrderView(orderId: string) {
       id: true, ref: true, status: true, name: true, governorate: true, city: true, subtotal: true, discount: true, deliveryFee: true, total: true,
       paymentMethod: true, paymentStatus: true, deliveryQuote: true, carrier: true, trackingNumber: true, createdAt: true, confirmedAt: true,
       shippedAt: true, deliveredAt: true, locale: true,
-      items: { select: { id: true, name: true, variantName: true, unitPrice: true, qty: true, lineTotal: true, offerLabel: true, offerLabelAr: true, productId: true, product: { select: { slug: true, nameAr: true, images: { where: { kind: "GALLERY" }, orderBy: { sort: "asc" }, take: 1, select: { mediaId: true } } } }, review: { select: { id: true } } } },
+      items: { select: { id: true, name: true, variantName: true, variant: { select: { name: true, nameAr: true } }, unitPrice: true, qty: true, lineTotal: true, offerLabel: true, offerLabelAr: true, productId: true, product: { select: { slug: true, nameAr: true, images: { where: { kind: "GALLERY" }, orderBy: { sort: "asc" }, take: 1, select: { mediaId: true } } } }, review: { select: { id: true } } } },
       returns: { orderBy: { createdAt: "desc" }, take: 1, select: { status: true, createdAt: true } },
     },
   });

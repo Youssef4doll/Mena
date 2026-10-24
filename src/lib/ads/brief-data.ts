@@ -5,6 +5,7 @@ import { getSettings } from "../settings";
 import { deliverySpan } from "../delivery";
 import { baseline } from "./data";
 import { normName, normSource } from "./match";
+import { offerLine } from "../offer-label";
 import type { BriefAdStat, BriefInput, Reason } from "./brief";
 
 /**
@@ -188,7 +189,8 @@ export async function loadBriefInput(productId: string, now: Date = new Date()):
       hasVideo: Boolean(p.videoUrl?.trim()),
       photos: p._count.images,
       variants: p.variants,
-      offers: p.offers.filter((o) => !o.endsAt || o.endsAt > now).map((o) => ({ ...o, endsAt: o.endsAt?.toISOString() ?? null })),
+      // Ad copy names an offer as the shop does: by its quantity, with the owner's name only when it agrees.
+      offers: p.offers.filter((o) => !o.endsAt || o.endsAt > now).map((o) => ({ ...o, label: offerLine(o, "fr"), labelAr: offerLine(o, "ar"), endsAt: o.endsAt?.toISOString() ?? null })),
       active: p.active,
       available: p.available,
     },

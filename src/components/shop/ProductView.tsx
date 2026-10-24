@@ -12,8 +12,9 @@ import { formatTND } from "@/lib/money";
 import { descriptionBlocks } from "@/lib/description";
 import { governorateLabel } from "@/lib/governorates";
 import { discountPct, leadOffer } from "@/lib/offer-display";
-import { deliveryRangeLabel, deliverySpan } from "@/lib/delivery";
+import { deliveryRangeLabel, deliverySpan, freeOffersOf } from "@/lib/delivery";
 import { Stars } from "./Stars";
+import { Bidi } from "./Bidi";
 import { Gallery, slidesOf } from "./Gallery";
 import { BuyBox, useBuyChoice, type BuyChoice } from "./BuyBox";
 import { useOrderDraft } from "./OrderForm";
@@ -184,10 +185,10 @@ export function ProductView({ p, lang, settings, url }: { p: P; lang: Lang; sett
         </div>
 
         <div className="flex min-w-0 flex-col gap-2 md:col-start-2 md:row-start-1">
-          <h1 className="text-[24px] font-bold leading-snug text-ink md:text-[30px] md:leading-tight">{name}</h1>
+          <h1 className="text-[24px] font-bold leading-snug text-ink md:text-[30px] md:leading-tight"><Bidi text={name} /></h1>
           {summary && (
             <p className="text-[16px] leading-relaxed text-ink-2" dir="auto" data-testid="summary">
-              {summary}
+              <Bidi text={summary} />
             </p>
           )}
           {(p.rating || p.sold) && (
@@ -270,14 +271,14 @@ export function ProductView({ p, lang, settings, url }: { p: P; lang: Lang; sett
                     {descriptionBlocks(description).map((b, i) =>
                       b.kind === "text" ? (
                         <p key={i} className="whitespace-pre-line" dir="auto">
-                          {b.text}
+                          <Bidi text={b.text} />
                         </p>
                       ) : (
                         <ul key={i} className="flex flex-col gap-2.5">
                           {b.items.map((item, j) => (
                             <li key={j} className="flex items-start gap-2.5" dir="auto">
                               <IconCheck className="mt-1 h-5 w-5 shrink-0 text-olive" />
-                              <span className="min-w-0">{item}</span>
+                              <span className="min-w-0"><Bidi text={item} /></span>
                             </li>
                           ))}
                         </ul>
@@ -328,7 +329,7 @@ export function ProductView({ p, lang, settings, url }: { p: P; lang: Lang; sett
       )}
 
       {/* "قبل ما تطلب": the questions people ask, under the pictures and what customers said. */}
-      <Questions lang={lang} settings={settings} />
+      <Questions lang={lang} settings={settings} freeOffers={freeOffersOf(p.offers)} />
 
       {/* The end of the reading: the price of the current choice and one button, which opens the form here. */}
       {!out && <EndOrder ref={endRef} lang={lang} settings={settings} price={pay.price} from={pay.from} free={Boolean(choice.offer?.freeDelivery)} onOrder={() => openSheet("end")} />}
@@ -340,15 +341,15 @@ export function ProductView({ p, lang, settings, url }: { p: P; lang: Lang; sett
             {specs.map((s, i) =>
               s.label ? (
                 <div key={i} className="grid grid-cols-[minmax(0,2fr)_minmax(0,3fr)] gap-3 py-3">
-                  <dt className="text-muted" dir="auto">{s.label}</dt>
-                  <dd className="text-ink" dir="auto">{s.value}</dd>
+                  <dt className="text-muted" dir="auto"><Bidi text={s.label} /></dt>
+                  <dd className="text-ink" dir="auto"><Bidi text={s.value} /></dd>
                 </div>
               ) : (
                 <div key={i} className="flex items-start gap-2 py-3">
                   <dt className="sr-only">·</dt>
                   <dd className="flex items-start gap-2 text-ink" dir="auto">
                     <IconCheck className="mt-1 h-4 w-4 shrink-0 text-olive" />
-                    {s.value}
+                    <Bidi text={s.value} />
                   </dd>
                 </div>
               ),
@@ -487,14 +488,16 @@ function SideOrder({ lang, settings, name, price, from, free, onOrder }: { lang:
  * the shop's own settings only: no promise the settings do not make. Closed
  * until tapped, so the page stays short.
  */
-function Questions({ lang, settings }: { lang: Lang; settings: PublicSettings }) {
+function Questions({ lang, settings, freeOffers }: { lang: Lang; settings: PublicSettings; freeOffers: "all" | "some" | "none" }) {
   const t = dict(lang);
   const q = t.product.faq;
   const span = deliverySpan(settings.delivery.zones);
   const { fee, freeThreshold, openBeforePaying } = settings.delivery;
+  // The same rule as the summary above (deliveryFeeFor): free when every offer of this product is, else the fee and when it is waived.
+  const allFree = fee === 0 || freeOffers === "all";
   const items: { q: string; a: React.ReactNode }[] = [
     ...(span
-      ? [{ q: q.whenQ, a: q.whenA(deliveryRangeLabel(span.minDays, span.maxDays, lang), fee === 0 ? t.buy.freeDelivery : `${t.buy.delivery} ${formatTND(fee, lang)}`, freeThreshold != null && fee > 0 ? formatTND(freeThreshold, lang) : null) }]
+      ? [{ q: q.whenQ, a: q.whenA(deliveryRangeLabel(span.minDays, span.maxDays, lang), allFree ? t.buy.freeDelivery : `${t.buy.delivery} ${formatTND(fee, lang)}`, freeThreshold != null && !allFree ? formatTND(freeThreshold, lang) : null, !allFree && freeOffers === "some") }]
       : []),
     { q: q.payQ, a: openBeforePaying ? `${q.payA} ${q.openA}` : q.payA },
     { q: q.callQ, a: q.callA },

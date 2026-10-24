@@ -7,6 +7,7 @@ import { settingsSchema, secretsSchema, type Settings, type Secrets } from "@/li
 import { storeImage } from "@/lib/media";
 import { normalizePhone } from "@/lib/phone";
 import { CATALOG_TAG } from "@/lib/catalog";
+import { messengerUser, profileUrl, socialProblem } from "@/lib/social";
 
 export async function saveAll(settings: Settings, secrets: Partial<Secrets>) {
   await requireAdmin();
@@ -16,6 +17,18 @@ export async function saveAll(settings: Settings, secrets: Partial<Secrets>) {
     if (!n) return { ok: false as const, error: "Numéro WhatsApp invalide (8 chiffres tunisiens)." };
     settings = { ...settings, contact: { ...settings.contact, whatsapp: n } };
   }
+  // Social links: a real profile on the right site or nothing (a bare "instagram.com/" reads as a scam signal).
+  for (const k of ["instagram", "facebook", "tiktok"] as const) {
+    const problem = socialProblem(k, settings.shop[k]);
+    if (problem) return { ok: false as const, error: problem };
+  }
+  const messengerProblem = socialProblem("messenger", settings.contact.messenger);
+  if (messengerProblem) return { ok: false as const, error: messengerProblem };
+  settings = {
+    ...settings,
+    shop: { ...settings.shop, instagram: profileUrl("instagram", settings.shop.instagram), facebook: profileUrl("facebook", settings.shop.facebook), tiktok: profileUrl("tiktok", settings.shop.tiktok) },
+    contact: { ...settings.contact, messenger: messengerUser(settings.contact.messenger) },
+  };
   for (const [g, z] of Object.entries(settings.delivery.zones)) {
     if (z.maxDays < z.minDays) return { ok: false as const, error: `${g} : le délai maximum est plus court que le minimum.` };
   }

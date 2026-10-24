@@ -32,9 +32,10 @@ export default async function ProductsPage({ searchParams }: PageProps<"/admin/p
   const params = readListParams(await searchParams);
   const base = listWhere(params);
   const where = tabWhere(params);
-  const [byActive, outCount, demoCount, untranslated, categories, firstTry] = await Promise.all([
+  const [byActive, outCount, uncheckedCount, demoCount, untranslated, categories, firstTry] = await Promise.all([
     prisma.product.groupBy({ by: ["active"], where: base, _count: { _all: true } }),
     prisma.product.count({ where: { AND: [base, OUT_OF_STOCK] } }),
+    prisma.product.count({ where: { ...base, active: true, checkedAt: null } }),
     prisma.product.count({ where: { isDemo: true } }),
     prisma.product.count({ where: { OR: [{ nameAr: null }, { nameAr: "" }] } }),
     prisma.category.findMany({ orderBy: [{ sort: "asc" }, { name: "asc" }], select: { id: true, name: true } }),
@@ -42,7 +43,7 @@ export default async function ProductsPage({ searchParams }: PageProps<"/admin/p
   ]);
   const online = byActive.find((g) => g.active)?._count._all ?? 0;
   const offline = byActive.find((g) => !g.active)?._count._all ?? 0;
-  const total = { all: online + offline, active: online, inactive: offline, out: outCount }[params.f];
+  const total = { all: online + offline, active: online, inactive: offline, out: outCount, unchecked: uncheckedCount }[params.f];
   const pages = pageCount(total);
   // A page past the end (the last products of it were just deleted): the last page instead.
   const page = Math.min(params.page, pages);
@@ -111,6 +112,7 @@ export default async function ProductsPage({ searchParams }: PageProps<"/admin/p
           { key: "active", label: "En ligne", href: tab("active"), count: online },
           { key: "inactive", label: "Hors ligne", href: tab("inactive"), count: offline },
           { key: "out", label: "Épuisés", href: tab("out"), count: outCount },
+          { key: "unchecked", label: "À vérifier", href: tab("unchecked"), count: uncheckedCount },
         ]}
       />
       <ListFilters params={params} categories={categories} />

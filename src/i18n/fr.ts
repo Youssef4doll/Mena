@@ -11,6 +11,7 @@ export const fr = {
     track: "Suivre ma commande",
     menu: "Menu",
     close: "Fermer",
+    skip: "Aller au contenu",
     language: "العربية",
   },
   trust: {
@@ -55,7 +56,8 @@ export const fr = {
     faq: {
       title: "Avant de commander",
       whenQ: "Quand vais-je recevoir ma commande\u00a0?",
-      whenA: (range: string, fee: string, freeFrom: string | null) => `En ${range} après notre appel de confirmation. ${fee}${freeFrom ? `, offerte dès ${freeFrom}` : ""}.`,
+      whenA: (range: string, fee: string, freeFrom: string | null, freeOffers = false) =>
+        `En ${range} après notre appel de confirmation. ${fee}${freeOffers ? ", offerte sur les offres marquées «\u00a0Livraison offerte\u00a0»" : ""}${freeFrom ? `, offerte dès ${freeFrom}` : ""}.`,
       payQ: "Comment je paie\u00a0?",
       payA: "En espèces au livreur, à la réception. Rien à payer maintenant.",
       openA: "Vous pouvez ouvrir le colis et le vérifier avant de payer.",
@@ -86,6 +88,8 @@ export const fr = {
     added: "Ajouté au panier",
     from: "dès",
     pack: (n: number) => `Lot de ${n}`,
+    /** A pack on a card when its own name is not shown: "3 unités : 138,000 DT". */
+    dealFor: (units: string, price: string) => `${units} : ${price}`,
     photo: (n: number, total: number) => `Photo ${n} sur ${total}`,
     save: (amount: string) => `−${amount}`,
     soldSuffix: "commandes en 30 jours",
@@ -130,6 +134,12 @@ export const fr = {
     phoneRequired: "Écrivez votre numéro de téléphone.",
     govError: "Choisissez votre gouvernorat.",
     addressError: "Écrivez votre adresse.",
+    addressShort: "Ajoutez la ville et la rue.",
+    /** Said under the fields: what the number is for, before anything is sent. */
+    phoneUse: "Votre numéro sert à confirmer et livrer votre commande. Si vous ne terminez pas, nous pouvons vous appeler une fois pour vous aider.",
+    privacyLink: "Vos données",
+    /** The delay for the governorate chosen, from the shop's own settings. */
+    deliveryTo: (gov: string, range: string) => `Livraison à ${gov} : ${range}, après l'appel de confirmation.`,
     missing: (fields: string) => `Il reste à remplir : ${fields}.`,
     variantError: "Choisissez d'abord une option plus haut.",
     price: "Prix",
@@ -212,6 +222,8 @@ export const fr = {
     titleName: (name: string) => `Merci ${name}, votre commande est enregistrée`,
     callingYou: "Nous vous appelons pour confirmer au",
     callSoon: "Nous vous appelons pour confirmer",
+    /** The shop's own number, so the call is recognised and answered. */
+    callFrom: (phone: string) => `L'appel viendra du ${phone}.`,
     notYours: "Pas votre numéro ? Dites-le-nous sur WhatsApp",
   },
   track: {
@@ -221,6 +233,8 @@ export const fr = {
     submit: "Voir ma commande",
     notFound: "Aucune commande ne correspond à ce numéro et ce téléphone.",
     yours: "Vos commandes sur cet appareil",
+    forget: "Effacer mes infos de cet appareil",
+    forgotten: "Vos infos sont effacées de cet appareil.",
     status: {
       PENDING: "En attente de confirmation",
       CONFIRMED: "Confirmée",

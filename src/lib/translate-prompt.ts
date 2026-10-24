@@ -35,7 +35,7 @@ French texts are plain, correct French.`;
 export const KEYWORDS_RULE = `"keywords": 8 to 20 comma-separated search terms a Tunisian customer might type for this product and that the texts support: synonyms in French, in Tunisian Arabic, in Tunisian written in Latin letters (arabizi, e.g. "lamba" for لمبة), and frequent misspellings. Lower case, no duplicates.`;
 
 /** The title and the line Google shows, written the way the best shop pages are: the words people search first, one real benefit, how it is paid. */
-export const SEO_RULE = `"seoTitle" / "seoTitleAr": the title Google shows, at most 60 characters: first the words a customer types to find this product (what it is), then what sets it apart (size, capacity, use, or the brand when the texts give one). No shop name (the site adds it), no price, no "pas cher", "meilleur", "promo" or capitals.
+export const SEO_RULE = `"seoTitle" / "seoTitleAr": the title Google shows, at most 60 characters: first the words a customer types to find this product (what it is), then what sets it apart (size, capacity, use, or the brand when the texts give one). No shop name (the site adds it), no price, no "pas cher", "meilleur", "promo", and no word in capitals for emphasis; brands, models and units keep the capitals the texts give them (MAXISALON, 450 °C, 220 V).
 - "seoDescription" / "seoDescriptionAr": the line under that title, 120 to 155 characters: the main benefit and one or two facts from the texts, ending with "Paiement à la livraison." (in Arabic "الدفع عند الاستلام."). No price, it changes.`;
 
 export const SYSTEM = `${SHOP_VOICE}

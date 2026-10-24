@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { isLang, pageMeta } from "@/i18n";
 import { getSettings } from "@/lib/settings";
+import { hasFreeDeliveryOffers } from "@/lib/catalog";
 import { formatTND } from "@/lib/money";
 import { formatPhone, normalizePhone } from "@/lib/phone";
 import { Prose } from "../Prose";
@@ -17,8 +18,10 @@ export async function generateMetadata({ params }: PageProps<"/[lang]/conditions
 export default async function TermsRoute({ params }: PageProps<"/[lang]/conditions">) {
   const { lang } = await params;
   if (!isLang(lang)) notFound();
-  const s = await getSettings();
+  const [s, freeOffers] = await Promise.all([getSettings(), hasFreeDeliveryOffers()]);
   const shop = s.shop;
+  const freeAr = s.delivery.fee > 0 && freeOffers ? "، ومجاني في العروض اللي مكتوب عليها «التوصيل مجاني»" : "";
+  const freeFr = s.delivery.fee > 0 && freeOffers ? ", offerte sur les offres marquées « Livraison offerte »" : "";
   const phone = shop.phone ? formatPhone(normalizePhone(shop.phone) || shop.phone) : "";
   if (lang === "ar")
     return (
@@ -32,7 +35,7 @@ export default async function TermsRoute({ params }: PageProps<"/[lang]/conditio
         <h2>الطلبية</h2>
         <p>تُسجَّل الطلبية عند تأكيدها على الموقع. نتصل بك بعد ذلك بالهاتف أو على واتساب لتأكيدها. يمكن إلغاء الطلبية التي لم يتمّ تأكيدها.</p>
         <h2>الأسعار</h2>
-        <p>الأسعار معروضة بالدينار التونسي، وتشمل كل الأداءات. معلوم التوصيل <bdi>{formatTND(s.delivery.fee, "ar")}</bdi> مهما كانت الولاية، ويظهر قبل تأكيد الطلبية. المبلغ الجملي المعروض عند الطلب هو المبلغ الذي تدفعه.</p>
+        <p>الأسعار معروضة بالدينار التونسي، وتشمل كل الأداءات. معلوم التوصيل <bdi>{formatTND(s.delivery.fee, "ar")}</bdi> مهما كانت الولاية{freeAr}، ويظهر قبل تأكيد الطلبية. المبلغ الجملي المعروض عند الطلب هو المبلغ الذي تدفعه.</p>
         <h2>الدفع</h2>
         <p>يتمّ الدفع نقدًا عند الاستلام.</p>
         <h2>التوصيل</h2>
@@ -54,7 +57,7 @@ export default async function TermsRoute({ params }: PageProps<"/[lang]/conditio
       <h2>Commande</h2>
       <p>La commande est enregistrée quand vous la validez sur le site. Nous vous contactons ensuite par téléphone ou WhatsApp pour la confirmer. Une commande non confirmée peut être annulée.</p>
       <h2>Prix</h2>
-      <p>Les prix sont indiqués en dinars tunisiens, toutes taxes comprises. La livraison coûte {formatTND(s.delivery.fee, "fr")}, quel que soit le gouvernorat, et s&apos;affiche avant la validation. Le montant total affiché au moment de la commande est celui que vous payez.</p>
+      <p>Les prix sont indiqués en dinars tunisiens, toutes taxes comprises. La livraison coûte {formatTND(s.delivery.fee, "fr")}, quel que soit le gouvernorat{freeFr}, et s&apos;affiche avant la validation. Le montant total affiché au moment de la commande est celui que vous payez.</p>
       <h2>Paiement</h2>
       <p>Le paiement se fait en espèces à la livraison.</p>
       <h2>Livraison</h2>

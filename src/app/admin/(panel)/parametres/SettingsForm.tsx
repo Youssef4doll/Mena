@@ -77,9 +77,9 @@ export function SettingsForm({ initial, secretsSet }: { initial: Settings; secre
           <label className={label}>E-mail<input {...text("shop", "email")} /></label>
           <label className={label}>Matricule fiscal / RNE<input {...text("shop", "legalId")} /></label>
           <label className={`${label} col-span-2`}>Adresse ou ville<input {...text("shop", "address")} /></label>
-          <label className={label}>Instagram (lien)<input {...text("shop", "instagram")} /></label>
-          <label className={label}>Facebook (lien)<input {...text("shop", "facebook")} /></label>
-          <label className={label}>TikTok (lien)<input {...text("shop", "tiktok")} /></label>
+          <label className={label}>Instagram (adresse du profil, ou vide)<input {...text("shop", "instagram")} placeholder="https://www.instagram.com/votre.page" /></label>
+          <label className={label}>Facebook (adresse de la page, ou vide)<input {...text("shop", "facebook")} placeholder="https://www.facebook.com/votre.page" /></label>
+          <label className={label}>TikTok (adresse du profil, ou vide)<input {...text("shop", "tiktok")} placeholder="https://www.tiktok.com/@votre.page" /></label>
         </div>
       </Card>
 
@@ -119,7 +119,7 @@ export function SettingsForm({ initial, secretsSet }: { initial: Settings; secre
       <Card title="Contact client">
         <div className="grid grid-cols-2 gap-2">
           <label className={label}>WhatsApp (8 chiffres)<input {...text("contact", "whatsapp", { inputMode: "tel" })} /></label>
-          <label className={label}>Messenger (nom de la page)<input {...text("contact", "messenger")} /></label>
+          <label className={label}>Messenger (nom d&apos;utilisateur de la page, celui de m.me/…, ou vide)<input {...text("contact", "messenger")} placeholder="votre.page" /></label>
         </div>
         <p className="mt-2 text-xs text-muted">Vide = les boutons WhatsApp disparaissent de la boutique.</p>
       </Card>

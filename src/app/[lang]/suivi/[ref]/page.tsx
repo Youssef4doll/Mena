@@ -100,7 +100,7 @@ export default async function OrderRoute({ params, searchParams }: PageProps<"/[
               </span>
               <span className="flex-1">
                 {i.product ? <Link href={href(lang, `/produit/${i.product.slug}`)}>{pick(lang, i.name, i.product.nameAr)}</Link> : i.name}
-                {i.variantName && <span className="block text-[16px] text-muted">{i.variantName}</span>}
+                {i.variantName && <span className="block text-[16px] text-muted">{pick(lang, i.variantName, i.variant?.name === i.variantName ? i.variant.nameAr : null)}</span>}
                 {i.offerLabel && <span className="block text-[16px] text-muted">{pick(lang, i.offerLabel, i.offerLabelAr)}</span>}
               </span>
               <span className="shrink-0 text-end">

@@ -4,6 +4,7 @@ import { json, limit, readJson } from "@/lib/http";
 import { LIMITS } from "@/lib/rate-limit";
 import { CLIENT_EVENTS } from "@/lib/events";
 import { deviceFromUA, isBot } from "@/lib/device";
+import { isInternal } from "@/lib/internal";
 
 const id = z.string().regex(/^[A-Za-z0-9-]{8,64}$/);
 const body = z.object({
@@ -40,10 +41,11 @@ const body = z.object({
  * First-party analytics intake. Refuses unknown event names, bots, property
  * bags over 1 KB and clocks more than a day off. The device class is read
  * from the request's User-Agent here, not from anything the page says.
+ * The shop's own visits (admin signed in, excluded device) are not counted.
  */
 export async function POST(request: Request) {
   const ua = request.headers.get("user-agent");
-  if (isBot(ua)) return json({ ok: true, accepted: 0 });
+  if (isBot(ua) || (await isInternal())) return json({ ok: true, accepted: 0 });
   const limited = limit(request, "events", LIMITS.events);
   if (limited) return limited;
   const parsed = body.safeParse(await readJson(request, 32_768));

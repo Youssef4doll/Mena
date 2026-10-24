@@ -4,6 +4,7 @@ import { Prisma } from "@prisma/client";
 import { prisma } from "./prisma";
 import { slugify } from "./slug";
 import { parseVideo } from "./product-content";
+import { offerLabelProblem } from "./offer-label";
 
 /**
  * Saving a product, shared by the editor, the CSV import and the copy of a
@@ -63,6 +64,8 @@ export const productSchema = z.object({
   available: z.boolean(),
   active: z.boolean(),
   featured: z.boolean(),
+  /** Facts checked with the supplier (see Product.checkedAt). Left out: unchanged. */
+  checked: z.boolean().optional(),
   variants: z.array(variant).max(60),
   offers: z.array(offer).max(8),
 });
@@ -112,6 +115,11 @@ export async function writeProduct(id: string | null, raw: unknown, loadedAt?: n
   if (d.offers.length > 0 && d.variants.some((v) => v.price != null && v.price !== d.price)) {
     return { ok: false, error: "Les offres utilisent le prix du produit : retirez le prix propre des variantes, ou retirez les offres." };
   }
+  // A name that speaks of another quantity than the offer's ("la 3e offerte" on 2 units) promises what the parcel does not hold.
+  for (const [i, o] of d.offers.entries()) {
+    const problem = offerLabelProblem(o);
+    if (problem) return { ok: false, error: `Offre ${i + 1} : ${problem}. Corrigez le nom ou la quantité.` };
+  }
   if (d.videoUrl && !parseVideo(d.videoUrl)) return { ok: false, error: "Vidéo : collez l'adresse complète d'une vidéo YouTube, Vimeo, TikTok, Instagram ou Facebook, ou l'adresse https d'un fichier .mp4 ou d'une vidéo .m3u8 (Amazon)." };
   const slug = slugify(d.slug || d.name);
   if (!slug) return { ok: false, error: "Adresse (slug) invalide." };
@@ -123,7 +131,7 @@ export async function writeProduct(id: string | null, raw: unknown, loadedAt?: n
       ? prisma.product.findUnique({
           where: { id },
           select: {
-            slug: true, oldSlugs: true, updatedAt: true,
+            slug: true, oldSlugs: true, updatedAt: true, checkedAt: true,
             variants: { select: { id: true, name: true, nameAr: true, colorHex: true, sku: true, price: true, stockQty: true, available: true, sort: true } },
             offers: { select: { id: true, label: true, labelAr: true, quantity: true, price: true, freeDelivery: true, endsAt: true, active: true, sort: true } },
           },
@@ -149,6 +157,8 @@ export async function writeProduct(id: string | null, raw: unknown, loadedAt?: n
     price: d.price, compareAt: d.compareAt, cost: d.cost, categoryId: d.categoryId, supplierId: d.supplierId,
     supplierRef: d.supplierRef || null, supplierUrl: d.supplierUrl || null, stockMode: d.stockMode, stockQty: d.stockQty,
     available: d.available, active: d.active, featured: d.featured,
+    // Ticked: the first date it was ticked is kept; unticked: cleared; not sent: unchanged.
+    ...(d.checked === undefined ? {} : { checkedAt: d.checked ? (before?.checkedAt ?? new Date()) : null }),
   };
   const variantRow = (v: (typeof d.variants)[number], i: number) => ({ name: v.name, nameAr: v.nameAr || null, colorHex: v.colorHex ? v.colorHex.toLowerCase() : null, sku: v.sku || null, price: v.price, stockQty: v.stockQty, available: v.available, sort: i });
   const offerRow = (o: (typeof d.offers)[number], i: number) => ({ label: o.label, labelAr: o.labelAr || null, quantity: o.quantity, price: o.price, freeDelivery: o.freeDelivery, endsAt: endsAtOf(o.endsOn), active: o.active, sort: i });
@@ -221,7 +231,7 @@ export const productForForm = {
   id: true, name: true, nameAr: true, slug: true, summary: true, summaryAr: true, description: true, descriptionAr: true,
   specs: true, specsAr: true, videoUrl: true, keywords: true, seoTitle: true, seoTitleAr: true, seoDescription: true, seoDescriptionAr: true,
   price: true, compareAt: true, cost: true, categoryId: true, supplierId: true, supplierRef: true, supplierUrl: true,
-  stockMode: true, stockQty: true, available: true, active: true, featured: true, oldSlugs: true, updatedAt: true,
+  stockMode: true, stockQty: true, available: true, active: true, featured: true, checkedAt: true, oldSlugs: true, updatedAt: true,
   variants: { orderBy: { sort: "asc" }, select: { id: true, name: true, nameAr: true, colorHex: true, sku: true, price: true, stockQty: true, available: true } },
   offers: { orderBy: { sort: "asc" }, select: { id: true, label: true, labelAr: true, quantity: true, price: true, freeDelivery: true, active: true, endsAt: true } },
 } satisfies Prisma.ProductSelect;
@@ -235,7 +245,7 @@ export function toInput(p: Stored): ProductInput {
     keywords: p.keywords, seoTitle: p.seoTitle, seoTitleAr: p.seoTitleAr ?? "", seoDescription: p.seoDescription, seoDescriptionAr: p.seoDescriptionAr ?? "",
     price: p.price, compareAt: p.compareAt, cost: p.cost, categoryId: p.categoryId, supplierId: p.supplierId,
     supplierRef: p.supplierRef ?? "", supplierUrl: p.supplierUrl ?? "", stockMode: p.stockMode, stockQty: p.stockQty,
-    available: p.available, active: p.active, featured: p.featured,
+    available: p.available, active: p.active, featured: p.featured, checked: p.checkedAt != null,
     variants: p.variants.map((v) => ({ id: v.id, name: v.name, nameAr: v.nameAr ?? "", colorHex: v.colorHex ?? "", sku: v.sku ?? "", price: v.price, stockQty: v.stockQty, available: v.available })),
     offers: p.offers.map((o) => ({
       id: o.id, label: o.label, labelAr: o.labelAr ?? "", quantity: o.quantity, price: o.price, freeDelivery: o.freeDelivery, active: o.active,

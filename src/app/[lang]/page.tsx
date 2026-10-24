@@ -30,7 +30,8 @@ export default async function Home({ params }: PageProps<"/[lang]">) {
   const [settings, home, cats] = await Promise.all([getSettings(), getHome(), getHomeCategories()]);
   const hero = settings.hero;
   const empty = home.newest.length === 0;
-  const shown = cats.slice(0, 6);
+  // Every category with products, in a row that scrolls on a phone: none left out of the home page.
+  const shown = cats.slice(0, 12);
   // "New" only when it is not the same products again.
   const best = home.bestsellers.length >= 4 ? home.bestsellers.slice(0, 8) : [];
   const seen = new Set([...home.featured, ...best].map((p) => p.id));

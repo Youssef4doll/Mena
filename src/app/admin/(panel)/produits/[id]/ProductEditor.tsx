@@ -8,6 +8,7 @@ import { mergeTranslation, needsTranslation, textsOfProduct, withProductTexts, t
 import type { IdeaTexts } from "@/lib/image-ideas";
 import { parseTND, toInputTND, formatTND } from "@/lib/money";
 import { offerCompareAt } from "@/lib/offer-display";
+import { offerLabelProblem, offerNote, offerTitle } from "@/lib/offer-label";
 import { slugify } from "@/lib/slug";
 import { parseSpecs, parseVideo } from "@/lib/product-content";
 import { readHex } from "@/lib/color";
@@ -25,7 +26,7 @@ type Img = { id: string; mediaId: string; alt: string; kind: Kind; sort: number;
 
 const EMPTY: ProductInput = {
   name: "", nameAr: "", slug: "", summary: "", summaryAr: "", description: "", descriptionAr: "", specs: "", specsAr: "", videoUrl: "", keywords: "", seoTitle: "", seoTitleAr: "", seoDescription: "", seoDescriptionAr: "", price: 0, compareAt: null, cost: null, categoryId: null, supplierId: null,
-  supplierRef: "", supplierUrl: "", stockMode: "SUPPLIER", stockQty: 0, available: true, active: false, featured: false, variants: [], offers: [],
+  supplierRef: "", supplierUrl: "", stockMode: "SUPPLIER", stockQty: 0, available: true, active: false, featured: false, checked: false, variants: [], offers: [],
 };
 
 type Msg = { ok: boolean; text: string };
@@ -491,7 +492,7 @@ function Form({ id, version, nextId, initial, images, categories, suppliers, sho
           );
         })}
 
-        <Card title="Offres" hint="Ce que le client choisit en haut du formulaire de commande : « 1 unité », « 2 unités », « Achetez 2, la 3e offerte »… Le prix est le total pour la quantité. Sans offre, le client choisit simplement une quantité. Prix barré : sur l'offre de 1 unité, l'ancien prix du produit s'il est rempli ; sur les lots, le prix de l'offre de 1 unité multiplié par la quantité (sans offre de 1 unité active, rien n'est barré). Une date de fin n'est montrée que si vous la fixez.">
+        <Card title="Offres" hint="Ce que le client choisit en haut du formulaire de commande. Le titre de chaque offre est sa quantité, écrite par la boutique (« زوز حبات », « 3 unités ») ; votre nom (« Achetez 2, la 3e offerte ») s'affiche dessous s'il dit quelque chose de plus et parle bien de la même quantité. Le prix est le total pour la quantité. Sans offre, le client choisit simplement une quantité. Prix barré : sur l'offre de 1 unité, l'ancien prix du produit s'il est rempli ; sur les lots, le prix de l'offre de 1 unité multiplié par la quantité (sans offre de 1 unité active, rien n'est barré). Une date de fin n'est montrée que si vous la fixez.">
           <p className={`-mt-1 mb-2 text-xs ${ownPriced ? "text-danger" : "text-muted"}`}>
             Les offres utilisent le prix du produit : avec des offres, les variantes ne peuvent pas avoir leur propre prix.
           </p>
@@ -508,6 +509,13 @@ function Form({ id, version, nextId, initial, images, categories, suppliers, sho
                     <input className={input} placeholder="Nom (ex. Achetez 2, la 3e offerte)" value={o.label} onChange={(e) => setO({ label: e.target.value })} />
                     <input className={input} dir="rtl" placeholder="الاسم بالعربي (اختياري)" value={o.labelAr} onChange={(e) => setO({ labelAr: e.target.value })} />
                   </div>
+                  {q != null && offerLabelProblem({ ...o, quantity: q }) ? (
+                    <p className="-mt-1 text-xs text-danger">Ce nom {offerLabelProblem({ ...o, quantity: q })!.replace(/^le nom « .*? » /, "")} : corrigez le nom ou la quantité, sinon l&apos;offre ne peut pas être enregistrée.</p>
+                  ) : (
+                    <p className="-mt-1 text-xs text-muted">
+                      La boutique affiche « {offerTitle({ quantity: q ?? 1 }, "fr")} » / « {offerTitle({ quantity: q ?? 1 }, "ar")} »{q != null && offerNote({ ...o, quantity: q }, "fr") ? <>, puis ce nom en dessous</> : <> (ce nom ne dit rien de plus, il n&apos;est pas montré)</>}.
+                    </p>
+                  )}
                   <div className="grid grid-cols-2 gap-2 sm:grid-cols-[100px_140px_1fr]">
                     <label className={label}>
                       Quantité
@@ -591,7 +599,7 @@ function Form({ id, version, nextId, initial, images, categories, suppliers, sho
                     // Names, quantities and prices filled at once; the prices follow the product price until one is typed by hand.
                     set("offers", [
                       { label: "1 unité", labelAr: "واحدة", quantity: 1, price: 0, freeDelivery: false, endsOn: "", active: true },
-                      { label: "Achetez 2, la 3e offerte", labelAr: "الثانية", quantity: 3, price: 0, freeDelivery: true, endsOn: "", active: true },
+                      { label: "Achetez 2, la 3e offerte", labelAr: "اشري 2 والثالثة هدية", quantity: 3, price: 0, freeDelivery: true, endsOn: "", active: true },
                     ]);
                     setOPrices([followed("1", 0, price), followed("3", 1, price)]);
                     setOQty(["1", "3"]);
@@ -641,6 +649,11 @@ function Form({ id, version, nextId, initial, images, categories, suppliers, sho
         <Card title="Publication">
           <label className="flex items-center justify-between gap-3 py-1 text-sm">En ligne<input type="checkbox" className="h-5 w-5" checked={p.active} onChange={(e) => set("active", e.target.checked)} /></label>
           <label className="flex items-center justify-between gap-3 py-1 text-sm">Dans « Notre sélection »<input type="checkbox" className="h-5 w-5" checked={p.featured} onChange={(e) => set("featured", e.target.checked)} /></label>
+          {/* The owner's own check before advertising a product: nothing is shown to customers. */}
+          <label className="flex items-center justify-between gap-3 py-1 text-sm" title="Caractéristiques, unités (°C, V), couleurs, garantie et contenu de la boîte confirmés par le fournisseur. Rien n'est affiché aux clients ; la liste des produits a un onglet « À vérifier ».">
+            Fiche vérifiée avec le fournisseur
+            <input type="checkbox" className="h-5 w-5" checked={Boolean(p.checked)} onChange={(e) => set("checked", e.target.checked)} />
+          </label>
           <label className={`${label} mt-2`}>
             Catégorie
             <select className={input} value={p.categoryId ?? ""} onChange={(e) => set("categoryId", e.target.value || null)}>

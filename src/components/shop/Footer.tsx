@@ -2,6 +2,7 @@ import Link from "next/link";
 import { dict, href, type Lang } from "@/i18n";
 import type { Settings } from "@/lib/settings-schema";
 import { formatPhone, normalizePhone } from "@/lib/phone";
+import { profileUrl } from "@/lib/social";
 import { Logo } from "./Logo";
 import { IconPhone, IconWhatsApp } from "./Icons";
 import { ContactLink } from "./ContactLink";
@@ -41,9 +42,11 @@ export function Footer({ lang, settings }: { lang: Lang; settings: Settings }) {
           <Link href={href(lang, "/contact")}>{t.footer.contact}</Link>
           <Link href={href(lang, "/conditions")}>{t.footer.terms}</Link>
           <Link href={href(lang, "/confidentialite")}>{t.footer.privacy}</Link>
-          {s.instagram && <a href={s.instagram} target="_blank" rel="noopener">Instagram</a>}
-          {s.facebook && <a href={s.facebook} target="_blank" rel="noopener">Facebook</a>}
-          {s.tiktok && <a href={s.tiktok} target="_blank" rel="noopener">TikTok</a>}
+          {/* Only real profiles: an empty or bare address is left out (see social.ts). */}
+          {(["instagram", "facebook", "tiktok"] as const).map((k) => {
+            const url = profileUrl(k, s[k]);
+            return url ? <a key={k} href={url} target="_blank" rel="noopener">{{ instagram: "Instagram", facebook: "Facebook", tiktok: "TikTok" }[k]}</a> : null;
+          })}
           {s.email && <a href={`mailto:${s.email}`} className="col-span-2 break-all sm:col-span-1">{s.email}</a>}
         </nav>
       </div>

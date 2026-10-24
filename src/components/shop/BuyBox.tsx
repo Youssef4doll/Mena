@@ -11,8 +11,10 @@ import { pixelAddToCart, pixelContact } from "@/lib/client/pixels";
 import { addToCart, type CartItem } from "@/lib/client/cart";
 import { formatTND } from "@/lib/money";
 import { discountPct, formatDay } from "@/lib/offer-display";
+import { offerLine, offerNote, offerTitle } from "@/lib/offer-label";
 import { OrderForm, type OrderDraft } from "./OrderForm";
 import { VariantSelect } from "./VariantSelect";
+import { Bidi } from "./Bidi";
 import { IconMinus, IconPlus, IconTruck, IconWhatsApp } from "./Icons";
 
 type P = Omit<ProductPage, "related">;
@@ -87,8 +89,8 @@ export function choiceItem(p: P, c: BuyChoice): CartItem | null {
     nameAr: p.nameAr,
     variantName: c.variant?.name ?? null,
     variantNameAr: c.variant?.nameAr ?? null,
-    offerLabel: c.offer?.label ?? null,
-    offerLabelAr: c.offer?.labelAr ?? null,
+    offerLabel: c.offer ? offerLine(c.offer, "fr") : null,
+    offerLabelAr: c.offer ? offerLine(c.offer, "ar") : null,
     imageId: p.images[0]?.id ?? null,
   };
 }
@@ -299,7 +301,8 @@ export function BuyBox({ p, lang, settings, url, choice, idp = "bb", origin, dra
 
 /**
  * One offer, laid out like the cards Tunisian shoppers already know: the
- * picture with its quantity, the name and the saving, the price with the real
+ * picture with its quantity, the quantity in words (the owner's name for the
+ * offer under it, only when it says the same; see offer-label) and the saving, the price with the real
  * price it replaces, and the round choice at the end. Light until chosen.
  */
 function OfferCard({ o, lang, name, locale, imageId, checked, disabled, onSelect }: { o: Offer; lang: Lang; name: string; locale: string; imageId: string | null; checked: boolean; disabled: boolean; onSelect: () => void }) {
@@ -326,7 +329,7 @@ function OfferCard({ o, lang, name, locale, imageId, checked, disabled, onSelect
       </span>
       <span className="flex min-w-0 flex-1 flex-col gap-0.5">
         <span className="flex flex-wrap items-center gap-x-2 gap-y-1">
-          <span className="text-[16px] leading-snug text-ink">{pick(lang, o.label, o.labelAr)}</span>
+          <span className="text-[16px] leading-snug text-ink">{offerTitle(o, lang)}</span>
           {pct > 0 && !disabled && (
             <span className="rounded-full bg-deal px-2 text-[13px] font-bold leading-6 text-white">
               <span className="ltr-nums">−{pct}%</span>
@@ -334,6 +337,7 @@ function OfferCard({ o, lang, name, locale, imageId, checked, disabled, onSelect
           )}
           {o.mostChosen && !disabled && <span className="rounded-full border border-sea bg-white px-2 text-[14px] font-bold leading-6 text-sea-2">{t.buy.mostChosen}</span>}
         </span>
+        {offerNote(o, lang) && <span className="text-[14px] leading-snug text-ink-2" dir="auto"><Bidi text={offerNote(o, lang)!} /></span>}
         <span className="flex flex-wrap items-baseline gap-x-2">
           <span className="whitespace-nowrap text-[18px] font-bold text-ink price-nums ltr-nums">{formatTND(o.price, lang)}</span>
           {struck != null && !disabled && (

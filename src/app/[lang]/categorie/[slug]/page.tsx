@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
-import { notFound } from "next/navigation";
+import { notFound, permanentRedirect } from "next/navigation";
 import { dict, href, isLang, languages, pick } from "@/i18n";
-import { getCategoryPage, getShop } from "@/lib/catalog";
+import { categoryMovedTo, getCategoryPage, getShop } from "@/lib/catalog";
 import { Listing, parseSort } from "@/components/shop/Listing";
 import { ProductRow } from "@/components/shop/ProductCard";
 import { TrackView } from "@/components/shop/TrackView";
@@ -28,7 +28,12 @@ export default async function CategoryRoute({ params, searchParams }: PageProps<
   if (!isLang(lang)) notFound();
   const sort = parseSort((await searchParams).tri);
   const page = await getCategoryPage(slug, sort);
-  if (!page) notFound();
+  if (!page) {
+    // Renamed: the old address leads to the new one, for good.
+    const moved = await categoryMovedTo(slug);
+    if (moved) permanentRedirect(href(lang, `/categorie/${moved}`));
+    notFound();
+  }
   // A small category does not end the visit after one card: the rest of the shop follows.
   const ids = new Set(page.products.map((p) => p.id));
   const others = page.products.length < 4 ? (await getShop("new")).filter((p) => !ids.has(p.id)).slice(0, 8) : [];

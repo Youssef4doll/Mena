@@ -152,7 +152,9 @@ export function CartView({ lang, settings }: { lang: Lang; settings: PublicSetti
           {items.map((i) => {
             const key = itemKey(i);
             const pl = priced(i);
-            const option = [i.variantName ? pick(lang, i.variantName, i.variantNameAr) : null, i.offerLabel ? pick(lang, i.offerLabel, i.offerLabelAr) : null].filter(Boolean).join(" · ");
+            // The offer as the server words it now (a basket kept from before may hold an older name).
+            const offer = pl?.offerLabel ? pick(lang, pl.offerLabel, pl.offerLabelAr) : i.offerLabel ? pick(lang, i.offerLabel, i.offerLabelAr) : null;
+            const option = [i.variantName ? pick(lang, i.variantName, i.variantNameAr) : null, offer].filter(Boolean).join(" · ");
             return (
               <li key={key} className="flex gap-3 py-4" data-testid="cart-line">
                 <Link href={href(lang, `/produit/${i.slug}`)} className="relative h-20 w-20 shrink-0 overflow-hidden rounded-xl border border-line bg-white" prefetch={false}>
@@ -171,7 +173,7 @@ export function CartView({ lang, settings }: { lang: Lang; settings: PublicSetti
                   <div className="mt-1 flex flex-wrap items-center justify-between gap-2">
                     {i.offerId ? (
                       // An offer is a fixed pack: its size is said, nothing to change.
-                      pl && pl.qty > 1 && !(i.offerLabel ?? "").includes(String(pl.qty)) ? <span className="rounded-full bg-sea-soft px-3 py-0.5 text-[15px] font-bold text-sea-2">{t.buy.units(pl.qty)}</span> : <span />
+                      pl && pl.qty > 1 && !option.includes(t.buy.units(pl.qty)) && !(i.offerLabel ?? "").includes(String(pl.qty)) ? <span className="rounded-full bg-sea-soft px-3 py-0.5 text-[15px] font-bold text-sea-2">{t.buy.units(pl.qty)}</span> : <span />
                     ) : (
                       <div className="inline-flex h-11 items-center rounded-full border border-field bg-white px-1" role="group" aria-label={t.buy.quantity}>
                         <button type="button" className="flex h-11 w-11 items-center justify-center disabled:opacity-30" disabled={i.qty <= 1} onClick={() => { setNotices([]); setCartQty(key, i.qty - 1); }} aria-label={t.buy.qtyLess}>

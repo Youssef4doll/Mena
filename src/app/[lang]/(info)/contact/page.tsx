@@ -4,6 +4,7 @@ import { notFound } from "next/navigation";
 import { dict, href, isLang, pageMeta } from "@/i18n";
 import { getSettings } from "@/lib/settings";
 import { formatPhone, normalizePhone } from "@/lib/phone";
+import { messengerUser, profileUrl } from "@/lib/social";
 import { Prose } from "../Prose";
 import { IconMessenger, IconPhone, IconWhatsApp } from "@/components/shop/Icons";
 import { ContactLink } from "@/components/shop/ContactLink";
@@ -18,6 +19,9 @@ export default async function ContactRoute({ params }: PageProps<"/[lang]/contac
   if (!isLang(lang)) notFound();
   const t = dict(lang);
   const s = await getSettings();
+  // Only a real page: "Mena" as a Messenger name, or a bare site address, would lead to a stranger or nowhere.
+  const messenger = messengerUser(s.contact.messenger);
+  const facebook = profileUrl("facebook", s.shop.facebook);
   const ar = lang === "ar";
   const tel = normalizePhone(s.shop.phone);
   return (
@@ -35,15 +39,15 @@ export default async function ContactRoute({ params }: PageProps<"/[lang]/contac
             <span className="ltr-nums">{formatPhone(tel)}</span>
           </ContactLink>
         )}
-        {s.contact.messenger && (
-          <ContactLink kind="messenger" where="contact" href={`https://m.me/${s.contact.messenger}`} className="flex min-h-14 items-center justify-center gap-2.5 rounded-full border border-line bg-white px-6 text-[17px] font-bold text-ink hover:bg-sand">
+        {messenger && (
+          <ContactLink kind="messenger" where="contact" href={`https://m.me/${messenger}`} className="flex min-h-14 items-center justify-center gap-2.5 rounded-full border border-line bg-white px-6 text-[17px] font-bold text-ink hover:bg-sand">
             <IconMessenger className="h-5 w-5 text-[#0866ff]" />
             Messenger
           </ContactLink>
         )}
       </div>
       {/* Who sells: only what the shop entered in its settings. */}
-      {(s.shop.email || s.shop.address || s.shop.legalName || s.shop.legalId || s.shop.facebook) && (
+      {(s.shop.email || s.shop.address || s.shop.legalName || s.shop.legalId || facebook) && (
         <dl className="mt-3 divide-y divide-line rounded-[20px] border border-line">
           {(s.shop.legalName || s.shop.legalId) && (
             <div className="px-5 py-4">
@@ -70,12 +74,12 @@ export default async function ContactRoute({ params }: PageProps<"/[lang]/contac
               <dd className="text-[17px] text-ink">{s.shop.address}</dd>
             </div>
           )}
-          {s.shop.facebook && (
+          {facebook && (
             <div className="px-5 py-4">
               <dt className="text-[15px] text-muted">Facebook</dt>
               <dd>
-                <a href={s.shop.facebook} target="_blank" rel="noopener" dir="ltr" className="break-all text-[17px] text-sea underline underline-offset-4">
-                  {s.shop.facebook.replace(/^https?:\/\/(www\.)?/, "")}
+                <a href={facebook} target="_blank" rel="noopener" dir="ltr" className="break-all text-[17px] text-sea underline underline-offset-4">
+                  {facebook.replace(/^https?:\/\/(www\.)?/, "")}
                 </a>
               </dd>
             </div>

@@ -31,7 +31,9 @@ export async function generateMetadata({ params }: LayoutProps<"/[lang]">): Prom
     metadataBase: new URL(SITE_URL),
     title: { default: `${s.shop.name} — ${ar ? s.shop.taglineAr : s.shop.tagline}`, template: `%s · ${s.shop.name}` },
     description: ar ? s.shop.taglineAr : s.shop.tagline,
-    openGraph: { siteName: s.shop.name, locale: ar ? "ar_TN" : "fr_TN", type: "website" },
+    // The shop's share picture (app/opengraph-image.tsx) for every page without its own; a product page gives its photos.
+    openGraph: { siteName: s.shop.name, locale: ar ? "ar_TN" : "fr_TN", type: "website", images: [{ url: "/opengraph-image", width: 1200, height: 630, alt: s.shop.name }] },
+    twitter: { card: "summary_large_image" },
   };
 }
 
@@ -58,8 +60,12 @@ export default async function ShopLayout({ children, params }: LayoutProps<"/[la
   return (
     <html lang={lang === "ar" ? "ar-TN" : "fr-TN"} dir={t.dir} className={`shop-root ${body.variable}`}>
       <body className="min-h-dvh">
+        {/* For keyboard and screen-reader users: past the header in one step. Visible only when focused. */}
+        <a href="#main" className="sr-only focus:not-sr-only focus:fixed focus:start-3 focus:top-3 focus:z-50 focus:rounded-full focus:bg-ink focus:px-5 focus:py-3 focus:text-[16px] focus:font-bold focus:text-white">
+          {t.nav.skip}
+        </a>
         <Header lang={lang} categories={cats} announcement={announcement} phone={normalizePhone(settings.shop.phone)} />
-        <main>{children}</main>
+        <main id="main" tabIndex={-1} className="outline-none">{children}</main>
         <Footer lang={lang} settings={settings} />
         <WhatsAppFloat lang={lang} phone={settings.contact.whatsapp} />
         <CartAdded lang={lang} />

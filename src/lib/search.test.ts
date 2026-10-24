@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { complete, distance, matchWord, normalize, rank, tokenize, type Doc } from "./search";
+import { complete, distance, matchWord, normalize, rank, tokenize, withSynonyms, type Doc } from "./search";
 
 const doc = (id: string, ...texts: string[]): Doc => ({ id, fields: texts.map((t, i) => ({ tokens: tokenize(t), weight: i === 0 ? 3 : 1 })) });
 const catalogue = [
@@ -87,4 +87,15 @@ test("a plural or feminine ending is the same word, not a 'did you mean'", () =>
   const cat = [doc("lampe", "Lampe de chevet noir")];
   assert.equal(rank("lampe noire", cat)[0].corrected.size, 0);
   assert.equal(rank("lampes", cat)[0].corrected.size, 0);
+});
+
+test("Arabic spellings with or without the long alef find the same products; a short Arabic word must be right", () => {
+  assert.ok(matchWord(normalize("ماكياج"), normalize("مكياج"), false) >= 0.95);
+  assert.ok(matchWord(normalize("مكياج"), normalize("ماكياج"), false) >= 0.95);
+  assert.equal(matchWord(normalize("بخار"), normalize("بار"), false), 0);
+});
+
+test("a product named in French is found by its Arabic or Tunisian name", () => {
+  assert.ok(withSynonyms(tokenize("Trousse de maquillage")).includes("مكياج"));
+  assert.ok(withSynonyms(tokenize("لمبة سرير")).includes("lampe"));
 });

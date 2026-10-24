@@ -4,6 +4,8 @@ import { SITE_URL } from "./site";
 import { leadOffer } from "./offer-display";
 import { formatTND } from "./money";
 import { deliversEverywhere } from "./governorates";
+import { deliveryFeeFor } from "./delivery";
+import { profileUrl } from "./social";
 import { href, pick, type Lang } from "@/i18n";
 
 /** Google shows about 60 characters of a title and 155 of a description. */
@@ -111,7 +113,11 @@ export function organizationLd(s: Settings) {
     logo: `${SITE_URL}/icon.svg`,
     ...(s.shop.phone ? { telephone: s.shop.phone } : {}),
     ...(s.shop.email ? { email: s.shop.email } : {}),
-    sameAs: [s.shop.instagram, s.shop.facebook, s.shop.tiktok].filter(Boolean),
+    sameAs: (["instagram", "facebook", "tiktok"] as const).map((k) => profileUrl(k, s.shop[k])).filter(Boolean),
+    // Who sells, only as the shop entered it.
+    ...(s.shop.legalName ? { legalName: s.shop.legalName } : {}),
+    ...(s.shop.legalId ? { taxID: s.shop.legalId } : {}),
+    ...(s.shop.address ? { address: { "@type": "PostalAddress", streetAddress: s.shop.address, addressCountry: "TN" } } : {}),
     areaServed: "TN",
     currenciesAccepted: "TND",
     paymentAccepted: "Cash",
@@ -125,11 +131,13 @@ export function organizationLd(s: Settings) {
  */
 export function productLd(p: ProductPage, s: Settings, url: string, lang: Lang = "fr") {
   const zones = Object.values(s.delivery.zones).filter((z) => z.enabled);
-  const minFee = zones.length ? s.delivery.fee : null;
   const minDays = zones.length ? Math.min(...zones.map((z) => z.minDays)) : null;
   const maxDays = zones.length ? Math.max(...zones.map((z) => Math.max(z.minDays, z.maxDays))) : null;
   const inStock = p.stock.kind !== "out";
   const lead = leadOffer(p.offers);
+  const price = lead?.price ?? Math.min(p.price, ...p.variants.map((v) => v.price));
+  // The fee for the price given below, by the checkout's rule: 0 when that offer is delivered free.
+  const minFee = zones.length ? deliveryFeeFor(s.delivery, { freeOffer: lead?.freeDelivery, subtotal: price }) : null;
   const description = [pick(lang, p.summary, p.summaryAr), pick(lang, p.description, p.descriptionAr)].filter(Boolean).join("\n\n");
   return {
     "@context": "https://schema.org",
@@ -145,7 +153,7 @@ export function productLd(p: ProductPage, s: Settings, url: string, lang: Lang =
       url,
       priceCurrency: "TND",
       // What the page charges: the one-unit offer when there are offers (or the smallest pack, for its quantity).
-      price: ((lead?.price ?? Math.min(p.price, ...p.variants.map((v) => v.price))) / 1000).toFixed(3),
+      price: (price / 1000).toFixed(3),
       ...(lead && lead.quantity > 1 ? { eligibleQuantity: { "@type": "QuantitativeValue", value: lead.quantity } } : {}),
       availability: inStock ? "https://schema.org/InStock" : "https://schema.org/OutOfStock",
       itemCondition: "https://schema.org/NewCondition",

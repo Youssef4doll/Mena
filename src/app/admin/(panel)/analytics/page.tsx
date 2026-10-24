@@ -5,6 +5,8 @@ import { Card, PageTitle, btn, input } from "@/components/admin/ui";
 import { BarList, ColumnChart, LineChart, TableView } from "@/components/admin/charts";
 import { VIZ, fmt } from "@/lib/viz";
 import { LivePanel } from "@/components/admin/LivePanel";
+import { isExcluded } from "@/lib/internal";
+import { ExcludeDevice } from "./ExcludeDevice";
 
 export const metadata = { title: "Analytics" };
 
@@ -29,6 +31,7 @@ export default async function AnalyticsPage({ searchParams }: PageProps<"/admin/
   return (
     <div className="flex flex-col gap-4">
       <PageTitle title="Analytics" sub={`Données de première partie : mesurées par la boutique elle-même, sans service extérieur. Période : ${r.label}, comparée à la période précédente de même durée.`} />
+      <ExcludeDevice excluded={await isExcluded()} />
 
       {/* One filter row, above everything it scopes. */}
       <div className="flex flex-wrap items-center gap-2">

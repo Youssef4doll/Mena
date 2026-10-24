@@ -14,6 +14,8 @@ import { formatTND } from "@/lib/money";
 import { formatPhone, normalizePhone } from "@/lib/phone";
 import { removeOrdered } from "@/lib/client/cart";
 import { GOVERNORATES, governorateLabel } from "@/lib/governorates";
+import { deliveryRangeLabel } from "@/lib/delivery";
+import Link from "next/link";
 import { IconCartPlus, IconChevronDown, IconPhone, IconShield, IconTruck, IconWhatsApp } from "./Icons";
 
 export type OrderLine = { productId: string; variantId: string | null; offerId: string | null; qty: number };
@@ -21,8 +23,9 @@ type Form = { name: string; phone: string; governorate: string; address: string 
 
 const noopSubscribe = () => () => {};
 
-/** What a returning customer does not type twice. Kept in this browser only. */
+/** What a returning customer does not type twice. Kept in this browser only, for SAVED_DAYS (a shared family phone forgets it). */
 export const SAVED = "mena_details";
+const SAVED_DAYS = 90;
 /** What was typed on a product page before "Ajouter au panier", so the basket's form is already filled. */
 const DRAFT = "mena_draft";
 /** Ties an unfinished form to the back office's "commandes non terminées". Renewed after each order. */
@@ -38,6 +41,18 @@ function readJson(raw: string): Partial<Form> {
   } catch {
     return {};
   }
+}
+
+/** Kept for the next order on this browser, with the day they were kept (see readSaved). */
+function saveDetails(d: Form & { ref: string }) {
+  store.set(SAVED, JSON.stringify({ ...d, at: Date.now() }));
+}
+
+/** The saved details while they are fresh; older ones are forgotten. Details saved before the date was kept count as fresh. */
+function readSaved(raw: string): Partial<Form> {
+  const v = readJson(raw) as Partial<Form> & { at?: number };
+  if (typeof v.at === "number" && Date.now() - v.at > SAVED_DAYS * 86_400_000) return {};
+  return v;
 }
 
 /**
@@ -111,7 +126,7 @@ export function OrderForm(props: Props) {
   const savedRaw = useSyncExternalStore(noopSubscribe, () => store.get(SAVED) ?? "", () => "");
   const draftRaw = useSyncExternalStore(noopSubscribe, () => store.get(DRAFT) ?? "", () => "");
   const savedGov = useSyncExternalStore(noopSubscribe, () => getGov() ?? "", () => "");
-  const known = useMemo<Partial<Form>>(() => ({ ...readJson(savedRaw), ...readJson(draftRaw) }), [savedRaw, draftRaw]);
+  const known = useMemo<Partial<Form>>(() => ({ ...readSaved(savedRaw), ...readJson(draftRaw) }), [savedRaw, draftRaw]);
   const own = useOrderDraft();
   const { edits, setEdits, touched, setTouched, promo, setPromo, engaged, setEngaged, attemptRef, phoneLoggedRef } = props.draft ?? own;
   const f: Form = {
@@ -322,7 +337,7 @@ export function OrderForm(props: Props) {
       if (data.ok) {
         placed.current = true;
         // The ref ties the saved number to this order's thank-you page only.
-        store.set(SAVED, JSON.stringify({ name: f.name, phone: f.phone, governorate: f.governorate, address: f.address, ref: data.ref }));
+        saveDetails({ name: f.name, phone: f.phone, governorate: f.governorate, address: f.address, ref: data.ref });
         store.remove(FORM_TOKEN);
         store.remove(DRAFT);
         // What was just ordered leaves the basket, so the cart icon does not invite the same order twice.
@@ -403,13 +418,20 @@ export function OrderForm(props: Props) {
               </select>
             </Boxed>
           </Field>
-          <Field id={id("address")} className={WIDE} label={t.buy.address} required={t.buy.required} error={show("address") ? t.buy.addressError : null}>
+          <Field id={id("address")} className={WIDE} label={t.buy.address} required={t.buy.required} error={show("address") ? (f.address.trim() ? t.buy.addressShort : t.buy.addressError) : null}>
             {/* One line like the others, growing with what is typed so the whole address can be read again. Block, so no gap is left under it. */}
             <Boxed>
               <textarea id={id("address")} value={f.address} onChange={(e) => update("address", e.target.value)} onBlur={blur("address")} onKeyDown={next(id("submit"))} enterKeyHint="done" autoComplete="street-address" spellCheck={false} rows={1} maxLength={ADDRESS_MAX} placeholder={t.buy.addressPh} className={`${inputCls(show("address"), good("address"))} pe-3.5 block h-auto max-h-40 min-h-[48px] resize-none py-[11px] leading-snug [field-sizing:content]`} aria-required="true" aria-invalid={show("address")} aria-describedby={show("address") ? id("address-msg") : undefined} data-testid="address" />
             </Boxed>
           </Field>
         </fieldset>
+        {/* Said where the number is typed, not only in the privacy page: it is kept as soon as it is typed (see /api/cart). */}
+        <p className="mt-2 text-[14px] leading-snug text-muted">
+          {t.buy.phoneUse}{" "}
+          <Link href={href(lang, "/confidentialite")} className="underline underline-offset-2" prefetch={false}>
+            {t.buy.privacyLink}
+          </Link>
+        </p>
       </section>
 
       {/* ------------------------------------------------ promo code: a quiet link until it is wanted */}
@@ -484,6 +506,7 @@ export function OrderForm(props: Props) {
           </dd>
         </div>
         {quote?.deliveryUnavailable && <p className="text-[15px] text-danger">{t.checkout.errors.delivery_unavailable}</p>}
+        {quote?.delivery && f.governorate && <p className="text-[14px] text-muted" data-testid="delivery-delay">{t.buy.deliveryTo(governorateLabel(f.governorate, lang), deliveryRangeLabel(quote.delivery.minDays, quote.delivery.maxDays, lang))}</p>}
         {!freeKnown && threshold != null && <p className="text-[15px] text-muted">{t.product.freeFrom(formatTND(threshold, lang))}</p>}
       </dl>
 

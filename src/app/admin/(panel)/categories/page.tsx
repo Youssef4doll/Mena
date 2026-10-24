@@ -40,7 +40,7 @@ function CategoryFields({ c }: { c?: { id: string; name: string; nameAr: string 
         <label className={label}>Nom arabe<input name="nameAr" dir="rtl" defaultValue={c?.nameAr ?? ""} className={input} /></label>
         <label className={label}>Titre de la carte d&apos;accueil<input name="headline" defaultValue={c?.headline ?? ""} placeholder="Tout pour la cuisine" className={input} /></label>
         <label className={label}>Titre (arabe)<input name="headlineAr" dir="rtl" defaultValue={c?.headlineAr ?? ""} className={input} /></label>
-        <label className={label}>Adresse<input name="slug" defaultValue={c?.slug} className={input} /></label>
+        <label className={label}>Adresse (/categorie/…) : l&apos;ancienne reste redirigée si vous la changez<input name="slug" defaultValue={c?.slug} className={input} /></label>
         <label className={label}>Ordre<input name="sort" type="number" defaultValue={c?.sort ?? 0} className={input} /></label>
       </div>
       <div className="flex items-center gap-3">

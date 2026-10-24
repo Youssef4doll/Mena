@@ -5,6 +5,7 @@ import { dict, href, isLang } from "@/i18n";
 import { rememberedOrders } from "@/lib/order-access";
 import { formatTND } from "@/lib/money";
 import { LookupForm } from "@/components/shop/LookupForm";
+import { ForgetDevice } from "@/components/shop/ForgetDevice";
 import { IconChevron } from "@/components/shop/Icons";
 
 export const metadata: Metadata = { robots: { index: false } };
@@ -38,6 +39,7 @@ export default async function TrackRoute({ params }: PageProps<"/[lang]/suivi">)
           </ul>
         </section>
       )}
+      <ForgetDevice lang={lang} hasOrders={mine.length > 0} />
     </div>
   );
 }

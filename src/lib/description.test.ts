@@ -18,3 +18,9 @@ test("paragraphs stay paragraphs, and lines starting with a dash become a list",
   assert.deepEqual(descriptionBlocks("Prix -20 %\nde 110 - 240 V"), [{ kind: "text", text: "Prix -20 %\nde 110 - 240 V" }]);
   assert.deepEqual(descriptionBlocks(""), []);
 });
+
+test("a line of facts joined by dashes reads as a list", () => {
+  assert.deepEqual(descriptionBlocks("Lisseur professionnel - Plaques céramique - 450 °C - Garantie 1 an"), [{ kind: "list", items: ["Lisseur professionnel", "Plaques céramique", "450 °C", "Garantie 1 an"] }]);
+  // One dash in a sentence stays a sentence.
+  assert.deepEqual(descriptionBlocks("Une chaise légère - elle se plie en deux."), [{ kind: "text", text: "Une chaise légère - elle se plie en deux." }]);
+});

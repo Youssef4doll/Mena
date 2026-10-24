@@ -38,11 +38,13 @@ export default async function Dashboard() {
           La boutique affiche {demo} produits de démonstration. <Link href="/admin/produits" className="underline">Ajoutez vos produits puis supprimez la démo</Link>.
         </p>
       )}
-      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">
         <Stat label="Commandes aujourd'hui" value={String(todayAgg._count._all)} sub={formatTND(todayAgg._sum.total ?? 0)} />
         <Stat label="À confirmer" value={String(c.PENDING ?? 0)} tone={(c.PENDING ?? 0) > 0 ? "warn" : undefined} />
         <Stat label="À préparer / commander" value={String((c.CONFIRMED ?? 0) + (c.SUPPLIER_ORDERED ?? 0))} />
-        <Stat label="En livraison" value={String(c.SHIPPED ?? 0)} sub={`${live.length} visiteur(s) en ce moment`} />
+        <Stat label="En livraison" value={String(c.SHIPPED ?? 0)} />
+        {/* Its own card: under "En livraison" it read as a delivery figure. */}
+        <Stat label="Sur la boutique en ce moment" value={String(live.length)} sub={live.length === 1 ? "visiteur" : "visiteurs"} />
       </div>
 
       <div className="grid gap-4 lg:grid-cols-[1.4fr_1fr]">

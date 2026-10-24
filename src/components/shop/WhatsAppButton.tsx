@@ -11,9 +11,12 @@ import { IconWhatsApp } from "./Icons";
  * The floating WhatsApp button, to ask the shop a question in one tap.
  * Hidden where an order bar or form already sits (product, basket, checkout).
  * On the home page only, a small greeting appears beside it after a few
- * seconds; closed once, it stays closed for the visit.
+ * seconds, once per visit, and goes away by itself after a few more: it
+ * does not stay over the cards and prices under it.
  */
 const HELLO = "mena_wa_hello";
+/** How long the greeting stays, in ms. */
+const HELLO_FOR = 8000;
 
 export function WhatsAppFloat({ lang, phone }: { lang: Lang; phone: string }) {
   const pathname = usePathname();
@@ -25,8 +28,17 @@ export function WhatsAppFloat({ lang, phone }: { lang: Lang; phone: string }) {
     try {
       if (sessionStorage.getItem(HELLO)) return;
     } catch {}
-    const id = setTimeout(() => setHello(true), 3000);
-    return () => clearTimeout(id);
+    const show = setTimeout(() => {
+      setHello(true);
+      try {
+        sessionStorage.setItem(HELLO, "1");
+      } catch {}
+    }, 3000);
+    const hide = setTimeout(() => setHello(false), 3000 + HELLO_FOR);
+    return () => {
+      clearTimeout(show);
+      clearTimeout(hide);
+    };
   }, [home]);
   const closeHello = () => {
     setHello(false);

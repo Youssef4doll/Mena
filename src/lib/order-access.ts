@@ -22,6 +22,11 @@ export async function rememberOrder(token: string) {
   jar.set(COOKIE, next.join("."), { httpOnly: true, sameSite: "lax", secure: process.env.NODE_ENV === "production", path: "/", maxAge: 60 * 60 * 24 * 120 });
 }
 
+/** This browser forgets its orders: the cookie goes, the orders stay with the shop. */
+export async function forgetOrders() {
+  (await cookies()).delete(COOKIE);
+}
+
 async function tokens(): Promise<string[]> {
   const jar = await cookies();
   return (jar.get(COOKIE)?.value ?? "").split(".").filter((t) => /^[A-Za-z0-9_-]{16,64}$/.test(t));

@@ -128,7 +128,7 @@ function defaultZones(): Record<string, DeliveryZone> {
 export const DEFAULT_SETTINGS: Settings = {
   shop: {
     name: "Mena",
-    tagline: "Des belles choses, livrées chez vous. Vous payez à la réception.",
+    tagline: "De belles choses, livrées chez vous. Vous payez à la réception.",
     taglineAr: "حاجات مزيانة توصلك لدارك، وتخلّص كي تستلم.",
     phone: "",
     email: "",

@@ -23,14 +23,20 @@ export async function saveCategory(_: unknown, f: FormData): Promise<Result> {
   if (name.length < 2) return { ok: false, error: "Nom trop court." };
   const slug = slugify(str(f, "slug") || name);
   if (!slug) return { ok: false, error: "Adresse invalide." };
-  const clash = await prisma.category.findFirst({ where: { slug, ...(id ? { id: { not: id } } : {}) } });
-  if (clash) return { ok: false, error: "Adresse déjà utilisée." };
+  const [clash, before] = await Promise.all([
+    prisma.category.findFirst({ where: { OR: [{ slug }, { oldSlugs: { has: slug } }], ...(id ? { id: { not: id } } : {}) }, select: { id: true } }),
+    id ? prisma.category.findUnique({ where: { id }, select: { slug: true, oldSlugs: true } }) : null,
+  ]);
+  if (clash) return { ok: false, error: "Adresse déjà utilisée (ou déjà utilisée avant par une autre catégorie)." };
+  // A new address keeps the old one as a permanent redirect: links and Google results still arrive.
+  const oldSlugs = before && before.slug !== slug ? [...new Set([...before.oldSlugs, before.slug])].filter((s) => s !== slug) : before?.oldSlugs.filter((s) => s !== slug);
   const data = {
     name,
     nameAr: str(f, "nameAr") || null,
     headline: str(f, "headline").slice(0, 60) || null,
     headlineAr: str(f, "headlineAr").slice(0, 60) || null,
     slug,
+    ...(oldSlugs ? { oldSlugs } : {}),
     sort: Number(str(f, "sort")) || 0,
     active: f.get("active") === "on",
   };

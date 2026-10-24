@@ -43,6 +43,7 @@ Un `.tn` s'achète chez un registrar agréé par l'ATI. Dans Vercel, *Settings �
 *Paramètres* :
 
 - **Boutique** : le vrai téléphone, l'e-mail, l'adresse (au moins la ville), le **vendeur** (nom de la société ou de la personne) et le matricule fiscal, la page Facebook. Ils apparaissent dans le pied de page, la page Contact et les conditions de vente : c'est ce que regardent les clients qui hésitent avant une commande à la livraison. Un avertissement reste affiché tant que l'adresse ou le matricule manquent.
+- **Réseaux sociaux** : l'adresse complète de votre profil (ex. `https://www.instagram.com/votre.page`, `https://www.tiktok.com/@votre.page`), ou rien. Une adresse sans profil (`https://www.instagram.com/`) ou d'un autre site est refusée à l'enregistrement et n'est jamais affichée. **Messenger** : le nom d'utilisateur de votre page Facebook, celui de `m.me/…` (au moins 5 lettres ou chiffres), ou rien.
 - **WhatsApp** : votre numéro. Sans lui, les boutons WhatsApp ne s'affichent pas.
 - **Livraison** : **un seul tarif pour tous les gouvernorats** (8 DT par défaut, champ « Frais de livraison, tous les gouvernorats »), puis le délai (en jours ouvrés) par gouvernorat. Par défaut : 1 à 2 jours pour le Grand Tunis, 2 à 3 jours ailleurs. **À corriger avec vos vrais délais.** Ajoutez aussi un seuil de livraison offerte si votre marge le permet (par exemple 150 DT).
 - **Ce que vous payez par colis** (carte *Livraison*, jamais affiché aux clients) : ce que le transporteur vous facture par colis, et le coût en plus d'un colis refusé ou retourné. Avec eux, *Analytics → Rentabilité* donne le vrai bénéfice, et l'éditeur de produit la marge de chaque offre « après transport ».
@@ -65,6 +66,8 @@ Un `.tn` s'achète chez un registrar agréé par l'ATI. Dans Vercel, *Settings �
 - **catégorie** : dans *Catégories*, un titre d'accroche (« Pour la maison ») s'affiche sur les cartes de l'accueil.
 
 **Offres** (carte *Offres* du produit) : par exemple « 1 unité » à 69 DT et « Achetez 2, la 3e offerte » à 138 DT. Le bouton *Proposer « 1 » et « 2 + 1 offerte »* les crée à partir du prix. Pour chaque offre : le nombre d'unités, le prix total, la livraison offerte ou non, et un dernier jour si l'offre est limitée (la date affichée est celle que vous saisissez, jamais une date inventée).
+
+Le **titre de chaque offre est sa quantité**, écrit par la boutique (« زوز حبات », « 3 unités ») ; votre nom d'offre s'affiche dessous seulement s'il dit quelque chose de plus et parle de la même quantité. Un nom qui annonce une autre quantité (« Achetez 2, la 3e offerte » sur une offre de 2) est refusé à l'enregistrement, avec le message qui dit quoi corriger. La livraison offerte d'une offre est reprise partout : résumé, questions de la fiche, pages Livraison et Conditions, et données pour Google.
 
 - Le prix barré « au lieu de » d'un lot est calculé à partir de votre offre « 1 unité ». Sans offre « 1 unité », aucun prix barré n'est affiché.
 - « Le plus choisi » n'apparaît que si une offre a vraiment été commandée au moins 3 fois en 60 jours, et plus que les autres.
@@ -106,6 +109,8 @@ Les photos sont gardées dans la base de données. La page d'import indique la p
 
 **Travailler vite dans la liste** : prix, stock, « Dispo », « En ligne », « Sélection » et catégorie se changent directement dans la ligne (Entrée enregistre, Échap annule). Cochez plusieurs produits pour les mettre en ligne ou hors ligne, les changer de catégorie ou les supprimer d'un coup. Dans un produit : Ctrl+S enregistre, « Précédent » / « Suivant » passent au produit voisin, « Enregistrer, puis suivant » enchaîne, « Dupliquer » crée une copie hors ligne d'un produit proche. Si le produit a été modifié ailleurs pendant qu'il était ouvert (liste, import, traduction, autre onglet), l'enregistrement est refusé avec un message, au lieu d'effacer ce changement.
 
+**À vérifier** (onglet de la liste des produits) : les produits en ligne dont vous n'avez pas encore coché « Fiche vérifiée avec le fournisseur » dans l'éditeur (caractéristiques, unités, couleurs, garantie, contenu de la boîte). Rien n'est montré aux clients : c'est votre liste avant de faire de la publicité sur un produit.
+
 **Après une modification** : la fiche du produit modifié change tout de suite. L'accueil, les listes et les autres fiches restent affichés aussitôt aux clients, puis se mettent à jour d'eux-mêmes en quelques secondes : rechargez la page pour les voir changer. Aucun client n'attend pendant ce temps.
 
 Une boutique en ligne ne contient pas de produits de démonstration. Pour voir à quoi elle ressemble pleine, lancez `npm run db:seed:demo` en local ; *Produits → Supprimer la démo* les retire.
@@ -121,6 +126,8 @@ https://mena.tn/produit/lampe-de-chevet-tactile?utm_source=facebook&utm_medium=p
 `utm_source` : facebook, instagram ou tiktok. `utm_campaign` : un nom par campagne. *Analytics → Sources* et *Campagnes* montrent ensuite, pour chaque pub, les visites, les commandes, les commandes confirmées, les livraisons et les refus.
 
 **Dépenses pub** (menu du back-office) : recopiez chaque jour, ou chaque semaine, ce que le gestionnaire de publicités a dépensé, avec la même source (facebook, tiktok…) et, si vous voulez, le nom de campagne de `utm_campaign`. *Analytics → Rentabilité* en tire le **coût publicitaire par commande livrée**, par source, et le bénéfice après publicité. Une campagne qui coûte plus par commande livrée que ce que la commande rapporte avant publicité perd de l'argent, même si elle « fait des commandes ».
+
+**Vos propres visites ne comptent pas** : tant que vous êtes connecté au back-office, vos passages sur la boutique ne sont ni dans les statistiques ni dans les commandes non terminées. Pour un téléphone de test qui ne se connecte pas : *Analytics* → « Exclure cet appareil », depuis ce téléphone.
 
 Conseil : envoyez les pubs directement sur la **fiche produit**, pas sur l'accueil. Si vous mettez un produit en pause alors qu'une pub tourne encore, la page « introuvable » propose d'autres produits, et *Analytics* compte ces visites ; coupez quand même la pub. Le lien sans préfixe ouvre la fiche en arabe ; pour une pub en français, ajoutez `/fr` : `https://mena.tn/fr/produit/…`.
 

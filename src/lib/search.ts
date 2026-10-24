@@ -66,6 +66,41 @@ export function distance(a: string, b: string, max = 2): number {
   return prev[b.length];
 }
 
+/**
+ * An Arabic word without its long "ا" after the first letter: "ماكياج" and
+ * "مكياج", "طاولة" and "طولة" are the same word as Tunisians write it.
+ */
+const ARABIC = /[\u0600-\u06ff]/;
+const skeleton = (w: string) => (ARABIC.test(w) ? w[0] + w.slice(1).replace(/ا/g, "") : w);
+
+/**
+ * Words that name the same thing in French, Arabic and Tunisian written in
+ * Latin letters: a product named in one is found when typed in another.
+ * Plain forms (see normalize).
+ */
+const SYNONYMS: string[][] = [
+  ["maquillage", "makeup", "مكياج"],
+  ["cuisine", "كوجينه", "مطبخ", "koujina"],
+  ["lampe", "لمبه", "lamba"],
+  ["chaise", "كرسي", "kursi", "korsi"],
+  ["table", "طاوله", "tawla"],
+  ["sac", "صاك", "شنطه", "sak"],
+  ["montre", "منقاله", "mongela"],
+  ["tapis", "زربيه", "zarbia"],
+  ["miroir", "مرايه", "mraya"],
+  ["parfum", "عطر", "riha"],
+  ["verre", "كاس", "kess"],
+  ["brosse", "فرشه", "فرشاه"],
+];
+const SYNONYM_OF = new Map(SYNONYMS.flatMap((g) => g.map((w) => [skeleton(w), g] as const)));
+
+/** A field's words with the other names of the same things (see SYNONYMS). */
+export function withSynonyms(tokens: string[]): string[] {
+  const out = new Set(tokens);
+  for (const t of tokens) for (const w of SYNONYM_OF.get(skeleton(t)) ?? []) out.add(w);
+  return [...out];
+}
+
 /** Typing mistakes forgiven for a word of this length. */
 const allowed = (n: number) => (n <= 3 ? 0 : n <= 5 ? 1 : 2);
 
@@ -77,12 +112,16 @@ export type Match = { score: number; word: string; exact: boolean };
  */
 export function matchWord(typed: string, word: string, last: boolean): number {
   if (typed === word) return 1;
+  // The same Arabic word with or without its long "ا": as good as exact.
+  if (ARABIC.test(typed) && typed.length >= 3 && skeleton(typed) === skeleton(word)) return 0.97;
   if (typed.length >= 2 && word.startsWith(typed)) return last ? 0.92 : 0.75;
   if (typed.length >= 3 && word.includes(typed)) return 0.6;
   // Short typed words must be right ("sac" is not "bac"); otherwise the shorter of the two
   // decides how many mistakes are forgiven: "makina" is not "main", "kess" is "kes".
   const max = typed.length <= 3 ? 0 : allowed(Math.max(4, Math.min(typed.length, word.length)));
   if (max === 0) return 0;
+  // In Arabic, three letters are a whole other word: "بخار" (steam) is not "بار" (bar).
+  if (ARABIC.test(typed) && Math.min(typed.length, word.length) <= 3) return 0;
   const d = distance(typed, word, max);
   if (d <= max) return 0.8 - 0.15 * d;
   // Still typing, with a mistake: "difus" against the start of "diffuseur" (a letter more or less included).

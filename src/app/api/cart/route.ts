@@ -6,6 +6,7 @@ import { hashToken } from "@/lib/tokens";
 import { normalizePhone } from "@/lib/phone";
 import { isGovernorate } from "@/lib/governorates";
 import { isBot } from "@/lib/device";
+import { isInternal } from "@/lib/internal";
 
 const body = z.object({
   token: z.string().regex(/^[A-Za-z0-9-]{8,64}$/),
@@ -25,6 +26,8 @@ const body = z.object({
  */
 export async function POST(request: Request) {
   if (!sameOrigin(request) || isBot(request.headers.get("user-agent"))) return json({ ok: false }, 403);
+  // The shop's own tests are not unfinished orders to call back.
+  if (await isInternal()) return json({ ok: true });
   const limited = limit(request, "cart", LIMITS.cart);
   if (limited) return limited;
   const parsed = body.safeParse(await readJson(request));

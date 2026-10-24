@@ -2,11 +2,13 @@ import Link from "next/link";
 import type { ProductCard as Card } from "@/lib/catalog";
 import { dict, href, pick, type Lang } from "@/i18n";
 import { discountPct } from "@/lib/offer-display";
+import { offerNote, offerTitle } from "@/lib/offer-label";
 import { formatTND } from "@/lib/money";
 import { Img } from "./Img";
 import { QuickBuy } from "./QuickBuy";
 import { ListClicks } from "./ListClicks";
 import { OpeningHint } from "./OpeningHint";
+import { Bidi } from "./Bidi";
 import { IconGift, IconStar, IconTruck } from "./Icons";
 
 /**
@@ -34,7 +36,7 @@ export function ProductCard({ p, lang, priority = false, className = "", compact
     out || compact
       ? null
       : p.deal
-        ? { cls: "text-deal", icon: <IconGift className="mt-0.5 h-4 w-4 shrink-0" />, text: pick(lang, p.deal.label, p.deal.labelAr) }
+        ? { cls: "text-deal", icon: <IconGift className="mt-0.5 h-4 w-4 shrink-0" />, text: offerNote(p.deal, lang) ?? t.product.dealFor(offerTitle(p.deal, lang), formatTND(p.deal.price, lang)) }
         : p.freeDelivery
           ? { cls: "text-olive", icon: <IconTruck className="mt-0.5 h-4 w-4 shrink-0" />, text: t.buy.freeDelivery }
           : p.stock.kind === "low"
@@ -55,7 +57,7 @@ export function ProductCard({ p, lang, priority = false, className = "", compact
           <OpeningHint />
           {(out || pct > 0) && <span className={`absolute start-2.5 top-2.5 rounded-full px-2.5 text-[14px] font-bold leading-7 text-white ${out ? "bg-ink/85" : "bg-deal"}`}>{out ? t.product.out : <span className="ltr-nums">−{pct}%</span>}</span>}
         </div>
-        <h3 className="mt-2.5 line-clamp-2 text-[16px] font-normal leading-snug text-ink underline-offset-2 group-hover:underline">{name}</h3>
+        <h3 className="mt-2.5 line-clamp-2 text-[16px] font-normal leading-snug text-ink underline-offset-2 group-hover:underline"><Bidi text={name} /></h3>
         <div className="mt-1 flex flex-col items-start gap-1">
           <span className="relative flex flex-wrap items-baseline gap-x-1.5">
             {(p.packOf || p.priceFrom) && <span className="text-[15px] text-muted">{p.packOf ? t.product.pack(p.packOf) : t.product.from}</span>}

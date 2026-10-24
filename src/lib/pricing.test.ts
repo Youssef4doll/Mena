@@ -145,7 +145,8 @@ test("an offer sets the quantity and the price, whatever the request says", () =
   assert.equal(q.lines[0].qty, 3);
   assert.equal(q.lines[0].lineTotal, 99_000);
   assert.equal(q.lines[0].unitPrice, 33_000);
-  assert.equal(q.lines[0].offerLabel, "2 + 1 offert");
+  assert.equal(q.lines[0].offerLabel, "3 unités · 2 + 1 offert");
+  // The order says the quantity first, then the shop's own name for the offer (see offer-label).
   assert.equal(q.subtotal, 99_000);
   assert.equal(q.costTotal, 60_000);
   // The offer includes delivery.

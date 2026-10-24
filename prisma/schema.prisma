@@ -22,6 +22,8 @@ datasource db {
 model Category {
   id        String    @id @default(cuid())
   slug      String    @unique
+  /// Former addresses: an old link or Google result is sent to the current one (301).
+  oldSlugs  String[]  @default([])
   name      String
   nameAr    String?
   /// The title on the home page card ("Tout pour la cuisine"); the name when empty.
@@ -101,6 +103,8 @@ model Product {
   available     Boolean          @default(true)
   active        Boolean          @default(false)
   featured      Boolean          @default(false)
+  /// When the owner checked this product's facts with the supplier (specs, colours, warranty); null: not yet. Back office only.
+  checkedAt DateTime?
   /// Grams, for carriers that price by weight.
   weight        Int?
   images        ProductImage[]

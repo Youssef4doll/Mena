@@ -10,7 +10,7 @@ export const PAGE_SIZE = 100;
 /** The bulk actions take at most this many products at once (five pages). */
 export const MAX_BULK = 500;
 
-const FILTERS = ["all", "active", "inactive", "out"] as const;
+const FILTERS = ["all", "active", "inactive", "out", "unchecked"] as const;
 export type ListFilter = (typeof FILTERS)[number];
 /** "c": "" every category, "none" products without one, otherwise a category id. */
 export type ListParams = { f: ListFilter; q: string; c: string; page: number };
@@ -80,6 +80,8 @@ export function tabWhere(p: ListParams): Prisma.ProductWhereInput {
   if (p.f === "active") return { ...base, active: true };
   if (p.f === "inactive") return { ...base, active: false };
   if (p.f === "out") return { AND: [base, OUT_OF_STOCK] };
+  // Online and not yet checked with the supplier: the ones to verify before advertising them.
+  if (p.f === "unchecked") return { ...base, active: true, checkedAt: null };
   return base;
 }
 
