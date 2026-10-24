@@ -235,15 +235,17 @@ export function ProductView({ p, lang, settings, url }: { p: P; lang: Lang; sett
       {/* The long pictures first, one under the other (they sell): edge to edge on a phone; on a computer in a column
           about a phone's width (they are made for one, and a screen-wide picture took two screens), with the description
           beside them and the price and the button staying in view while they are read. Without pictures, the description
-          alone at a readable line length. With pictures, the title has the gallery link's words. */}
+          alone at a readable line length. With pictures, the title has the gallery link's words. Below 1024 px the
+          wrappers are display: contents, so a phone lays out the same boxes as before the computer layout existed
+          (Safari shrank the pictures when their column was aligned to its start). */}
       {(description || hasDetails) && (
         <section id="details" className="mx-auto mt-10 flex max-w-5xl flex-col gap-4 border-t border-line pt-8" aria-labelledby="desc-title">
           <TabTitle id="desc-title" ref={detailsTitle}>
             {hasDetails ? t.product.detailsTitle : t.product.description}
           </TabTitle>
-          <div className={hasDetails ? "flex flex-col gap-4 lg:grid lg:grid-cols-[500px_minmax(0,1fr)] lg:gap-12" : "contents"}>
+          <div className={hasDetails ? "contents lg:grid lg:grid-cols-[500px_minmax(0,1fr)] lg:gap-12" : "contents"}>
             {hasDetails && (
-              <div ref={picturesRef} className="relative -mx-4 flex flex-col self-start overflow-hidden md:mx-auto md:w-full md:max-w-[540px] md:rounded-2xl lg:mx-0 lg:max-w-none">
+              <div ref={picturesRef} className="relative -mx-4 flex flex-col overflow-hidden md:mx-auto md:w-full md:max-w-[540px] md:rounded-2xl lg:mx-0 lg:max-w-none lg:self-start">
                 {details.map((img) => (
                   <Image
                     key={img.id}

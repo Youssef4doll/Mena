@@ -45,5 +45,11 @@ test.describe("phone", () => {
     await expect(page.getByTestId("side-order")).toBeHidden();
     const box = (await page.locator("#details img").first().boundingBox())!;
     expect(box.width).toBe(360);
+    // The phone lays out the boxes it always had: Safari shrank the pictures when their column was aligned to its start.
+    const layout = await page.locator("#details img").first().evaluate((img) => {
+      const column = img.parentElement!;
+      return { align: getComputedStyle(column).alignSelf, wrapper: getComputedStyle(column.parentElement!).display };
+    });
+    expect(layout).toEqual({ align: "auto", wrapper: "contents" });
   });
 });
