@@ -114,7 +114,7 @@ export function CartView({ lang, settings }: { lang: Lang; settings: PublicSetti
   // The basket is read after the page is drawn: the page keeps its height meanwhile, so the footer never jumps.
   if (!hydrated || items.length === 0)
     return (
-      <div className="mx-auto min-h-[70vh] max-w-6xl xl:max-w-7xl 2xl:max-w-[90rem] px-4 pb-16 pt-5 md:pt-8">
+      <div className="mx-auto min-h-[70vh] max-w-6xl px-4 pb-16 pt-5 md:pt-8">
         {title}
         {hydrated && (
           <div className="mt-10 flex flex-col items-center gap-5 text-center">
@@ -136,7 +136,7 @@ export function CartView({ lang, settings }: { lang: Lang; settings: PublicSetti
     );
 
   return (
-    <div className="mx-auto grid min-h-[70vh] max-w-6xl xl:max-w-7xl 2xl:max-w-[90rem] gap-5 px-4 pb-16 pt-5 md:grid-cols-[1fr_440px] md:items-start md:gap-8 md:pt-8">
+    <div className="mx-auto grid min-h-[70vh] max-w-6xl gap-5 px-4 pb-16 pt-5 md:grid-cols-[1fr_440px] md:items-start md:gap-8 md:pt-8">
       <section className="flex min-w-0 flex-col gap-3" aria-labelledby="cart-title">
         {title}
         {notices.length > 0 && (

@@ -96,8 +96,6 @@ export const ar: Dict = {
     soldSuffix: "طلبية في آخر 30 يوم",
     soldShort: "طلبية",
     specs: "المواصفات",
-    inBrief: "على المنتوج هذا",
-    seeAll: "شوف الوصف الكل",
     video: "فيديو",
     playVideo: "شغّل الفيديو",
     zoom: "شوف التصويرة بالكبير",

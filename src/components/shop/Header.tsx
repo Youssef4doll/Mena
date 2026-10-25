@@ -62,7 +62,7 @@ export function Header({ lang, categories, announcement, phone }: { lang: Lang; 
     <>
       {/* Two facts from the settings, quietly: how one pays, and what delivery costs. */}
       <div className="border-b border-line bg-sand text-[15px] text-ink-2">
-        <p className="mx-auto flex min-h-9 max-w-6xl xl:max-w-7xl 2xl:max-w-[90rem] flex-wrap items-center justify-center gap-x-2 px-4 py-1.5 text-center">
+        <p className="mx-auto flex min-h-9 max-w-6xl flex-wrap items-center justify-center gap-x-2 px-4 py-1.5 text-center">
           {announcement.map((a, i) => (
             <Fragment key={a}>
               {i > 0 && <span aria-hidden className="text-muted">·</span>}
@@ -76,7 +76,7 @@ export function Header({ lang, categories, announcement, phone }: { lang: Lang; 
           picture, the name, the price and the stock fit on the first screen. */}
       <header className="z-30 border-b border-line bg-white text-ink md:sticky md:top-0">
         {/* Tight on a phone: menu, logo, search, language and basket fit on one line from 360 px. */}
-        <div className="mx-auto flex max-w-6xl xl:max-w-7xl 2xl:max-w-[90rem] flex-wrap items-center gap-x-2 gap-y-2 px-3 pb-3 pt-2 sm:gap-x-3 sm:px-4">
+        <div className="mx-auto flex max-w-6xl flex-wrap items-center gap-x-2 gap-y-2 px-3 pb-3 pt-2 sm:gap-x-3 sm:px-4">
           <button ref={openBtn} type="button" onClick={() => setMenu(true)} className="-ms-1.5 flex h-11 w-11 items-center justify-center rounded-full text-ink hover:bg-sand" aria-label={t.nav.menu}>
             <IconMenu className="h-6 w-6" />
           </button>
@@ -126,7 +126,7 @@ export function Header({ lang, categories, announcement, phone }: { lang: Lang; 
         {categories.length > 0 && (
           // The menu keeps the categories when the strip gives way on a product page.
           <nav className={`relative ${onProduct || onHome ? "max-md:hidden" : ""}`} aria-label={t.nav.categories}>
-            <div className="mx-auto flex max-w-6xl xl:max-w-7xl 2xl:max-w-[90rem] gap-2 overflow-x-auto px-3 pb-3 pt-0.5 no-scrollbar sm:px-4">
+            <div className="mx-auto flex max-w-6xl gap-2 overflow-x-auto px-3 pb-3 pt-0.5 no-scrollbar sm:px-4">
               <Link
                 href={href(lang, "/boutique")}
                 className={`flex h-11 shrink-0 items-center whitespace-nowrap rounded-full border px-4 text-[16px] ${shopOn ? "border-ink bg-ink font-bold text-white" : "border-line text-ink hover:border-field"}`}

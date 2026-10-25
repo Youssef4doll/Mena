@@ -49,6 +49,7 @@ test("reads the ideas of a chat reply, tolerating an unknown kind, and drops the
 test("the request for a product's pictures carries its texts and the rules", () => {
   const r = manualIdeasRequest({ name: "Lisseur 450 °C", nameAr: "", summary: "", description: "Plaques en céramique.", descriptionAr: "", specs: "Tension : 110–240 V" });
   assert.ok(r.includes("Lisseur 450 °C") && r.includes("Tension : 110–240 V"));
-  assert.ok(r.includes("never for weight, body shape, skin or health"));
+  assert.ok(r.startsWith("MENA — High-Conversion E-commerce Image Creative Director"));
+  assert.ok(r.includes("Generate exactly 4 image ideas") && r.includes("8. PRODUCT INFORMATION"));
   assert.ok(r.includes('"imageIdeas"'));
 });

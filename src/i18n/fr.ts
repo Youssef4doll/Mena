@@ -97,8 +97,6 @@ export const fr = {
     soldSuffix: "commandes en 30 jours",
     soldShort: "commandes",
     specs: "Caractéristiques",
-    inBrief: "À propos de ce produit",
-    seeAll: "Voir toute la description",
     video: "Vidéo",
     playVideo: "Lire la vidéo",
     zoom: "Voir la photo en grand",

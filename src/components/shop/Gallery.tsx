@@ -155,11 +155,7 @@ export function Gallery({ slides, name, productId, badge, lang, details }: { sli
                 key={n}
                 type="button"
                 onClick={() => go(n)}
-                // With a mouse, pointing at a thumbnail shows its picture, as on Amazon.
-                onMouseEnter={(e) => {
-                  if (matchMedia("(pointer: fine)").matches && e.buttons === 0) go(n);
-                }}
-                className={`relative h-14 w-14 shrink-0 overflow-hidden rounded-xl border bg-white transition md:h-[72px] md:w-[72px] xl:h-16 xl:w-16 ${i === n ? "border-sea ring-1 ring-sea" : "border-line hover:border-sea/50"}`}
+                className={`relative h-14 w-14 shrink-0 overflow-hidden rounded-xl border bg-white transition md:h-[72px] md:w-[72px] ${i === n ? "border-sea ring-1 ring-sea" : "border-line hover:border-sea/50"}`}
                 aria-label={s.kind === "video" ? t.product.playVideo : t.product.photo(photos.indexOf(s.image) + 1, photos.length)}
                 aria-current={i === n}
               >

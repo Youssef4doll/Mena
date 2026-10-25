@@ -7,21 +7,19 @@ import { dict, href, pick, type Lang } from "@/i18n";
 import type { ProductPage } from "@/lib/catalog";
 import type { PublicSettings } from "@/lib/settings-schema";
 import { track } from "@/lib/client/track";
-import { pixelContact, pixelViewContent } from "@/lib/client/pixels";
+import { pixelViewContent } from "@/lib/client/pixels";
 import { formatTND } from "@/lib/money";
 import { descriptionBlocks } from "@/lib/description";
 import { governorateLabel } from "@/lib/governorates";
 import { discountPct, leadOffer } from "@/lib/offer-display";
-import { offerTitle } from "@/lib/offer-label";
 import { deliveryRangeLabel, deliverySpan, freeOffersOf } from "@/lib/delivery";
 import { Stars } from "./Stars";
 import { Bidi } from "./Bidi";
 import { Gallery, slidesOf } from "./Gallery";
-import { BuyBox, addChoiceToCart, useBuyChoice, type BuyChoice } from "./BuyBox";
-import { VariantSelect } from "./VariantSelect";
+import { BuyBox, useBuyChoice, type BuyChoice } from "./BuyBox";
 import { useOrderDraft } from "./OrderForm";
 import { OrderSheet } from "./OrderSheet";
-import { IconCartPlus, IconCash, IconCheck, IconChevronDown, IconMinus, IconPlus, IconReturn, IconShield, IconTruck, IconWhatsApp } from "./Icons";
+import { IconCash, IconCheck, IconChevronDown, IconTruck } from "./Icons";
 
 type P = Omit<ProductPage, "related">;
 
@@ -139,7 +137,7 @@ export function ProductView({ p, lang, settings, url }: { p: P; lang: Lang; sett
     h?.focus({ preventScroll: true });
   }
 
-  function openSheet(from: "bar" | "end" | "side" | "box") {
+  function openSheet(from: "bar" | "end" | "side") {
     track("order_sheet_opened", { productId: p.id, props: { from } });
     setSheet(true);
   }
@@ -178,12 +176,10 @@ export function ProductView({ p, lang, settings, url }: { p: P; lang: Lang; sett
   const specs = lang === "ar" && p.specsAr ? p.specsAr : p.specs;
 
   return (
-    <div className="mx-auto max-w-6xl xl:max-w-7xl 2xl:max-w-[90rem] px-4 pb-28 md:pb-16">
+    <div className="mx-auto max-w-6xl px-4 pb-28 md:pb-16">
       {/* One copy of everything. Phone: pictures → name and price → offers and form → details.
-          Tablet and small computer: the pictures on the left (they stay in view), the rest on the right.
-          Wide computer, like Amazon: the pictures, then the name, the price and what the product is in brief,
-          then the purchase in its own box, from the top of the page. */}
-      <div className="grid gap-4 pt-1 md:grid-cols-[minmax(0,1.1fr)_minmax(0,1fr)] md:grid-rows-[auto_1fr] md:gap-x-10 md:gap-y-5 md:pt-4 xl:grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)_320px] xl:gap-x-8">
+          Computer: the pictures on the left (they stay in view), the rest on the right. */}
+      <div className="grid gap-4 pt-1 md:grid-cols-[minmax(0,1.1fr)_minmax(0,1fr)] md:grid-rows-[auto_1fr] md:gap-x-10 md:gap-y-5 md:pt-4">
         <div className="min-w-0 md:sticky md:top-36 md:col-start-1 md:row-span-2 md:row-start-1 md:self-start">
           <Gallery slides={slides} name={name} productId={p.id} lang={lang} badge={0} details={hasDetails ? { count: details.length, label: t.product.detailsLink, onClick: toDetails } : undefined} />
         </div>
@@ -232,14 +228,9 @@ export function ProductView({ p, lang, settings, url }: { p: P; lang: Lang; sett
           {!out && <DeliveryLine lang={lang} settings={settings} free={Boolean(choice.offer?.freeDelivery)} price={pay.price} />}
         </div>
 
-        <InBrief lang={lang} description={description} specs={specs} more={Boolean(description || hasDetails)} />
-
-        <div ref={buyRef} className={`min-w-0 pt-1 md:col-start-2 md:row-start-2 ${out ? "xl:col-start-3 xl:row-span-2 xl:row-start-1 xl:self-start" : "xl:hidden"}`}>
+        <div ref={buyRef} className="min-w-0 pt-1 md:col-start-2 md:row-start-2">
           <BuyBox p={p} lang={lang} settings={settings} url={url} choice={choice} origin="product" draft={draft} paused={sheet} />
         </div>
-        {/* Wide computer: the purchase in a box of its own, like Amazon's, its button opening the form over the page
-            (after the page's own box in the page's order, which phones read). Sold out, the page's own box says so there instead. */}
-        {!out && <DeskBox p={p} lang={lang} settings={settings} url={url} choice={choice} onOrder={() => openSheet("box")} />}
       </div>
 
       {/* The long pictures first, one under the other (they sell): edge to edge on a phone; on a computer in a column
@@ -388,193 +379,6 @@ export function ProductView({ p, lang, settings, url }: { p: P; lang: Lang; sett
       </div>
 
       {sheet && <OrderSheet p={p} lang={lang} settings={settings} url={url} choice={choice} draft={draft} onClose={() => setSheet(false)} />}
-    </div>
-  );
-}
-
-/**
- * Wide computer only, under the price, like Amazon's "About this item": the
- * product's own main facts (the first labelled characteristics) and the
- * description's points, cut short with a link down to the whole of it.
- * Nothing that is not already on the page, said again closer to the top.
- */
-function InBrief({ lang, description, specs, more }: { lang: Lang; description: string; specs: { label: string; value: string }[]; more: boolean }) {
-  const t = dict(lang);
-  const blocks = descriptionBlocks(description);
-  const points = blocks.flatMap((b) => (b.kind === "list" ? b.items : [])).slice(0, 6);
-  // A description written as sentences: its first paragraph, a few lines of it.
-  const opening = points.length ? null : (blocks.find((b) => b.kind === "text")?.text ?? null);
-  const facts = specs.filter((s) => s.label).slice(0, 5);
-  if (!points.length && !opening && !facts.length) return null;
-  return (
-    <div className="hidden min-w-0 flex-col gap-4 border-t border-line pt-4 xl:col-start-2 xl:row-start-2 xl:flex" data-testid="in-brief">
-      {facts.length > 0 && (
-        <table className="w-full text-[15px]">
-          <tbody>
-            {facts.map((f, i) => (
-              <tr key={i} className="align-top">
-                <th scope="row" className="w-[42%] py-1 pe-3 text-start font-bold text-ink" dir="auto"><Bidi text={f.label} /></th>
-                <td className="py-1 text-ink-2" dir="auto"><Bidi text={f.value} /></td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      )}
-      {(points.length > 0 || opening) && (
-        <div className="flex flex-col gap-2">
-          <h2 className="text-[17px] font-bold text-ink">{t.product.inBrief}</h2>
-          {points.length > 0 ? (
-            <ul className="flex list-disc flex-col gap-1.5 ps-5 text-[15px] leading-relaxed text-ink-2 marker:text-muted">
-              {points.map((x, i) => (
-                <li key={i} dir="auto"><Bidi text={x} /></li>
-              ))}
-            </ul>
-          ) : (
-            <p className="line-clamp-6 whitespace-pre-line text-[15px] leading-relaxed text-ink-2" dir="auto"><Bidi text={opening!} /></p>
-          )}
-        </div>
-      )}
-      {more && (
-        <a href="#details" className="self-start text-[15px] text-sea underline underline-offset-4 hover:text-sea-2">
-          {t.product.seeAll}
-        </a>
-      )}
-    </div>
-  );
-}
-
-/**
- * Wide computer only, in the third column, like Amazon's buy box: what the
- * current choice costs and its delivery, the offers (or the option and the
- * quantity), "Acheter maintenant" (the form opens over the page, with what
- * was chosen here), the basket and WhatsApp, then what the shop's own
- * settings promise. Short enough to be seen whole on a laptop's first screen.
- */
-function DeskBox({ p, lang, settings, url, choice, onOrder }: { p: P; lang: Lang; settings: PublicSettings; url: string; choice: BuyChoice; onOrder: () => void }) {
-  const t = dict(lang);
-  const pay = payNow(p, choice);
-  const offer = choice.offer;
-  const struck = offer && offer.compareAt != null && offer.compareAt > offer.price ? offer.compareAt : null;
-  const span = deliverySpan(settings.delivery.zones);
-  const name = pick(lang, p.name, p.nameAr);
-  const option = [choice.variant ? pick(lang, choice.variant.name, choice.variant.nameAr) : null, offer ? pick(lang, offer.label, offer.labelAr) : null].filter(Boolean).join(" — ") || null;
-  return (
-    <div className="hidden min-w-0 flex-col gap-4 rounded-[24px] border border-line bg-white p-5 shadow-[0_10px_30px_-22px_rgb(0_0_0/.45)] xl:col-start-3 xl:row-span-2 xl:row-start-1 xl:flex xl:self-start" data-testid="desk-box">
-      <div className="flex flex-col gap-2">
-        <p className="flex flex-wrap items-baseline gap-x-2">
-          {pay.from && <span className="text-[15px] text-muted">{t.product.from}</span>}
-          <span className="whitespace-nowrap text-[28px] font-bold leading-none text-ink price-nums ltr-nums">{formatTND(pay.price, lang)}</span>
-          {struck != null && (
-            <>
-              <span className="sr-only">{t.buy.instead(formatTND(struck, lang))}</span>
-              <s aria-hidden className="whitespace-nowrap text-[16px] text-muted price-nums ltr-nums">{formatTND(struck, lang)}</s>
-            </>
-          )}
-        </p>
-        <DeliveryLine lang={lang} settings={settings} free={Boolean(offer?.freeDelivery)} price={pay.price} />
-        {span && <p className="text-[15px] text-ink-2">{t.product.deliveryDelay} : {deliveryRangeLabel(span.minDays, span.maxDays, lang)}</p>}
-        <StockLine lang={lang} p={p} variant={choice.variant} />
-      </div>
-
-      {p.offers.length > 0 && (
-        <fieldset className="flex min-w-0 flex-col gap-2">
-          <legend className="sr-only">{t.buy.step1}</legend>
-          {p.offers.map((o) => {
-            const off = !choice.fits(o);
-            const on = offer?.id === o.id;
-            const pct = o.quantity > 1 ? discountPct(o.price, o.compareAt) : 0;
-            return (
-              <label key={o.id} className={`flex items-center gap-2.5 rounded-xl border px-3 py-2 transition ${off ? "cursor-not-allowed border-dashed border-line opacity-60" : on ? "cursor-pointer border-sea bg-sea-soft/60 ring-1 ring-sea" : "cursor-pointer border-sand-2 hover:border-sea/60"}`}>
-                <input type="radio" name="dk-offer" checked={on} disabled={off} onChange={() => choice.setOffer(o.id)} className="h-5 w-5 shrink-0 accent-[var(--color-sea)]" />
-                <span className="flex min-w-0 flex-1 flex-col">
-                  <span className="flex flex-wrap items-center gap-x-1.5 text-[15px] leading-snug text-ink">
-                    {offerTitle(o, lang)}
-                    {pct > 0 && !off && <span className="rounded-full bg-deal px-1.5 text-[12px] font-bold leading-5 text-white"><span className="ltr-nums">−{pct}%</span></span>}
-                  </span>
-                  {o.freeDelivery && !off && <span className="text-[13px] font-bold text-olive">{t.buy.freeDelivery}</span>}
-                </span>
-                <span className="whitespace-nowrap text-[16px] font-bold text-ink price-nums ltr-nums">{formatTND(o.price, lang)}</span>
-              </label>
-            );
-          })}
-        </fieldset>
-      )}
-
-      {p.variants.length > 0 && (
-        <div className="flex flex-col gap-1.5">
-          <p id="dk-variants-label" className="ps-1 text-[15px] text-ink-2">{t.product.choose}</p>
-          <VariantSelect
-            id="dk-variant"
-            labelledBy="dk-variants-label"
-            lang={lang}
-            options={p.variants.map((v) => ({ id: v.id, label: pick(lang, v.name, v.nameAr), colorHex: v.colorHex ?? null, price: !choice.hasOffers && v.price !== p.price ? v.price : null, soldOut: v.soldOut }))}
-            value={choice.variant?.id ?? null}
-            placeholder={t.product.chooseFirst}
-            soldOutText={t.product.out}
-            invalid={false}
-            onChange={(v) => choice.setVariant(v)}
-          />
-        </div>
-      )}
-
-      {!choice.hasOffers && (
-        <div className="flex items-center justify-between gap-3">
-          <span className="ps-1 text-[15px] text-ink-2" id="dk-qty-label">{t.buy.quantity}</span>
-          <div className="inline-flex h-11 items-center rounded-full border border-field bg-white px-1" role="group" aria-labelledby="dk-qty-label">
-            <button type="button" className="flex h-11 w-11 items-center justify-center disabled:opacity-30" onClick={() => choice.setQty(Math.max(1, choice.qty - 1))} disabled={choice.qty <= 1} aria-label={t.buy.qtyLess}>
-              <IconMinus className="h-5 w-5" />
-            </button>
-            <span className="w-7 text-center text-[17px] font-bold ltr-nums" aria-live="polite">{choice.qty}</span>
-            <button type="button" className="flex h-11 w-11 items-center justify-center disabled:opacity-30" onClick={() => choice.setQty(Math.min(choice.maxQty, choice.qty + 1))} disabled={choice.qty >= choice.maxQty} aria-label={t.buy.qtyMore}>
-              <IconPlus className="h-5 w-5" />
-            </button>
-          </div>
-        </div>
-      )}
-
-      <div className="flex flex-col gap-2">
-        <button type="button" onClick={onOrder} aria-haspopup="dialog" className="flex min-h-[54px] w-full items-center justify-center gap-2.5 rounded-full bg-buy px-5 py-2 text-[18px] font-bold leading-tight text-night shadow-[inset_0_-3px_0_var(--color-buy-2)] transition [--focus-ring:var(--color-night)] hover:bg-buy-2 active:scale-[.99]" data-testid="desk-buy">
-          <IconTruck className="h-6 w-6 shrink-0" />
-          {t.product.buyNow}
-        </button>
-        <button
-          type="button"
-          // An option still to choose: the form over the page asks for it.
-          onClick={() => {
-            if (!addChoiceToCart(p, choice, "desk")) onOrder();
-          }}
-          className="flex min-h-12 w-full items-center justify-center gap-2.5 rounded-full border border-ink/60 bg-white px-5 text-[16px] font-bold text-ink transition hover:bg-sand active:scale-[.99]"
-        >
-          <IconCartPlus className="h-5 w-5 shrink-0" />
-          {t.product.addToCart}
-        </button>
-        {settings.contact.whatsapp && (
-          <a
-            href={`https://wa.me/216${settings.contact.whatsapp}?text=${encodeURIComponent(t.product.whatsappText(name, option, formatTND(pay.price, lang), url))}`}
-            target="_blank"
-            rel="noopener"
-            onClick={() => {
-              track("whatsapp_clicked", { productId: p.id, props: { where: "desk" } });
-              pixelContact();
-            }}
-            className="inline-flex min-h-11 items-center justify-center gap-2 rounded-full px-4 text-[15px] font-bold text-ink hover:bg-sand"
-          >
-            <IconWhatsApp className="h-5 w-5 text-wa" />
-            {t.buy.whatsapp}
-          </a>
-        )}
-      </div>
-
-      <ul className="flex flex-col gap-2 border-t border-line pt-4 text-[15px] text-ink-2">
-        <li className="flex items-start gap-2"><IconCash className="mt-0.5 h-5 w-5 shrink-0 text-sea" />{t.trust.cod}</li>
-        {settings.delivery.openBeforePaying && <li className="flex items-start gap-2"><IconShield className="mt-0.5 h-5 w-5 shrink-0 text-sea" />{t.trust.openBeforePaying}</li>}
-        {settings.returns.days > 0 && (
-          <li className="flex items-start gap-2">
-            <IconReturn className="mt-0.5 h-5 w-5 shrink-0 text-sea" />
-            <Link href={href(lang, "/livraison-retours")} prefetch={false} className="underline-offset-4 hover:underline">{t.trust.returns(settings.returns.days)}</Link>
-          </li>
-        )}
-      </ul>
     </div>
   );
 }

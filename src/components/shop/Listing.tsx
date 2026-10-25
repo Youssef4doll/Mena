@@ -14,7 +14,7 @@ export function parseSort(v: unknown): SortKey {
 export function Listing({ lang, title, path, sort, products, emptyText, banner }: { lang: Lang; title: string; path: string; sort: SortKey; products: ProductCard[]; emptyText: string; banner?: { image: string | null; line: string | null } }) {
   const t = dict(lang);
   return (
-    <div className="mx-auto max-w-6xl xl:max-w-7xl 2xl:max-w-[90rem] px-4 pb-6 pt-6 md:pt-8">
+    <div className="mx-auto max-w-6xl px-4 pb-6 pt-6 md:pt-8">
       <div className="mb-6 flex flex-col gap-3 md:flex-row md:items-end md:justify-between md:gap-6">
         {banner ? (
           <div className="relative -mx-4 overflow-hidden px-4 py-7 md:mx-0 md:flex-1 md:rounded-2xl md:px-7 md:py-9">

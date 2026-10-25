@@ -16,7 +16,7 @@ export function Footer({ lang, settings }: { lang: Lang; settings: Settings }) {
   const year = new Date().getFullYear();
   return (
     <footer className="mt-16 border-t border-line bg-white">
-      <div className="mx-auto flex max-w-6xl xl:max-w-7xl 2xl:max-w-[90rem] flex-col gap-8 px-4 py-10 md:flex-row md:items-start md:justify-between">
+      <div className="mx-auto flex max-w-6xl flex-col gap-8 px-4 py-10 md:flex-row md:items-start md:justify-between">
         <div className="flex flex-col items-start gap-4">
           <Logo />
           {(tel || wa) && (
@@ -51,7 +51,7 @@ export function Footer({ lang, settings }: { lang: Lang; settings: Settings }) {
         </nav>
       </div>
       <div className="border-t border-line">
-        <p className="mx-auto max-w-6xl xl:max-w-7xl 2xl:max-w-[90rem] px-4 py-4 text-[15px] text-muted">
+        <p className="mx-auto max-w-6xl px-4 py-4 text-[15px] text-muted">
           © {year} {s.legalName || s.name}
           {s.legalId && <span className="ltr-nums"> · MF {s.legalId}</span>}
           {s.address && ` · ${s.address}`}
