@@ -27,6 +27,7 @@ export default async function PanelLayout({ children }: { children: React.ReactN
     { href: "/admin/depenses", label: "Dépenses pub" },
     { href: "/admin/paniers", label: "Non terminées" },
     { href: "/admin/produits", label: "Produits" },
+    { href: "/admin/produits/qualite", label: "Qualité des fiches" },
     { href: "/admin/categories", label: "Catégories" },
     { href: "/admin/fournisseurs", label: "Fournisseurs" },
     { href: "/admin/clients", label: "Clients" },

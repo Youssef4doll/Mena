@@ -1,18 +1,11 @@
 import { test, expect, type Page } from "@playwright/test";
+import { signIn } from "./sign-in";
 
 /**
  * The Arabic of categories (the common names at once, the others through
  * claude.ai: the tests have no API key), and the tall pictures planned for a
  * product from the editor, with the requests written out for Gemini.
  */
-
-async function signIn(page: Page) {
-  await page.goto("/admin/connexion");
-  await page.getByLabel("E-mail").fill("e2e@mena.test");
-  await page.getByLabel("Mot de passe").fill("e2e-password-123");
-  await page.getByRole("button", { name: "Se connecter" }).click();
-  await expect(page.getByRole("heading", { name: "Tableau de bord" })).toBeVisible();
-}
 
 /** The card of a category, found by its title. */
 const card = (page: Page, name: string) => page.locator("section").filter({ has: page.getByRole("heading", { name, exact: true }) });

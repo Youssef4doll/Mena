@@ -6,7 +6,7 @@ import { formatTND, parseTND, toInputTND } from "@/lib/money";
 import { slugify } from "@/lib/slug";
 import { isWebAddress, type RowData } from "@/lib/product-csv";
 import {
-  DEFAULT_RULE, frenchCategory, imagesFromHtml, pageText, priceFromRule, productCode, readSupplierList, type ListItem, type PriceRule,
+  DEFAULT_RULE, factsFromPage, frenchCategory, imagesFromHtml, pageText, priceFromRule, productCode, readSupplierList, type ListItem, type PageFacts, type PriceRule,
 } from "@/lib/supplier-page";
 import { manualDraftRequest, readDraftAnswer, type Draft } from "@/lib/supplier-prompt";
 import { ImageIdeas } from "@/components/admin/ImageIdeas";
@@ -176,7 +176,12 @@ function ListMode({ items, aiReady, categories, onReset }: { items: ListItem[]; 
   useEffect(() => {
     let live = true;
     matchProducts(items.map((i) => ({ ref: i.ref, slug: slugify(i.name) })))
-      .then((f) => live && setFound(f))
+      .then((f) => {
+        if (!live) return;
+        setFound(f);
+        // Already in the shop: left out unless ticked (their cost, code and link would be updated).
+        setChosen((c) => c.map((v, i) => (f[i]?.match ? false : v)));
+      })
       .catch(() => live && setCheckError(true));
     return () => {
       live = false;
@@ -204,6 +209,15 @@ function ListMode({ items, aiReady, categories, onReset }: { items: ListItem[]; 
   const noName = picked.filter((i) => isNew(i) && !names[i].trim());
   const newCount = picked.filter(isNew).length;
   const updCount = picked.length - newCount;
+  const existing = found ? items.filter((_, i) => !isNew(i)).length : 0;
+  // Shift + click ticks or unticks every line between the last one clicked and this one.
+  const lastClicked = useRef<number | null>(null);
+  function tick(i: number, value: boolean, range: boolean) {
+    const from = range && lastClicked.current != null ? Math.min(lastClicked.current, i) : i;
+    const to = range && lastClicked.current != null ? Math.max(lastClicked.current, i) : i;
+    setChosen((c) => c.map((v, n) => (n >= from && n <= to ? value : v)));
+    lastClicked.current = i;
+  }
 
   function setRuleField(k: keyof PriceRule, v: string) {
     setRuleText((t) => ({ ...t, [k]: v }));
@@ -257,7 +271,7 @@ function ListMode({ items, aiReady, categories, onReset }: { items: ListItem[]; 
     <div className="flex flex-col gap-4">
       <Card
         title={`${plural(items.length, "produit trouvé", "produits trouvés")} dans la liste`}
-        hint="Les nouveaux sont créés hors ligne avec leur photo en grand, leur coût, leur code et leur lien Ecomness. Ceux déjà dans la boutique gardent leur nom, leur prix et leurs textes : seuls leur coût, leur code et leur lien sont mis à jour."
+        hint="Les nouveaux sont créés hors ligne avec leur photo en grand, leur coût, leur code et leur lien Ecomness. Ceux déjà dans la boutique sont décochés : cochés, seuls leur coût, leur code et leur lien sont mis à jour (leur nom, leur prix et leurs textes ne changent pas)."
         aside={<button type="button" className={btn.ghost} onClick={onReset} disabled={running}>Coller autre chose</button>}
       >
         <div className="flex flex-col gap-4">
@@ -304,6 +318,25 @@ function ListMode({ items, aiReady, categories, onReset }: { items: ListItem[]; 
           )}
 
           {checkError && <p className="text-sm text-clay">Impossible de savoir quels produits sont déjà dans la boutique. Rechargez la page.</p>}
+          {!started && (
+            <div className="flex flex-col gap-1.5" data-testid="supplier-select">
+              <div className="flex flex-wrap items-center gap-2 text-sm">
+                <span className="text-ink-2">
+                  {picked.length} coché{picked.length > 1 ? "s" : ""} sur {items.length}
+                  {existing > 0 && <> · {existing} déjà dans la boutique</>}
+                </span>
+                <button type="button" className={`${btn.ghost} h-8 px-3 text-[13px]`} onClick={() => setChosen(items.map(() => true))}>Tout cocher</button>
+                <button type="button" className={`${btn.ghost} h-8 px-3 text-[13px]`} onClick={() => setChosen(items.map(() => false))}>Tout décocher</button>
+                {existing > 0 && (
+                  <>
+                    <button type="button" className={`${btn.ghost} h-8 px-3 text-[13px]`} onClick={() => setChosen(items.map((_, i) => isNew(i)))}>Les nouveaux seulement</button>
+                    <button type="button" className={`${btn.ghost} h-8 px-3 text-[13px]`} onClick={() => setChosen(items.map((_, i) => !isNew(i)))}>Ceux déjà dans la boutique</button>
+                  </>
+                )}
+              </div>
+              <p className="text-xs text-muted">Maj + clic sur une case coche ou décoche toutes les lignes depuis la dernière cliquée.</p>
+            </div>
+          )}
           <ul className="flex flex-col divide-y divide-line" data-testid="supplier-list">
             {items.map((it, i) => {
               const m = found?.[i]?.match ?? null;
@@ -311,7 +344,15 @@ function ListMode({ items, aiReady, categories, onReset }: { items: ListItem[]; 
               const price = priceOf(i);
               return (
                 <li key={`${it.ref}-${i}`} className="flex gap-3 py-3">
-                  <input type="checkbox" aria-label={`Prendre ${it.name}`} className="mt-4 h-5 w-5 shrink-0 accent-sea" checked={chosen[i]} disabled={running || started} onChange={(e) => setChosen((c) => c.map((v, n) => (n === i ? e.target.checked : v)))} />
+                  <input
+                    type="checkbox"
+                    aria-label={`Prendre ${it.name}`}
+                    className="mt-4 h-5 w-5 shrink-0 accent-sea"
+                    checked={chosen[i]}
+                    disabled={running || started}
+                    onClick={(e) => tick(i, e.currentTarget.checked, e.shiftKey)}
+                    onChange={() => {}}
+                  />
                   {it.thumb || it.photo ? (
                     // eslint-disable-next-line @next/next/no-img-element
                     <img src={it.thumb ?? it.photo!} alt="" loading="lazy" className="h-14 w-14 shrink-0 rounded-lg border border-line bg-sand object-cover" />
@@ -438,6 +479,8 @@ function PageMode({ html, text, aiReady, categories, onReset }: { html: string; 
   const { snap, running, outcome, start } = useRun(aiReady);
   const asked = useRef(false);
   const empty = page.length < 20;
+  // The page's own words, read without the AI: a description at once, even without a key.
+  const facts = useMemo(() => factsFromPage(text, html), [text, html]);
 
   const pickCategory = (c: string) => categories.find((x) => norm(x) === norm(c)) ?? c.trim();
 
@@ -591,13 +634,22 @@ function PageMode({ html, text, aiReady, categories, onReset }: { html: string; 
             writing ? (
               <p className="text-sm text-ink-2" role="status">L&apos;IA lit la page et écrit la fiche en français et en arabe tunisien… (environ 30 secondes)</p>
             ) : (
-              <div className="flex flex-col gap-2 text-sm">
+              <div className="flex flex-col gap-3 text-sm">
                 {error && <p className="text-clay">{error}</p>}
                 <button type="button" className={`${btn.sea} self-start`} onClick={write} disabled={empty}>Écrire la fiche avec l&apos;IA</button>
+                {error && <PageTextDraft facts={facts} onDraft={accept} />}
               </div>
             )
           ) : (
-            <ManualDraft request={manualDraftRequest({ text: page, categories })} onDraft={accept} />
+            <div className="flex flex-col gap-4">
+              <PageTextDraft facts={facts} onDraft={accept} />
+              <details className="rounded-xl border border-line p-3">
+                <summary className="cursor-pointer text-sm font-medium text-ink">Ou une fiche réécrite en français et en arabe, avec claude.ai</summary>
+                <div className="mt-3">
+                  <ManualDraft request={manualDraftRequest({ text: page, categories })} onDraft={accept} />
+                </div>
+              </details>
+            </div>
           )}
         </Card>
       )}
@@ -714,6 +766,51 @@ function DraftTexts({ draft }: { draft: Draft }) {
         {side("ar")}
       </div>
     </details>
+  );
+}
+
+/**
+ * The supplier's own text, read from the pasted page without any AI: the
+ * name, the description and the facts, to check and correct here. French
+ * only (Ecomness writes in French); the Arabic follows with « Traduire en
+ * lot » or the editor.
+ */
+function PageTextDraft({ facts, onDraft }: { facts: PageFacts; onDraft: (d: Draft) => void }) {
+  const [name, setName] = useState(facts.name);
+  const [description, setDescription] = useState(facts.description);
+  const [specs, setSpecs] = useState(facts.specs);
+  return (
+    <div className="flex flex-col gap-2 text-sm" data-testid="page-text-draft">
+      <p className="text-ink-2">
+        <b className="text-ink">Le texte de la page, tout de suite</b> : relisez et corrigez, puis utilisez-le. L&apos;arabe se fera ensuite (« Traduire en lot » ou l&apos;éditeur).
+      </p>
+      <label className={label}>
+        Nom
+        <input className={input} value={name} onChange={(e) => setName(e.target.value)} />
+      </label>
+      <label className={label}>
+        Description
+        <textarea className={`${input} h-36`} value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Rien trouvé : collez ici la description de la page Ecomness." />
+      </label>
+      <label className={label}>
+        Caractéristiques (une par ligne, « Poids : 2 kg »)
+        <textarea className={`${input} h-20`} value={specs} onChange={(e) => setSpecs(e.target.value)} />
+      </label>
+      <button
+        type="button"
+        className={`${btn.sea} self-start`}
+        disabled={!name.trim()}
+        onClick={() =>
+          onDraft({
+            name: name.trim(), nameAr: "", summary: "", summaryAr: "", description: description.trim(), descriptionAr: "", specs: specs.trim(), specsAr: "", keywords: "",
+            seoTitle: "", seoTitleAr: "", seoDescription: "", seoDescriptionAr: "", category: "", supplierPrice: facts.cost != null ? `${toInputTND(facts.cost)} TND` : "",
+            supplierRef: facts.ref, variants: [], imageIdeas: [],
+          })
+        }
+      >
+        Utiliser ces textes
+      </button>
+    </div>
   );
 }
 

@@ -10,6 +10,8 @@ import { Stars } from "@/components/shop/Stars";
 import { Img, WarmBlur } from "@/components/shop/Img";
 import { IconChevron, IconReturn, IconShield } from "@/components/shop/Icons";
 import { JsonLd, organizationLd, websiteLd } from "@/lib/seo";
+import { HeroBanners, type Banner } from "@/components/shop/HeroBanners";
+import { bannerLink, heroSlides } from "@/lib/settings-schema";
 
 export const revalidate = 60;
 
@@ -29,6 +31,12 @@ export default async function Home({ params }: PageProps<"/[lang]">) {
   const t = dict(lang);
   const [settings, home, cats] = await Promise.all([getSettings(), getHome(), getHomeCategories()]);
   const hero = settings.hero;
+  // The banners, each to a page of the shop in this language, or to an https address.
+  const slides = heroSlides(hero);
+  const banners: Banner[] = slides.map((b, i) => {
+    const to = bannerLink(b.link);
+    return { imageId: b.imageId, alt: pick(lang, b.alt, b.altAr), label: t.product.photo(i + 1, slides.length), href: to ? ("path" in to ? href(lang, to.path) : to.url) : null, external: Boolean(to && "url" in to) };
+  });
   const empty = home.newest.length === 0;
   // Every category with products, in a row that scrolls on a phone: none left out of the home page.
   const shown = cats.slice(0, 12);
@@ -45,11 +53,7 @@ export default async function Home({ params }: PageProps<"/[lang]">) {
       {/* ------------------------------------------- welcome, one line */}
       <section className="mx-auto max-w-6xl px-4 pb-5 pt-5 md:pb-6 md:pt-8">
         <h1 className="text-[22px] font-bold leading-snug text-ink sm:text-[28px]">{pick(lang, hero.title, hero.titleAr)}</h1>
-        {hero.imageId && (
-          <div className="relative mt-4 aspect-[16/7] w-full overflow-hidden rounded-2xl md:aspect-[21/6]">
-            <Img image={{ id: hero.imageId, blur: null, width: 1600, height: 700 }} alt="" sizes="(min-width: 1152px) 1120px, 100vw" priority />
-          </div>
-        )}
+        {banners.length > 0 && <HeroBanners banners={banners} />}
       </section>
 
       {empty && <p className="mx-auto max-w-6xl px-4 py-16 text-center text-[18px] text-muted">{t.home.empty}</p>}

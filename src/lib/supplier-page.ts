@@ -111,6 +111,59 @@ export function pageText(text: string): string {
   return lines.join("\n").slice(0, MAX_PAGE_TEXT);
 }
 
+/**
+ * What a pasted product page says, read without the AI: its name, its cost,
+ * its description and its "Label : value" facts, the supplier's own words,
+ * for the owner to check and correct before creating the product. Used when
+ * no AI is at hand: the product gets its description at once (in French;
+ * the Arabic follows with the translation).
+ */
+export type PageFacts = { name: string; description: string; specs: string; cost: number | null; ref: string };
+
+/** Words of the site around the product (menus, buttons, footers), never part of its description. */
+const CHROME = /^(ecomness|marketplace|dashboard|tableau de bord|my products|mes produits|home|accueil|login|logout|connexion|panier|cart|menu|search|recherche|add to (cart|store|my products)|ajouter.*|import.*|copy|copier|share|partager|back|retour|voir plus|see more|read more|lire la suite|\d+\s*\/\s*\d+)$/i;
+/** A heading after which the description starts. */
+const DESC_HEAD = /^(product\s+)?(description|descriptif|details|détails|description du produit|الوصف|وصف المنتج)\s*:?$/i;
+/** Where a product's own text stops: the shop's other blocks. */
+const STOP = /^(similar|related|you may also|produits similaires|vous aimerez|reviews|avis|faq|shipping|livraison|contact|©|copyright|terms|conditions|privacy)/i;
+/** "Label : value" lines that are the page's own bookkeeping, not facts about the product. */
+const NOT_A_FACT = /^(product\s*code|code|sku|ref(erence)?|réf(érence)?|prix|price|cost|coût|stock|quantity|quantité|supplier|fournisseur|vendor|category|catégorie|categorie|marge|margin|profit|selling price|prix de vente)\b/i;
+const PRICE_LINE = /(?:prix|price|coût|cost|السعر)?\s*:?\s*(\d{1,6}(?:[.,]\d{1,3})?)\s*(?:TND|DT|د\.ت)\b/i;
+
+const stripTags = (html: string) => decode(html.replace(/<[^>]+>/g, " ")).replace(/\s+/g, " ").trim();
+
+export function factsFromPage(text: string, html = ""): PageFacts {
+  const page = pageText(text);
+  const lines = page.split("\n").map((l) => l.trim()).filter(Boolean);
+  const ref = productCode(page);
+  const h1 = /<h1[^>]*>([\s\S]*?)<\/h1>/i.exec(html)?.[1];
+  const refAt = lines.findIndex((l) => ref && l.includes(ref));
+  const name =
+    (h1 && stripTags(h1)) ||
+    (refAt > 0 ? lines.slice(0, refAt).reverse().find((l) => !CHROME.test(l) && !PRICE_LINE.test(l) && l.split(" ").length >= 2) : undefined) ||
+    lines.find((l) => !CHROME.test(l) && l.split(" ").length >= 3 && l.length <= 140) ||
+    "";
+  const priceLine = lines.find((l) => PRICE_LINE.test(l) && !/marge|margin|profit|vente|selling/i.test(l));
+  const cost = priceLine ? parseTND(PRICE_LINE.exec(priceLine)![1]) : null;
+
+  const facts: string[] = [];
+  const prose: string[] = [];
+  const head = lines.findIndex((l) => DESC_HEAD.test(l));
+  const from = head >= 0 ? head + 1 : 0;
+  for (const l of lines.slice(from)) {
+    if (STOP.test(l) && (head >= 0 || prose.length)) break;
+    if (l === name || CHROME.test(l) || (ref && l.includes(ref)) || PRICE_LINE.test(l)) continue;
+    const kv = /^([^:]{2,40}?)\s*:\s*(.{1,160})$/.exec(l);
+    if (kv && !/https?:/.test(l)) {
+      if (!NOT_A_FACT.test(kv[1])) facts.push(`${kv[1].trim()} : ${kv[2].trim()}`);
+      continue;
+    }
+    // A sentence, or a line under the description heading: the supplier's description.
+    if (head >= 0 || (l.length >= 30 && l.split(" ").length >= 5)) prose.push(l);
+  }
+  return { name: name.slice(0, 140), description: prose.join("\n").slice(0, 5000), specs: [...new Set(facts)].join("\n").slice(0, 3000), cost, ref };
+}
+
 /** Ecomness writes its product codes "ENP-XXXXXXXX" and its suppliers' "ENSU-…" / "ENSE-…". */
 const PRODUCT_CODE = /\bENP-[A-Z0-9]{4,12}\b/;
 export const productCode = (text: string) => text.match(PRODUCT_CODE)?.[0] ?? "";

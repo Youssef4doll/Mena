@@ -4,8 +4,8 @@ import { Prisma, type OrderStatus } from "@prisma/client";
 import { after } from "next/server";
 import { prisma } from "./prisma";
 import { quoteCart, publicQuote, type PublicQuote } from "./quote-server";
-import { normalizePhone, isMobile } from "./phone";
-import { isGovernorate } from "./governorates";
+import { formatPhone, normalizePhone, isMobile } from "./phone";
+import { governorateLabel, isGovernorate } from "./governorates";
 import { orderFlags } from "./fraud";
 import { getSettings } from "./settings";
 import { accessTokenFromSalt, hashToken, newOrderRef, newToken } from "./tokens";
@@ -237,7 +237,7 @@ export async function placeOrder(input: PlaceOrderInput, ctx: { ua: string | nul
             },
             history: { create: { from: null, to: "PENDING", by: "client" } },
           },
-          select: { id: true, ref: true, total: true, visitorId: true, sessionId: true, source: true, medium: true, campaign: true, device: true, governorate: true, name: true, locale: true, email: true, phone: true },
+          select: { id: true, ref: true, total: true, visitorId: true, sessionId: true, source: true, medium: true, campaign: true, device: true, governorate: true, name: true, locale: true, email: true, phone: true, address: true },
         });
 
         if (input.restoredCartId) {
@@ -278,12 +278,23 @@ export async function placeOrder(input: PlaceOrderInput, ctx: { ua: string | nul
   after(async () => {
     await recordOrderEvent("order_placed", order, { items: quote.lines.reduce((s, l) => s + l.qty, 0), lines: quote.lines.length, payment: input.payment, promo: Boolean(quote.discount), origin: input.origin ?? "product", restored: Boolean(input.restoredCartId) });
     if (settings.notify.smsOnPlaced) await sendSms({ to: order.phone, text: placedText(order, settings.shop.name, trackUrl), kind: "order_placed", orderId: order.id });
-    if (order.email) {
+    // One e-mail, to the owner only, for each new order; customers get none (they are called, and get the SMS if set).
+    const alertTo = (settings.notify.orderAlertTo || settings.shop.email).trim();
+    if (alertTo) {
       await sendEmail({
-        to: order.email,
-        subject: `${settings.shop.name} — commande ${order.ref}`,
-        text: `${placedText(order, settings.shop.name, trackUrl)}\n\n${quote.lines.map((l) => `${l.qty} × ${l.name}${l.variantName ? ` (${l.variantName})` : ""}${l.offerLabel ? ` — ${l.offerLabel}` : ""} — ${formatTND(l.lineTotal)}`).join("\n")}\nLivraison : ${formatTND(quote.deliveryFee)}\nTotal : ${formatTND(quote.total)}`,
-        kind: "order_placed",
+        to: alertTo,
+        subject: `Nouvelle commande ${order.ref} — ${formatTND(quote.total)}`,
+        text: [
+          `${order.name} · ${formatPhone(order.phone)}`,
+          `${governorateLabel(order.governorate, "fr")} · ${order.address}`,
+          "",
+          ...quote.lines.map((l) => `${l.qty} × ${l.name}${l.variantName ? ` (${l.variantName})` : ""}${l.offerLabel ? ` — ${l.offerLabel}` : ""} — ${formatTND(l.lineTotal)}`),
+          `Livraison : ${formatTND(quote.deliveryFee)}`,
+          `Total : ${formatTND(quote.total)}`,
+          "",
+          `${site}/admin/commandes/${order.id}`,
+        ].join("\n"),
+        kind: "order_alert",
         orderId: order.id,
       });
     }

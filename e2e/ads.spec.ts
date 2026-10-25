@@ -1,4 +1,5 @@
 import { test, expect, type Locator, type Page } from "@playwright/test";
+import { signIn } from "./sign-in";
 
 /**
  * The "Publicités" section, as a phone: a visit from a Meta ad that orders
@@ -8,14 +9,6 @@ import { test, expect, type Locator, type Page } from "@playwright/test";
  * spend, its cost per delivered order and a verdict; Seuils shows the
  * ceilings once the carrier's costs are known.
  */
-
-async function signIn(page: Page) {
-  await page.goto("/admin/connexion");
-  await page.getByLabel("E-mail").fill("e2e@mena.test");
-  await page.getByLabel("Mot de passe").fill("e2e-password-123");
-  await page.getByRole("button", { name: "Se connecter" }).click();
-  await expect(page.getByRole("heading", { name: "Tableau de bord" })).toBeVisible();
-}
 
 /** Today in Tunis, as the export writes it: the server refuses a day after today. */
 function tunisToday(): string {

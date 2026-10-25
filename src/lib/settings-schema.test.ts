@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { mergeSettings, publicSettings, DEFAULT_SETTINGS } from "./settings-schema";
+import { bannerLink, heroSlides, mergeSettings, publicSettings, DEFAULT_SETTINGS } from "./settings-schema";
 
 test("defaults cover all 24 governorates", () => {
   assert.equal(Object.keys(DEFAULT_SETTINGS.delivery.zones).length, 24);
@@ -33,4 +33,18 @@ test("garbage falls back to defaults, one section at a time", () => {
 test("card payment is only public when configured", () => {
   const s = mergeSettings({ payments: { card: true, konnectWalletId: "" } });
   assert.equal(publicSettings(s).payments.card, false);
+});
+
+test("home banners: the old single picture still shows; links go to a shop page or an https address", () => {
+  const hero = { title: "", titleAr: "", imageId: "m1", slides: [] };
+  assert.deepEqual(heroSlides(hero), [{ imageId: "m1", link: "", alt: "", altAr: "" }]);
+  assert.equal(heroSlides({ ...hero, slides: [{ imageId: "m2", link: "/boutique", alt: "", altAr: "" }] })[0].imageId, "m2");
+  assert.deepEqual(bannerLink("/produit/lampe"), { path: "/produit/lampe" });
+  assert.deepEqual(bannerLink("/fr/categorie/maison"), { path: "/categorie/maison" });
+  assert.deepEqual(bannerLink("https://www.facebook.com/mena.tn"), { url: "https://www.facebook.com/mena.tn" });
+  assert.equal(bannerLink("//evil.example"), null);
+  assert.equal(bannerLink("javascript:alert(1)"), null);
+  assert.equal(bannerLink("http://insecure.example"), null);
+  // Stored settings without banners still read.
+  assert.deepEqual(mergeSettings({ hero: { title: "x", titleAr: "y", imageId: null } }).hero.slides, []);
 });

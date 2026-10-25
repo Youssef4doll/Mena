@@ -2,8 +2,8 @@
 
 import { revalidatePath, updateTag } from "next/cache";
 import { requireAdmin } from "@/lib/admin-auth";
-import { saveSecrets, saveSettings, getSettings, SETTINGS_TAG } from "@/lib/settings";
-import { settingsSchema, secretsSchema, type Settings, type Secrets } from "@/lib/settings-schema";
+import { saveSecrets, saveSettings, SETTINGS_TAG } from "@/lib/settings";
+import { bannerLink, settingsSchema, secretsSchema, type Settings, type Secrets } from "@/lib/settings-schema";
 import { storeImage } from "@/lib/media";
 import { normalizePhone } from "@/lib/phone";
 import { CATALOG_TAG } from "@/lib/catalog";
@@ -29,6 +29,10 @@ export async function saveAll(settings: Settings, secrets: Partial<Secrets>) {
     shop: { ...settings.shop, instagram: profileUrl("instagram", settings.shop.instagram), facebook: profileUrl("facebook", settings.shop.facebook), tiktok: profileUrl("tiktok", settings.shop.tiktok) },
     contact: { ...settings.contact, messenger: messengerUser(settings.contact.messenger) },
   };
+  // A banner leads to a page of the shop or an https address, or nowhere.
+  for (const [i, b] of (settings.hero.slides ?? []).entries()) {
+    if (b.link.trim() && !bannerLink(b.link)) return { ok: false as const, error: `Photo d'accueil ${i + 1} : le lien doit être une page de la boutique (/produit/…, /categorie/…) ou une adresse https.` };
+  }
   for (const [g, z] of Object.entries(settings.delivery.zones)) {
     if (z.maxDays < z.minDays) return { ok: false as const, error: `${g} : le délai maximum est plus court que le minimum.` };
   }
@@ -49,11 +53,8 @@ export async function uploadHero(form: FormData) {
   const f = form.get("file");
   if (!(f instanceof File) || f.size === 0) return { ok: false as const, error: "Aucune image." };
   try {
+    // Stored only: the banner joins the list on the page and is saved with the other settings.
     const m = await storeImage(Buffer.from(await f.arrayBuffer()), f.type);
-    const s = await getSettings();
-    await saveSettings({ ...s, hero: { ...s.hero, imageId: m.id } });
-    updateTag(SETTINGS_TAG);
-    revalidatePath("/admin/parametres");
     return { ok: true as const, id: m.id };
   } catch (e) {
     return { ok: false as const, error: e instanceof Error ? e.message : "Image refusée." };

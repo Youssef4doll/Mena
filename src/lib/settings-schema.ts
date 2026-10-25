@@ -35,8 +35,10 @@ export const settingsSchema = z.object({
   hero: z.object({
     title: z.string().max(80),
     titleAr: z.string().max(80),
-    /** Media id of the hero picture; none → a typographic hero. */
+    /** Media id of the single picture set before banners existed; read through heroSlides. */
     imageId: z.string().max(40).nullable(),
+    /** The home page's banners, in order: a picture, where it leads (see bannerLink), what it shows for screen readers. */
+    slides: z.array(z.object({ imageId: z.string().min(1).max(40), link: z.string().max(300), alt: z.string().max(120), altAr: z.string().max(120) })).max(8).default([]),
   }),
   contact: z.object({
     /** 8 digits; empty hides the WhatsApp buttons. */
@@ -99,6 +101,8 @@ export const settingsSchema = z.object({
     smsOnShipped: z.boolean(),
     /** Resend API sender address; the key is a secret. */
     emailFrom: z.string().max(120),
+    /** Where each new order is sent by e-mail (the owner only); empty → the shop's e-mail. */
+    orderAlertTo: z.string().max(120).default(""),
   }),
 });
 
@@ -143,6 +147,7 @@ export const DEFAULT_SETTINGS: Settings = {
     title: "Choisi avec soin. Payé à la livraison.",
     titleAr: "مختار بعناية. تخلّص كي توصلك.",
     imageId: null,
+    slides: [],
   },
   contact: { whatsapp: "", messenger: "" },
   delivery: {
@@ -165,6 +170,7 @@ export const DEFAULT_SETTINGS: Settings = {
     smsOnPlaced: true,
     smsOnShipped: true,
     emailFrom: "",
+    orderAlertTo: "",
   },
 };
 
@@ -217,3 +223,29 @@ export function publicSettings(s: Settings) {
   };
 }
 export type PublicSettings = ReturnType<typeof publicSettings>;
+
+export type HeroSlide = Settings["hero"]["slides"][number];
+
+/** The home banners: the list, or the single picture set before there could be several. */
+export function heroSlides(h: Settings["hero"]): HeroSlide[] {
+  // A copy of the settings cached before banners existed has no list.
+  if (h.slides?.length) return h.slides;
+  return h.imageId ? [{ imageId: h.imageId, link: "", alt: "", altAr: "" }] : [];
+}
+
+/**
+ * Where a banner leads: a page of the shop ("/produit/…", "/categorie/…",
+ * "/boutique"), opened in the visitor's language, or a full https address.
+ * Anything else is no link (and is refused in the back office).
+ */
+export function bannerLink(link: string): { path: string } | { url: string } | null {
+  const l = link.trim();
+  if (!l) return null;
+  if (/^\/(?!\/)[^\s]*$/.test(l)) return { path: l.replace(/^\/(ar|fr)(?=\/|$)/, "") || "/" };
+  try {
+    const u = new URL(l);
+    return u.protocol === "https:" ? { url: u.toString() } : null;
+  } catch {
+    return null;
+  }
+}

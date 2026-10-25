@@ -6,11 +6,15 @@ import type { Settings, Secrets } from "@/lib/settings-schema";
 import { GOVERNORATES } from "@/lib/governorates";
 import { parseTND, toInputTND } from "@/lib/money";
 import { saveAll, uploadHero } from "./actions";
+import { heroSlides, type HeroSlide } from "@/lib/settings-schema";
 import { Card, btn, input, label } from "@/components/admin/ui";
 
-export function SettingsForm({ initial, secretsSet }: { initial: Settings; secretsSet: Record<keyof Secrets, boolean> }) {
+type Targets = { categories: { slug: string; name: string }[]; products: { slug: string; name: string }[] };
+
+export function SettingsForm({ initial, secretsSet, targets }: { initial: Settings; secretsSet: Record<keyof Secrets, boolean>; targets: Targets }) {
   const router = useRouter();
-  const [s, setS] = useState<Settings>(initial);
+  // The single picture of before becomes the first banner of the list.
+  const [s, setS] = useState<Settings>(() => ({ ...initial, hero: { ...initial.hero, slides: heroSlides(initial.hero), imageId: null } }));
   const [sec, setSec] = useState<Partial<Secrets>>({});
   const [fee, setFee] = useState(toInputTND(initial.delivery.fee));
   const [threshold, setThreshold] = useState(toInputTND(initial.delivery.freeThreshold));
@@ -19,7 +23,6 @@ export function SettingsForm({ initial, secretsSet }: { initial: Settings; secre
   const [bulk, setBulk] = useState({ min: "", max: "" });
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
   const [pending, start] = useTransition();
-  const heroFile = useRef<HTMLInputElement>(null);
 
   const up = <K extends keyof Settings>(k: K, patch: Partial<Settings[K]>) => setS((x) => ({ ...x, [k]: { ...x[k], ...patch } }));
   const text = <K extends keyof Settings>(k: K, f: keyof Settings[K] & string, extra: React.InputHTMLAttributes<HTMLInputElement> = {}) => ({
@@ -87,32 +90,21 @@ export function SettingsForm({ initial, secretsSet }: { initial: Settings; secre
         <div className="grid gap-2">
           <label className={label}>Titre<input {...text("hero", "title")} /></label>
           <label className={label}>Titre (arabe)<input dir="rtl" {...text("hero", "titleAr")} /></label>
-          <div className="flex items-center gap-3">
-            {s.hero.imageId && (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img src={`/api/img/${s.hero.imageId}/128`} alt="" className="h-20 w-16 rounded-lg object-cover" />
-            )}
-            <input
-              ref={heroFile}
-              type="file"
-              accept="image/*"
-              className="hidden"
-              onChange={(e) => {
-                const f = e.target.files?.[0];
-                if (!f) return;
+          <Banners
+            slides={s.hero.slides}
+            targets={targets}
+            onChange={(slides) => up("hero", { slides })}
+            onUpload={(f) =>
+              start(async () => {
                 const fd = new FormData();
                 fd.append("file", f);
-                start(async () => {
-                  const r = await uploadHero(fd);
-                  if (r.ok) up("hero", { imageId: r.id });
-                  else setMsg({ ok: false, text: r.error });
-                });
-              }}
-            />
-            <button type="button" className={btn.ghost} onClick={() => heroFile.current?.click()}>Photo d&apos;accueil</button>
-            {s.hero.imageId && <button type="button" className="text-sm text-clay underline" onClick={() => up("hero", { imageId: null })}>Retirer</button>}
-          </div>
-          <p className="text-xs text-muted">Sans photo, l&apos;accueil commence par la phrase de bienvenue puis les catégories.</p>
+                const r = await uploadHero(fd);
+                if (r.ok) setS((x) => ({ ...x, hero: { ...x.hero, slides: [...x.hero.slides, { imageId: r.id, link: "", alt: "", altAr: "" }].slice(0, 8) } }));
+                else setMsg({ ok: false, text: r.error });
+              })
+            }
+          />
+          <p className="text-xs text-muted">Jusqu&apos;à 8 photos, qui défilent l&apos;une après l&apos;autre (format large, environ 1600 × 700 px : les bords peuvent être coupés sur téléphone). Sans photo, l&apos;accueil commence par la phrase de bienvenue puis les catégories. Enregistrez en bas de la page.</p>
         </div>
       </Card>
 
@@ -214,6 +206,8 @@ export function SettingsForm({ initial, secretsSet }: { initial: Settings; secre
           {secret("smsKey", "Clé de la passerelle")}
           <label className="flex items-center justify-between text-sm">SMS à la commande<input {...check("notify", "smsOnPlaced")} /></label>
           <label className="flex items-center justify-between text-sm">SMS à l&apos;expédition<input {...check("notify", "smsOnShipped")} /></label>
+          <label className={label}>Recevoir chaque nouvelle commande à (votre e-mail)<input {...text("notify", "orderAlertTo")} placeholder={s.shop.email || "vous@exemple.com"} type="email" /></label>
+          <p className="text-xs text-muted">Un seul e-mail, à vous seulement, à chaque nouvelle commande : client, téléphone, adresse, articles, total et lien vers la commande. Aucun e-mail n&apos;est envoyé aux clients. Vide : l&apos;e-mail de la boutique. Il faut aussi l&apos;expéditeur et la clé Resend ci-dessous (compte sur resend.com).</p>
           <label className={label}>E-mail expéditeur (Resend)<input {...text("notify", "emailFrom")} placeholder="Mena <commandes@mena.tn>" /></label>
           {secret("resendKey", "Clé API Resend")}
         </div>
@@ -231,6 +225,92 @@ export function SettingsForm({ initial, secretsSet }: { initial: Settings; secre
         <button type="button" disabled={pending} onClick={save} className={btn.sea}>{pending ? "Enregistrement…" : "Enregistrer les paramètres"}</button>
         {msg && <span className={`text-sm ${msg.ok ? "text-olive" : "text-danger"}`}>{msg.text}</span>}
       </div>
+    </div>
+  );
+}
+
+/** A link of a banner, chosen among the shop's pages, or typed. */
+function LinkPicker({ value, targets, onChange }: { value: string; targets: Targets; onChange: (v: string) => void }) {
+  const known = value === "" || value === "/boutique" || targets.categories.some((c) => `/categorie/${c.slug}` === value) || targets.products.some((p) => `/produit/${p.slug}` === value);
+  const [typed, setTyped] = useState(!known);
+  return (
+    <div className="grid gap-1.5">
+      <select
+        aria-label="Lien de la photo"
+        className={input}
+        value={typed ? "custom" : value}
+        onChange={(e) => {
+          if (e.target.value === "custom") {
+            setTyped(true);
+            return;
+          }
+          setTyped(false);
+          onChange(e.target.value);
+        }}
+      >
+        <option value="">Sans lien</option>
+        <option value="/boutique">Toute la boutique</option>
+        <optgroup label="Catégories">
+          {targets.categories.map((c) => <option key={c.slug} value={`/categorie/${c.slug}`}>{c.name}</option>)}
+        </optgroup>
+        <optgroup label="Produits en ligne">
+          {targets.products.map((p) => <option key={p.slug} value={`/produit/${p.slug}`}>{p.name}</option>)}
+        </optgroup>
+        <option value="custom">Autre adresse (promotion, recherche…)</option>
+      </select>
+      {typed && <input className={input} value={value} onChange={(e) => onChange(e.target.value)} placeholder="/recherche?q=lampe ou https://…" aria-label="Adresse du lien" />}
+    </div>
+  );
+}
+
+/** The home page's banners: added, put in order, linked, removed. */
+function Banners({ slides, targets, onChange, onUpload }: { slides: HeroSlide[]; targets: Targets; onChange: (s: HeroSlide[]) => void; onUpload: (f: File) => void }) {
+  const file = useRef<HTMLInputElement>(null);
+  const set = (i: number, patch: Partial<HeroSlide>) => onChange(slides.map((x, n) => (n === i ? { ...x, ...patch } : x)));
+  const move = (i: number, d: -1 | 1) => {
+    const j = i + d;
+    if (j < 0 || j >= slides.length) return;
+    const next = [...slides];
+    [next[i], next[j]] = [next[j], next[i]];
+    onChange(next);
+  };
+  return (
+    <div className="flex flex-col gap-3" data-testid="banners">
+      {slides.map((b, i) => (
+        <div key={`${b.imageId}-${i}`} className="flex flex-col gap-2 rounded-xl border border-line p-3 sm:flex-row">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src={`/api/img/${b.imageId}/256`} alt="" className="aspect-[16/7] w-full rounded-lg object-cover sm:w-48" />
+          <div className="grid min-w-0 flex-1 gap-2">
+            <LinkPicker value={b.link} targets={targets} onChange={(link) => set(i, { link })} />
+            <div className="grid gap-2 sm:grid-cols-2">
+              <input className={input} value={b.alt} onChange={(e) => set(i, { alt: e.target.value })} placeholder="Ce que montre la photo (français)" aria-label="Description de la photo" maxLength={120} />
+              <input className={input} dir="rtl" value={b.altAr} onChange={(e) => set(i, { altAr: e.target.value })} placeholder="شنوّة في التصويرة" aria-label="Description de la photo (arabe)" maxLength={120} />
+            </div>
+            <div className="flex flex-wrap gap-2 text-sm">
+              <span className="text-muted">Photo {i + 1}</span>
+              <button type="button" className="text-sea underline disabled:opacity-40" disabled={i === 0} onClick={() => move(i, -1)}>Avant</button>
+              <button type="button" className="text-sea underline disabled:opacity-40" disabled={i === slides.length - 1} onClick={() => move(i, 1)}>Après</button>
+              <button type="button" className="text-clay underline" onClick={() => onChange(slides.filter((_, n) => n !== i))}>Retirer</button>
+            </div>
+          </div>
+        </div>
+      ))}
+      <input
+        ref={file}
+        type="file"
+        accept="image/*"
+        className="hidden"
+        onChange={(e) => {
+          const f = e.target.files?.[0];
+          if (f) onUpload(f);
+          e.target.value = "";
+        }}
+      />
+      {slides.length < 8 && (
+        <button type="button" className={`${btn.ghost} self-start`} onClick={() => file.current?.click()}>
+          {slides.length ? "Ajouter une photo d'accueil" : "Photo d'accueil"}
+        </button>
+      )}
     </div>
   );
 }

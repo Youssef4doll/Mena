@@ -1,4 +1,5 @@
-import { test, expect, type Page } from "@playwright/test";
+import { test, expect } from "@playwright/test";
+import { signIn } from "./sign-in";
 
 /**
  * What the October 2026 audit asked for, kept true: offers named by their
@@ -9,13 +10,6 @@ import { test, expect, type Page } from "@playwright/test";
  */
 const PRODUCT = "/fr/produit/diffuseur-huiles-essentielles";
 
-async function signIn(page: Page) {
-  await page.goto("/admin/connexion");
-  await page.getByLabel("E-mail").fill("e2e@mena.test");
-  await page.getByLabel("Mot de passe").fill("e2e-password-123");
-  await page.getByRole("button", { name: "Se connecter" }).click();
-  await expect(page.getByRole("heading", { name: "Tableau de bord" })).toBeVisible();
-}
 
 test("an offer is titled by its quantity; the owner's name follows only when it agrees", async ({ page }) => {
   await page.goto(PRODUCT);

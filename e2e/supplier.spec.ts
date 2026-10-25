@@ -2,6 +2,7 @@ import http from "node:http";
 import type { AddressInfo } from "node:net";
 import sharp from "sharp";
 import { test, expect, type Page } from "@playwright/test";
+import { signIn } from "./sign-in";
 
 /**
  * Products from Ecomness: the list copied by a scraping extension becomes
@@ -10,14 +11,6 @@ import { test, expect, type Page } from "@playwright/test";
  * languages (here through the manual claude.ai path: the tests have no API
  * key) and its other photos.
  */
-
-async function signIn(page: Page) {
-  await page.goto("/admin/connexion");
-  await page.getByLabel("E-mail").fill("e2e@mena.test");
-  await page.getByLabel("Mot de passe").fill("e2e-password-123");
-  await page.getByRole("button", { name: "Se connecter" }).click();
-  await expect(page.getByRole("heading", { name: "Tableau de bord" })).toBeVisible();
-}
 
 /** What Ctrl+V gives the page: the copied HTML and its text. */
 async function paste(page: Page, html: string, text: string) {
@@ -74,6 +67,10 @@ test("an Ecomness list becomes offline products, and a product page completes on
     await page.getByRole("button", { name: "Coller une page produit" }).click();
     await paste(page, "", list);
     await expect(page.getByText("Déjà dans la boutique", { exact: true })).toHaveCount(2);
+    // Already there: left out unless ticked, and ticked all at once if wanted.
+    await expect(page.getByTestId("supplier-select")).toContainText("0 coché sur 2 · 2 déjà dans la boutique");
+    await page.getByRole("button", { name: "Ceux déjà dans la boutique" }).click();
+    await expect(page.getByTestId("supplier-create")).toHaveText("Mettre à jour 2 produits");
     await page.getByRole("button", { name: "Coller autre chose" }).click();
 
     // One product's page, copied whole: its photos (the main one already there) and its text.
@@ -82,7 +79,10 @@ test("an Ecomness list becomes offline products, and a product page completes on
     const pageTextCopied = `Ecomness\nMarketplace\nChaise de Plage Pliante ${run}\nProduct Code : ENP-A${run}\nPrix : 20 TND\nStock : 120\nChaise légère en aluminium, se plie en deux. Poids : 2 kg.`;
     await paste(page, pageHtml, pageTextCopied);
     await expect(page.getByText("2 photos trouvées")).toBeVisible();
-    // No API key in the tests: the request goes to claude.ai and its reply comes back.
+    // No API key in the tests: the page's own text is offered at once, ready to correct…
+    await expect(page.getByTestId("page-text-draft").getByLabel("Description")).toHaveValue("Chaise légère en aluminium, se plie en deux. Poids : 2 kg.");
+    // …or the request goes to claude.ai and its reply comes back.
+    await page.getByText("Ou une fiche réécrite en français et en arabe, avec claude.ai").click();
     await expect(page.getByRole("button", { name: "Copier la demande" })).toBeVisible();
     const reply = {
       name: `Chaise de plage pliante ${run}`, nameAr: "كرسي بحر يتطوى", summary: "Une chaise légère qui se plie en deux.", summaryAr: "كرسي خفيف يتطوى على زوز.",

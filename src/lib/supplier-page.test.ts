@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { frenchCategory, imagesFromHtml, originalImageUrl, pageText, priceFromRule, productCode, readSupplierList } from "./supplier-page";
+import { factsFromPage, frenchCategory, imagesFromHtml, originalImageUrl, pageText, priceFromRule, productCode, readSupplierList } from "./supplier-page";
 
 const THUMB = "https://www.ecomness.com/_next/image?url=https%3A%2F%2Futfs.io%2Ff%2Fq7nkwVbrAscqGZTNVGCtavuPK4wjemR5QTbZ2IfndsEBlyLY&w=384&q=75";
 const PHOTO = "https://utfs.io/f/q7nkwVbrAscqGZTNVGCtavuPK4wjemR5QTbZ2IfndsEBlyLY";
@@ -68,4 +68,28 @@ test("a price from the owner's rule ends in ,900", () => {
   assert.equal(priceFromRule(20_000, { times: 2.5, plus: 4.4 }), 54_900);
   assert.equal(priceFromRule(7_000, { times: 2, plus: 10 }), 23_900);
   assert.equal(priceFromRule(0, { times: 1, plus: 0 }), 900);
+});
+
+test("a product page read without the AI: name, cost, description and facts, without the site around them", () => {
+  const text = [
+    "Ecomness", "Marketplace", "My products",
+    "Chaise de Plage Pliante", "Product Code : ENP-4J6HKB7H", "Prix : 20 TND", "Stock : 120",
+    "Description",
+    "Chaise légère en aluminium, elle se plie en deux et tient dans un coffre.",
+    "Poids : 2 kg", "Couleur : Beige",
+    "Produits similaires", "Table basse pliante",
+  ].join("\n");
+  const f = factsFromPage(text, "<main><h1>Chaise de Plage <b>Pliante</b></h1></main>");
+  assert.equal(f.name, "Chaise de Plage Pliante");
+  assert.equal(f.cost, 20_000);
+  assert.equal(f.ref, "ENP-4J6HKB7H");
+  assert.equal(f.description, "Chaise légère en aluminium, elle se plie en deux et tient dans un coffre.");
+  assert.equal(f.specs, "Poids : 2 kg\nCouleur : Beige");
+});
+
+test("without a description heading, the page's sentences are its description", () => {
+  const f = factsFromPage("Marketplace\nLampe de chevet tactile\nProduct Code : ENP-AB12CD34\n15 TND\nLumière douce en trois intensités, se recharge en USB en deux heures.\nAjouter à mes produits");
+  assert.equal(f.name, "Lampe de chevet tactile");
+  assert.equal(f.cost, 15_000);
+  assert.equal(f.description, "Lumière douce en trois intensités, se recharge en USB en deux heures.");
 });

@@ -1,7 +1,8 @@
 import http from "node:http";
 import type { AddressInfo } from "node:net";
 import sharp from "sharp";
-import { test, expect, type Page } from "@playwright/test";
+import { test, expect } from "@playwright/test";
+import { signIn } from "./sign-in";
 
 /**
  * Many products at once: rows pasted from a spreadsheet, with pictures from
@@ -9,14 +10,6 @@ import { test, expect, type Page } from "@playwright/test";
  * in the shop; the same rows again change nothing. Then the list's quick edit
  * and an editor opened before it, which must not undo it.
  */
-
-async function signIn(page: Page) {
-  await page.goto("/admin/connexion");
-  await page.getByLabel("E-mail").fill("e2e@mena.test");
-  await page.getByLabel("Mot de passe").fill("e2e-password-123");
-  await page.getByRole("button", { name: "Se connecter" }).click();
-  await expect(page.getByRole("heading", { name: "Tableau de bord" })).toBeVisible();
-}
 
 test("a pasted sheet becomes products with their pictures, once", async ({ page }) => {
   const png = await sharp({ create: { width: 640, height: 640, channels: 3, background: { r: 30, g: 120, b: 160 } } }).png().toBuffer();
