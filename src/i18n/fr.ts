@@ -37,6 +37,8 @@ export const fr = {
     how: ["Vous commandez avec votre numéro, sans compte", "Nous vous appelons pour confirmer", "Vous payez à la réception"] as string[],
     empty: "La boutique ouvre bientôt. Les produits arrivent.",
     seeMore: "Tout voir",
+    bannerPrev: "Photo précédente",
+    bannerNext: "Photo suivante",
   },
   product: {
     addToCart: "Ajouter au panier",
@@ -95,6 +97,8 @@ export const fr = {
     soldSuffix: "commandes en 30 jours",
     soldShort: "commandes",
     specs: "Caractéristiques",
+    inBrief: "À propos de ce produit",
+    seeAll: "Voir toute la description",
     video: "Vidéo",
     playVideo: "Lire la vidéo",
     zoom: "Voir la photo en grand",

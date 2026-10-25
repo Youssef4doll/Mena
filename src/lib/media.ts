@@ -74,7 +74,7 @@ function privateAddress(ip: string): boolean {
 /** The tests serve their pictures from this machine. Never in production, whatever the setting. */
 const LOCAL_OK = process.env.NODE_ENV !== "production" && process.env.MEDIA_ALLOW_LOCAL === "1";
 
-async function checkHost(u: URL) {
+export async function checkHost(u: URL) {
   if (u.protocol !== "https:" && u.protocol !== "http:") throw new Error("Adresse invalide.");
   if (LOCAL_OK) return;
   const host = u.hostname.replace(/^\[|\]$/g, "");

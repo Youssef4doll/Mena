@@ -12,7 +12,11 @@ export async function signIn(page: Page) {
   if (fs.existsSync(FILE)) {
     await page.context().addCookies(JSON.parse(fs.readFileSync(FILE, "utf8")));
     await page.goto("/admin");
-    if (await page.getByRole("heading", { name: "Tableau de bord" }).isVisible()) return;
+    // Waited for: the first visit of a page compiles it, and the heading comes late.
+    const dashboard = page.getByRole("heading", { name: "Tableau de bord" });
+    const form = page.getByLabel("E-mail");
+    await expect(dashboard.or(form)).toBeVisible({ timeout: 60_000 });
+    if (await dashboard.isVisible()) return;
   }
   await page.goto("/admin/connexion");
   await page.getByLabel("E-mail").fill("e2e@mena.test");

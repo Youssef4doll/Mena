@@ -1,6 +1,7 @@
 import { test, expect } from "@playwright/test";
 import { signIn } from "./sign-in";
 import sharp from "sharp";
+import { TEST_URL } from "./targets";
 
 /** The owner's tools: the quality of each product page, and the home page's banners. */
 
@@ -17,7 +18,7 @@ test("each product page has its score and what it lacks, the weakest first", asy
   await expect(page.getByTestId("quality-list").locator("li").first()).toContainText(/grandes? images? de description/i);
 });
 
-test("several home banners, each leading somewhere, then removed", async ({ page }) => {
+test("several home banners, each leading somewhere, with arrows on a computer, then removed", async ({ page, browser }) => {
   const png = (r: number) => sharp({ create: { width: 1600, height: 700, channels: 3, background: { r, g: 90, b: 140 } } }).png().toBuffer();
   await signIn(page);
   await page.goto("/admin/parametres");
@@ -36,9 +37,28 @@ test("several home banners, each leading somewhere, then removed", async ({ page
     await expect(page.getByText("Paramètres enregistrés.")).toBeVisible();
 
     await page.goto("/fr");
-    const dots = page.locator('button[aria-label^="Photo "]');
+    const dots = page.locator('button[aria-label^="Photo "][aria-current]');
     await expect(dots).toHaveCount(start + 2);
     await expect(page.locator('a[href="/fr/boutique"]').filter({ has: page.locator("img") }).first()).toBeAttached();
+    // A finger swipes: no arrows on the phone.
+    await expect(page.getByRole("button", { name: "Photo suivante" })).toBeHidden();
+
+    // With a mouse, the arrows go forward, and from the first back to the last.
+    const desk = await browser.newContext({ baseURL: TEST_URL, viewport: { width: 1366, height: 800 }, hasTouch: false, isMobile: false });
+    try {
+      const pc = await desk.newPage();
+      await pc.goto("/fr");
+      const deskDots = pc.locator('button[aria-label^="Photo "][aria-current]');
+      await expect(deskDots.first()).toHaveAttribute("aria-current", "true");
+      await pc.getByRole("button", { name: "Photo suivante" }).click();
+      await expect(deskDots.nth(1)).toHaveAttribute("aria-current", "true");
+      await pc.getByRole("button", { name: "Photo précédente" }).click();
+      await expect(deskDots.first()).toHaveAttribute("aria-current", "true");
+      await pc.getByRole("button", { name: "Photo précédente" }).click();
+      await expect(deskDots.last()).toHaveAttribute("aria-current", "true");
+    } finally {
+      await desk.close();
+    }
   } finally {
     // Back as it was: the other tests read the home page.
     await page.goto("/admin/parametres");

@@ -33,7 +33,7 @@ export default async function SearchRoute({ params, searchParams }: PageProps<"/
   const discover = home ? (home.featured.length ? home.featured : home.newest).slice(0, 8) : [];
 
   return (
-    <div className="mx-auto max-w-6xl px-4 pt-6">
+    <div className="mx-auto max-w-6xl xl:max-w-7xl 2xl:max-w-[90rem] px-4 pt-6">
       {q && (
         <>
           <TrackView name="search" props={{ q: q.toLowerCase(), results: results.length, corrected: Boolean(corrected), relaxed: Boolean(relaxed) }} />

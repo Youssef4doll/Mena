@@ -32,7 +32,7 @@ export function NotFoundBody({ copy, products }: { copy: Record<Lang, { title: s
         </Link>
       </div>
       {products.length >= 2 && (
-        <section className="mx-auto max-w-6xl border-t border-line px-4 pt-8" aria-labelledby="nf-others">
+        <section className="mx-auto max-w-6xl xl:max-w-7xl 2xl:max-w-[90rem] border-t border-line px-4 pt-8" aria-labelledby="nf-others">
           <h2 id="nf-others" className="mb-4 text-[20px] font-bold">
             {t.others}
           </h2>

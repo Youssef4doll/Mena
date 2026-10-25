@@ -51,16 +51,16 @@ export default async function Home({ params }: PageProps<"/[lang]">) {
       <JsonLd data={websiteLd(settings, lang)} />
 
       {/* ------------------------------------------- welcome, one line */}
-      <section className="mx-auto max-w-6xl px-4 pb-5 pt-5 md:pb-6 md:pt-8">
+      <section className="mx-auto max-w-6xl xl:max-w-7xl 2xl:max-w-[90rem] px-4 pb-5 pt-5 md:pb-6 md:pt-8">
         <h1 className="text-[22px] font-bold leading-snug text-ink sm:text-[28px]">{pick(lang, hero.title, hero.titleAr)}</h1>
-        {banners.length > 0 && <HeroBanners banners={banners} />}
+        {banners.length > 0 && <HeroBanners banners={banners} prev={t.home.bannerPrev} next={t.home.bannerNext} />}
       </section>
 
-      {empty && <p className="mx-auto max-w-6xl px-4 py-16 text-center text-[18px] text-muted">{t.home.empty}</p>}
+      {empty && <p className="mx-auto max-w-6xl xl:max-w-7xl 2xl:max-w-[90rem] px-4 py-16 text-center text-[18px] text-muted">{t.home.empty}</p>}
 
       {/* ---------------- the categories: tall cards like Amazon's, the title on a blurred band over the picture */}
       {shown.length > 0 && (
-        <section className="mx-auto max-w-6xl px-4" aria-label={t.home.categories}>
+        <section className="mx-auto max-w-6xl xl:max-w-7xl 2xl:max-w-[90rem] px-4" aria-label={t.home.categories}>
           <ul className="-mx-4 flex snap-x scroll-px-4 gap-3 overflow-x-auto px-4 pb-2 no-scrollbar md:mx-0 md:scroll-px-0 md:px-0">
             {shown.map((c, i) => {
               const image = c.imageId ?? c.products[0]?.images[0]?.id ?? null;
@@ -124,7 +124,7 @@ export default async function Home({ params }: PageProps<"/[lang]">) {
       )}
 
       {/* --------------------------------------------- how to order, once, at the end */}
-      <section className="mx-auto mt-14 max-w-6xl px-4">
+      <section className="mx-auto mt-14 max-w-6xl xl:max-w-7xl 2xl:max-w-[90rem] px-4">
         <h2 className="text-[22px] font-bold leading-tight text-ink md:text-[26px]">{t.home.howTitle}</h2>
         <ol className="mt-5 grid gap-4 sm:grid-cols-3">
           {t.home.how.map((step, i) => (
@@ -153,7 +153,7 @@ export default async function Home({ params }: PageProps<"/[lang]">) {
 
 function Shelf({ title, link, children }: { title: string; link?: { href: string; label: string }; children: React.ReactNode }) {
   return (
-    <section className="mx-auto mt-12 max-w-6xl px-4 md:mt-16">
+    <section className="mx-auto mt-12 max-w-6xl xl:max-w-7xl 2xl:max-w-[90rem] px-4 md:mt-16">
       <div className="mb-4 flex items-center justify-between gap-4">
         <h2 className="text-[22px] font-bold leading-tight text-ink md:text-[26px]">{title}</h2>
         {link && (

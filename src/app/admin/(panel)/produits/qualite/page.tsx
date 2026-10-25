@@ -2,7 +2,7 @@ import Link from "next/link";
 import { prisma } from "@/lib/prisma";
 import { requireAdmin } from "@/lib/admin-auth";
 import { CHECKS, productQuality, scoreTone, type QualityKey } from "@/lib/product-quality";
-import { Badge, Card, PageTitle, Stat, Tabs } from "@/components/admin/ui";
+import { Badge, Card, PageTitle, Stat, Tabs, btn } from "@/components/admin/ui";
 
 export const metadata = { title: "Qualité des fiches" };
 
@@ -56,7 +56,12 @@ export default async function QualityPage({ searchParams }: PageProps<"/admin/pr
       <PageTitle
         title="Qualité des fiches"
         sub="Chaque fiche notée sur 100 : photos, grandes images, textes en français et en arabe, vérification avec le fournisseur… Les plus faibles d'abord. Rien n'est montré aux clients."
-        actions={<Link href="/admin/produits" className="text-sm text-sea underline underline-offset-4">Tous les produits</Link>}
+        actions={
+          <>
+            <Link href="/admin/produits/completer" className={btn.sea}>Compléter depuis le web</Link>
+            <Link href="/admin/produits" className="inline-flex h-10 items-center text-sm text-sea underline underline-offset-4">Tous les produits</Link>
+          </>
+        }
       />
       <Tabs
         current={scope}

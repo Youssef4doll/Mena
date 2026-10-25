@@ -39,6 +39,8 @@ export const ar: Dict = {
     how: ["تطلب برقم تليفونك، بلا حساب", "نكلموك باش نأكدو", "تخلّص كي تستلم"],
     empty: "المتجر باش يتحل قريب. المنتوجات في الطريق.",
     seeMore: "شوف الكل",
+    bannerPrev: "الصورة اللي قبل",
+    bannerNext: "الصورة اللي بعد",
   },
   product: {
     addToCart: "زيد للسلة",
@@ -94,6 +96,8 @@ export const ar: Dict = {
     soldSuffix: "طلبية في آخر 30 يوم",
     soldShort: "طلبية",
     specs: "المواصفات",
+    inBrief: "على المنتوج هذا",
+    seeAll: "شوف الوصف الكل",
     video: "فيديو",
     playVideo: "شغّل الفيديو",
     zoom: "شوف التصويرة بالكبير",
