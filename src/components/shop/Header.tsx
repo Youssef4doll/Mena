@@ -117,7 +117,8 @@ export function Header({ lang, categories, announcement, phone }: { lang: Lang; 
                 <span className="text-[16px] font-bold text-ink ltr-nums">{formatPhone(phone)}</span>
               </a>
             )}
-            <LangLink lang={lang} pathname={pathname} className="flex h-11 items-center rounded-full border border-line px-4 text-[16px] font-bold text-ink hover:border-field">
+            <LangLink lang={lang} pathname={pathname} className="flex h-11 items-center rounded-full border border-line gap-2 px-4 text-[16px] font-bold text-ink hover:border-field">
+              <Flag of={lang === "ar" ? "fr" : "tn"} />
               {t.nav.language}
             </LangLink>
             <CartLink lang={lang} />
@@ -178,7 +179,8 @@ export function Header({ lang, categories, announcement, phone }: { lang: Lang; 
               <MenuLink href={href(lang, "/suivi")}>{t.nav.track}</MenuLink>
               <MenuLink href={href(lang, "/livraison-retours")}>{t.footer.deliveryReturns}</MenuLink>
               <MenuLink href={href(lang, "/contact")}>{t.footer.contact}</MenuLink>
-              <LangLink lang={lang} pathname={pathname} className="flex min-h-12 items-center rounded-xl px-3 text-[17px] text-ink hover:bg-sand">
+              <LangLink lang={lang} pathname={pathname} className="flex min-h-12 items-center gap-2.5 rounded-xl px-3 text-[17px] text-ink hover:bg-sand">
+                <Flag of={lang === "ar" ? "fr" : "tn"} />
                 {t.nav.language}
               </LangLink>
               {phone && (
@@ -433,5 +435,31 @@ function SearchBox({ lang, urlQ }: { lang: Lang; urlQ: string }) {
         </ul>
       )}
     </div>
+  );
+}
+
+/**
+ * The flag of the language the link leads to: France for French, Tunisia
+ * for Arabic. Drawn here, not an emoji: Windows shows emoji flags as letters.
+ */
+function Flag({ of }: { of: "fr" | "tn" }) {
+  return (
+    <svg viewBox="0 0 30 20" className="h-[15px] w-[22px] shrink-0 overflow-hidden rounded-[3px] shadow-[0_0_0_1px_rgb(0_0_0/.15)]" aria-hidden>
+      {of === "fr" ? (
+        <>
+          <rect width="10" height="20" fill="#002654" />
+          <rect x="10" width="10" height="20" fill="#fff" />
+          <rect x="20" width="10" height="20" fill="#ce1126" />
+        </>
+      ) : (
+        <>
+          <rect width="30" height="20" fill="#e70013" />
+          <circle cx="15" cy="10" r="5" fill="#fff" />
+          <circle cx="15.6" cy="10" r="3.75" fill="#e70013" />
+          <circle cx="16.6" cy="10" r="3" fill="#fff" />
+          <polygon fill="#e70013" points="15.3,10 18.4,9 16.5,11.7 16.5,8.3 18.4,11" />
+        </>
+      )}
+    </svg>
   );
 }
