@@ -32,13 +32,15 @@ export default async function ProductsPage({ searchParams }: PageProps<"/admin/p
   const params = readListParams(await searchParams);
   const base = listWhere(params);
   const where = tabWhere(params);
-  const [byActive, outCount, uncheckedCount, demoCount, untranslated, categories, firstTry] = await Promise.all([
+  const [byActive, outCount, uncheckedCount, demoCount, untranslated, categories, perCategory, firstTry] = await Promise.all([
     prisma.product.groupBy({ by: ["active"], where: base, _count: { _all: true } }),
     prisma.product.count({ where: { AND: [base, OUT_OF_STOCK] } }),
     prisma.product.count({ where: { ...base, active: true, checkedAt: null } }),
     prisma.product.count({ where: { isDemo: true } }),
     prisma.product.count({ where: { OR: [{ nameAr: null }, { nameAr: "" }] } }),
     prisma.category.findMany({ orderBy: [{ sort: "asc" }, { name: "asc" }], select: { id: true, name: true } }),
+    // Each category's number of products for the search and tab shown, whatever category is chosen.
+    prisma.product.groupBy({ by: ["categoryId"], where: tabWhere({ ...params, c: "" }), _count: { _all: true } }),
     pageOf(where, params.page),
   ]);
   const online = byActive.find((g) => g.active)?._count._all ?? 0;
@@ -115,7 +117,7 @@ export default async function ProductsPage({ searchParams }: PageProps<"/admin/p
           { key: "unchecked", label: "À vérifier", href: tab("unchecked"), count: uncheckedCount },
         ]}
       />
-      <ListFilters params={params} categories={categories} />
+      <ListFilters params={params} categories={categories.map((c) => ({ ...c, count: perCategory.find((g) => g.categoryId === c.id)?._count._all ?? 0 }))} />
       {rows.length === 0 ? (
         filtered || params.f !== "all" ? (
           <Empty>

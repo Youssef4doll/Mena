@@ -48,24 +48,38 @@ export async function sendSms(args: { to: string; text: string; kind: string; or
   }
 }
 
-export async function sendEmail(args: { to: string; subject: string; text: string; kind: string; orderId?: string }) {
+/**
+ * Resend's own sender: it needs no domain of the shop, but only delivers to
+ * the address the Resend account was opened with, which is what the owner's
+ * order alert needs. A shop with its own domain checked on Resend writes its
+ * sender in the settings instead.
+ */
+export const RESEND_TEST_FROM = "Mena <onboarding@resend.dev>";
+
+/** One e-mail through Resend: sent, not configured (no key), or refused with Resend's own reason. */
+export async function deliverEmail(args: { to: string; subject: string; text: string }): Promise<{ status: "SENT" } | { status: "NOT_CONFIGURED" } | { status: "FAILED"; error: string }> {
   const [settings, secrets] = await Promise.all([getSettings(), getSecrets()]);
-  const n = await prisma.notification.create({
-    data: { channel: "EMAIL", to: args.to, body: `${args.subject}\n\n${args.text}`, kind: args.kind, orderId: args.orderId },
-  });
-  if (!secrets.resendKey || !settings.notify.emailFrom) {
-    await prisma.notification.update({ where: { id: n.id }, data: { status: "NOT_CONFIGURED" } });
-    return;
-  }
+  const key = secrets.resendKey || process.env.RESEND_API_KEY || "";
+  if (!key) return { status: "NOT_CONFIGURED" };
   try {
     const res = await fetch("https://api.resend.com/emails", {
       method: "POST",
-      headers: { authorization: `Bearer ${secrets.resendKey}`, "content-type": "application/json" },
-      body: JSON.stringify({ from: settings.notify.emailFrom, to: [args.to], subject: args.subject, text: args.text }),
+      headers: { authorization: `Bearer ${key}`, "content-type": "application/json" },
+      body: JSON.stringify({ from: settings.notify.emailFrom.trim() || RESEND_TEST_FROM, to: [args.to], subject: args.subject, text: args.text }),
       signal: AbortSignal.timeout(8000),
     });
-    await prisma.notification.update({ where: { id: n.id }, data: res.ok ? { status: "SENT" } : { status: "FAILED", error: `HTTP ${res.status}` } });
+    if (res.ok) return { status: "SENT" };
+    const body = (await res.json().catch(() => null)) as { message?: unknown } | null;
+    return { status: "FAILED", error: `HTTP ${res.status}${typeof body?.message === "string" ? ` : ${body.message}` : ""}`.slice(0, 300) };
   } catch (e) {
-    await prisma.notification.update({ where: { id: n.id }, data: { status: "FAILED", error: String(e).slice(0, 300) } });
+    return { status: "FAILED", error: String(e).slice(0, 300) };
   }
+}
+
+export async function sendEmail(args: { to: string; subject: string; text: string; kind: string; orderId?: string }) {
+  const n = await prisma.notification.create({
+    data: { channel: "EMAIL", to: args.to, body: `${args.subject}\n\n${args.text}`, kind: args.kind, orderId: args.orderId },
+  });
+  const r = await deliverEmail(args);
+  await prisma.notification.update({ where: { id: n.id }, data: r.status === "FAILED" ? { status: "FAILED", error: r.error } : { status: r.status } });
 }

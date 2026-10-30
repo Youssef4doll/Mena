@@ -67,3 +67,29 @@ test("several home banners, each leading somewhere, with arrows on a computer, t
     await expect(page.getByText("Paramètres enregistrés.")).toBeVisible();
   }
 });
+
+test("the product list follows the search as it is typed, and a category is one tap", async ({ page }) => {
+  await signIn(page);
+  await page.goto("/admin/produits");
+  // Typed once the page is live, as a person would.
+  await page.waitForLoadState("networkidle");
+  await page.getByLabel("Chercher un produit").pressSequentially("Diffus", { delay: 40 });
+  await expect(page).toHaveURL(/q=Diffus/);
+  await expect(page.getByRole("link", { name: /Diffuseur/ }).first()).toBeVisible();
+  await expect(page.getByRole("link", { name: /Montre minimaliste/ })).toHaveCount(0);
+  // The box keeps what was typed while the list follows.
+  await expect(page.getByLabel("Chercher un produit")).toHaveValue("Diffus");
+  await page.getByLabel("Chercher un produit").fill("");
+  await expect(page).not.toHaveURL(/q=/);
+  await page.getByRole("group", { name: "Catégorie" }).getByRole("button", { name: /^Maison/ }).click();
+  await expect(page).toHaveURL(/c=/);
+  await expect(page.getByRole("group", { name: "Catégorie" }).getByRole("button", { name: /^Maison/ })).toHaveAttribute("aria-pressed", "true");
+});
+
+test("the new-order e-mail can be tried from the settings, and says what is missing", async ({ page }) => {
+  await signIn(page);
+  await page.goto("/admin/parametres");
+  await page.getByRole("button", { name: "Envoyer un e-mail de test" }).click();
+  // The tests have no Resend key: the owner is told what to do.
+  await expect(page.getByRole("status").filter({ hasText: /Resend|Recevoir chaque nouvelle commande/ })).toBeVisible();
+});

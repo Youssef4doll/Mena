@@ -8,6 +8,8 @@ import { storeImage } from "@/lib/media";
 import { normalizePhone } from "@/lib/phone";
 import { CATALOG_TAG } from "@/lib/catalog";
 import { messengerUser, profileUrl, socialProblem } from "@/lib/social";
+import { getSettings } from "@/lib/settings";
+import { deliverEmail } from "@/lib/notify";
 
 export async function saveAll(settings: Settings, secrets: Partial<Secrets>) {
   await requireAdmin();
@@ -59,4 +61,18 @@ export async function uploadHero(form: FormData) {
   } catch (e) {
     return { ok: false as const, error: e instanceof Error ? e.message : "Image refusée." };
   }
+}
+
+/** A test of the new-order e-mail, with the saved settings: sent, or Resend's reason in plain words. */
+export async function testOrderEmail(): Promise<{ ok: true; to: string } | { ok: false; error: string }> {
+  await requireAdmin();
+  const settings = await getSettings();
+  const to = (settings.notify.orderAlertTo || settings.shop.email).trim();
+  if (!to) return { ok: false, error: "Écrivez d'abord votre e-mail dans « Recevoir chaque nouvelle commande à », puis enregistrez." };
+  const r = await deliverEmail({ to, subject: "Mena : test des alertes de commande", text: "Ceci est un test. Chaque nouvelle commande de Mena arrivera ici, avec le client, le téléphone, l'adresse, les articles et le total." });
+  if (r.status === "SENT") return { ok: true, to };
+  if (r.status === "NOT_CONFIGURED") return { ok: false, error: "Collez d'abord la clé API Resend, puis enregistrez." };
+  if (/HTTP 403/.test(r.error)) return { ok: false, error: `Resend refuse : sans nom de domaine vérifié, il n'envoie qu'à l'adresse de votre compte Resend. Mettez cette adresse dans « Recevoir chaque nouvelle commande à » (${r.error}).` };
+  if (/HTTP 401/.test(r.error)) return { ok: false, error: `Clé Resend refusée : vérifiez-la (${r.error}).` };
+  return { ok: false, error: `Envoi impossible : ${r.error}` };
 }

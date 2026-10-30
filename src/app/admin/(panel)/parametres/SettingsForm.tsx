@@ -5,7 +5,7 @@ import { useRef, useState, useTransition } from "react";
 import type { Settings, Secrets } from "@/lib/settings-schema";
 import { GOVERNORATES } from "@/lib/governorates";
 import { parseTND, toInputTND } from "@/lib/money";
-import { saveAll, uploadHero } from "./actions";
+import { saveAll, testOrderEmail, uploadHero } from "./actions";
 import { heroSlides, type HeroSlide } from "@/lib/settings-schema";
 import { Card, btn, input, label } from "@/components/admin/ui";
 
@@ -208,8 +208,10 @@ export function SettingsForm({ initial, secretsSet, targets }: { initial: Settin
           <label className="flex items-center justify-between text-sm">SMS à l&apos;expédition<input {...check("notify", "smsOnShipped")} /></label>
           <label className={label}>Recevoir chaque nouvelle commande à (votre e-mail)<input {...text("notify", "orderAlertTo")} placeholder={s.shop.email || "vous@exemple.com"} type="email" /></label>
           <p className="text-xs text-muted">Un seul e-mail, à vous seulement, à chaque nouvelle commande : client, téléphone, adresse, articles, total et lien vers la commande. Aucun e-mail n&apos;est envoyé aux clients. Vide : l&apos;e-mail de la boutique. Il faut aussi l&apos;expéditeur et la clé Resend ci-dessous (compte sur resend.com).</p>
-          <label className={label}>E-mail expéditeur (Resend)<input {...text("notify", "emailFrom")} placeholder="Mena <commandes@mena.tn>" /></label>
           {secret("resendKey", "Clé API Resend")}
+          <label className={label}>E-mail expéditeur (Resend)<input {...text("notify", "emailFrom")} placeholder="Vide : Mena <onboarding@resend.dev>" /></label>
+          <p className="text-xs text-muted">Vide : l&apos;expéditeur de Resend, sans nom de domaine. Il n&apos;envoie qu&apos;à l&apos;adresse de votre compte Resend : mettez cette adresse au-dessus. Avec un domaine vérifié sur Resend, écrivez par exemple « Mena &lt;commandes@votre-domaine.tn&gt; ».</p>
+          <TestEmail />
         </div>
       </Card>
 
@@ -311,6 +313,32 @@ function Banners({ slides, targets, onChange, onUpload }: { slides: HeroSlide[];
           {slides.length ? "Ajouter une photo d'accueil" : "Photo d'accueil"}
         </button>
       )}
+    </div>
+  );
+}
+
+/** Sends a test of the new-order e-mail with the saved settings, and says what Resend answered. */
+function TestEmail() {
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
+  return (
+    <div className="flex flex-wrap items-center gap-2">
+      <button
+        type="button"
+        className={btn.ghost}
+        disabled={busy}
+        onClick={async () => {
+          setBusy(true);
+          setMsg(null);
+          const r = await testOrderEmail().catch(() => ({ ok: false as const, error: "Pas de connexion : réessayez." }));
+          setMsg(r.ok ? { ok: true, text: `E-mail de test envoyé à ${r.to}. Regardez aussi dans « Spam » ou « Promotions ».` } : { ok: false, text: r.error });
+          setBusy(false);
+        }}
+      >
+        {busy ? "Envoi…" : "Envoyer un e-mail de test"}
+      </button>
+      <span className="text-xs text-muted">Enregistrez d&apos;abord les paramètres.</span>
+      {msg && <p className={`w-full text-sm ${msg.ok ? "text-olive" : "text-danger"}`} role="status">{msg.text}</p>}
     </div>
   );
 }
