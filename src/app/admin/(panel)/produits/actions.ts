@@ -85,6 +85,35 @@ export async function moveImage(imageId: string, dir: -1 | 1): Promise<Result> {
   return { ok: true };
 }
 
+/**
+ * A product's pictures of one kind in the order given (the first is the main
+ * photo). Pictures of the product left out of the list keep their place
+ * after the others: a list sent from an older screen loses nothing.
+ */
+export async function orderImages(productId: string, kind: "GALLERY" | "DETAIL", ids: string[]): Promise<Result> {
+  await requireAdmin();
+  if (!Array.isArray(ids) || ids.length > 200 || ids.some((i) => typeof i !== "string")) return { ok: false, error: "Ordre refusé." };
+  const all = await prisma.productImage.findMany({ where: { productId, kind: kind === "DETAIL" ? "DETAIL" : "GALLERY" }, orderBy: { sort: "asc" }, select: { id: true } });
+  const known = new Set(all.map((x) => x.id));
+  const order = [...new Set(ids.filter((i) => known.has(i)))];
+  for (const x of all) if (!order.includes(x.id)) order.push(x.id);
+  await prisma.$transaction(order.map((id, n) => prisma.productImage.update({ where: { id }, data: { sort: n } })));
+  await done([productId]);
+  return { ok: true };
+}
+
+/** Several pictures deleted at once; a picture no other product uses is deleted from the storage too. */
+export async function deleteImages(imageIds: string[]): Promise<Result> {
+  await requireAdmin();
+  if (!Array.isArray(imageIds) || imageIds.length > 200) return { ok: false, error: "Suppression refusée." };
+  const imgs = await prisma.productImage.findMany({ where: { id: { in: imageIds.filter((i) => typeof i === "string") } }, select: { id: true, mediaId: true, productId: true } });
+  if (!imgs.length) return { ok: true };
+  await prisma.productImage.deleteMany({ where: { id: { in: imgs.map((i) => i.id) } } });
+  await prisma.media.deleteMany({ where: { id: { in: imgs.map((i) => i.mediaId) }, images: { none: {} } } });
+  await done([...new Set(imgs.map((i) => i.productId))]);
+  return { ok: true };
+}
+
 export async function setImageAlt(imageId: string, alt: string): Promise<Result> {
   await requireAdmin();
   const img = await prisma.productImage.update({ where: { id: imageId }, data: { alt: alt.slice(0, 140) || null }, select: { productId: true } });

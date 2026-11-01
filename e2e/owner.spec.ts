@@ -1,5 +1,7 @@
 import { test, expect } from "@playwright/test";
 import { signIn } from "./sign-in";
+import http from "node:http";
+import type { AddressInfo } from "node:net";
 import sharp from "sharp";
 import { TEST_URL } from "./targets";
 
@@ -92,4 +94,48 @@ test("the new-order e-mail can be tried from the settings, and says what is miss
   await page.getByRole("button", { name: "Envoyer un e-mail de test" }).click();
   // The tests have no Resend key: the owner is told what to do.
   await expect(page.getByRole("status").filter({ hasText: /Resend|Recevoir chaque nouvelle commande/ })).toBeVisible();
+});
+
+test("pictures of a product: one put first at once, several deleted together", async ({ page }) => {
+  const png = (r: number) => sharp({ create: { width: 600, height: 600, channels: 3, background: { r, g: 100, b: 150 } } }).png().toBuffer();
+  const files: Record<string, Buffer> = { "/a.png": await png(20), "/b.png": await png(120), "/c.png": await png(220) };
+  const site = http.createServer((req, res) => {
+    const f = files[req.url ?? ""];
+    res.writeHead(f ? 200 : 404, { "content-type": "image/png" });
+    res.end(f ?? "");
+  });
+  await new Promise<void>((r) => site.listen(0, "127.0.0.1", r));
+  const host = `http://127.0.0.1:${(site.address() as AddressInfo).port}`;
+  const name = `Photos ordre ${Date.now().toString(36)}`;
+  try {
+    await signIn(page);
+    await page.goto("/admin/produits/import");
+    await page.getByLabel(/Ou collez ici les lignes/).fill(`nom\tprix\tphotos\n${name}\t40\t${host}/a.png ; ${host}/b.png ; ${host}/c.png`);
+    await page.getByRole("button", { name: "Lire les lignes collées" }).click();
+    await page.getByRole("button", { name: "Importer 1 produit" }).click();
+    await expect(page.getByText("Import terminé.")).toBeVisible({ timeout: 60_000 });
+    await page.goto(`/admin/produits?q=${encodeURIComponent(name)}`);
+    await page.getByRole("link", { name }).first().click();
+
+    const thumbs = page.getByRole("button", { name: "Choisir cette photo" });
+    await expect(thumbs).toHaveCount(3);
+    const third = await thumbs.nth(2).locator("img").getAttribute("src");
+    await page.getByRole("button", { name: "Mettre en premier" }).last().click();
+    // At once, before the server answers, and still after it.
+    await expect(thumbs.first().locator("img")).toHaveAttribute("src", third!);
+    await page.reload();
+    await expect(page.getByRole("button", { name: "Choisir cette photo" }).first().locator("img")).toHaveAttribute("src", third!);
+    await page.waitForLoadState("networkidle");
+
+    await page.getByRole("button", { name: "Choisir cette photo" }).nth(1).click();
+    await expect(page.getByText("1 sélectionnée")).toBeVisible();
+    await page.getByRole("button", { name: "Choisir cette photo" }).nth(2).click();
+    page.once("dialog", (d) => d.accept());
+    await page.getByRole("button", { name: "Supprimer la sélection" }).click();
+    await expect(page.getByRole("button", { name: "Choisir cette photo" })).toHaveCount(1);
+    await page.reload();
+    await expect(page.getByRole("button", { name: "Choisir cette photo" })).toHaveCount(1);
+  } finally {
+    site.close();
+  }
 });

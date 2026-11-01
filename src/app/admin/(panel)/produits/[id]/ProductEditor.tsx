@@ -3,7 +3,7 @@
 import dynamic from "next/dynamic";
 import { useRouter } from "next/navigation";
 import { useEffect, useEffectEvent, useLayoutEffect, useOptimistic, useRef, useState, useSyncExternalStore, useTransition } from "react";
-import { deleteImage, deleteProduct, duplicateProduct, imagesChanged, moveImage, saveProduct, setImageAlt, setImageLang, translateTexts, type ProductInput } from "../actions";
+import { deleteImages, deleteProduct, duplicateProduct, imagesChanged, orderImages, saveProduct, setImageAlt, setImageLang, translateTexts, type ProductInput } from "../actions";
 import { mergeTranslation, needsTranslation, textsOfProduct, withProductTexts, type ProductTexts } from "@/lib/translate-merge";
 import type { IdeaTexts } from "@/lib/image-ideas";
 import { parseTND, toInputTND, formatTND } from "@/lib/money";
@@ -840,12 +840,17 @@ const KIND = {
  * first for the top of the page, tall strips for the description images.
  * Every button is a full finger wide.
  */
-function PictureList({ kind, items, busy, onMove, onRemove, onAlt, onLang }: {
+function PictureList({ kind, items, busy, onMove, onRemove, onAlt, onLang, selected, onSelect, onFirst }: {
   kind: Kind;
   items: { key: string; src: string; alt?: string; caption?: string; remote?: boolean; lang?: PicLang }[];
   busy: boolean;
   onMove: (key: string, dir: -1 | 1) => void;
   onRemove: (key: string) => void;
+  /** Saved pictures only: the ones ticked for a deletion of several at once. */
+  selected?: Set<string>;
+  onSelect?: (key: string) => void;
+  /** Top photos of a saved product: this one becomes the main photo. */
+  onFirst?: (key: string) => void;
   onAlt?: (key: string, alt: string) => void;
   /** Long pictures only: the page each one shows on. */
   onLang?: (key: string, lang: PicLang) => void;
@@ -855,7 +860,8 @@ function PictureList({ kind, items, busy, onMove, onRemove, onAlt, onLang }: {
     return (
       <div className="flex flex-col gap-2">
         {items.map((it, i) => (
-          <div key={it.key} className="flex items-center gap-2 rounded-xl border border-line p-2">
+          <div key={it.key} className={`flex items-center gap-2 rounded-xl border p-2 ${selected?.has(it.key) ? "border-sea bg-sea-soft/40" : "border-line"}`}>
+            {onSelect && <input type="checkbox" checked={selected?.has(it.key) ?? false} onChange={() => onSelect(it.key)} aria-label="Choisir cette image" className="h-5 w-5 shrink-0 accent-[var(--color-sea)]" />}
             <Thumb src={it.src} remote={it.remote} className="h-24 w-16 shrink-0 rounded-lg bg-sand object-cover object-top" />
             {onAlt ? (
               <span className="flex min-w-0 flex-1 flex-col gap-2">
@@ -887,9 +893,27 @@ function PictureList({ kind, items, busy, onMove, onRemove, onAlt, onLang }: {
     <div className="grid grid-cols-3 gap-2 sm:grid-cols-4">
       {items.map((it, i) => (
         <div key={it.key} className="flex min-w-0 flex-col gap-1">
-          <div className="relative aspect-square overflow-hidden rounded-xl bg-sand">
-            <Thumb src={it.src} remote={it.remote} className="h-full w-full object-cover" />
-            {i === 0 && <span className="absolute start-1 top-1 rounded-full bg-ink px-1.5 text-[10px] text-white">Principale</span>}
+          <div className={`relative aspect-square overflow-hidden rounded-xl bg-sand ${selected?.has(it.key) ? "ring-2 ring-sea" : ""}`}>
+            {/* With a selection, a tap on the photo ticks it. */}
+            {onSelect ? (
+              <button type="button" onClick={() => onSelect(it.key)} aria-pressed={selected?.has(it.key) ?? false} aria-label="Choisir cette photo" className="block h-full w-full">
+                <Thumb src={it.src} remote={it.remote} className="h-full w-full object-cover" />
+              </button>
+            ) : (
+              <Thumb src={it.src} remote={it.remote} className="h-full w-full object-cover" />
+            )}
+            {onSelect && (
+              <span aria-hidden className={`pointer-events-none absolute bottom-1 start-1 flex h-6 w-6 items-center justify-center rounded-md border text-[13px] ${selected?.has(it.key) ? "border-sea bg-sea text-white" : "border-white bg-white/80 text-transparent"}`}>✓</span>
+            )}
+            {i === 0 ? (
+              <span className="absolute start-1 top-1 rounded-full bg-ink px-1.5 text-[10px] text-white">Principale</span>
+            ) : (
+              onFirst && (
+                <button type="button" onClick={() => onFirst(it.key)} className="absolute start-1 top-1 rounded-full bg-white/90 px-1.5 py-0.5 text-[10px] font-medium text-ink shadow-soft hover:bg-white">
+                  Mettre en premier
+                </button>
+              )
+            )}
             <button type="button" disabled={busy} onClick={() => onRemove(it.key)} aria-label="Supprimer cette photo" className="absolute end-0 top-0 flex h-10 w-10 items-center justify-center disabled:opacity-30">
               <span className="flex h-7 w-7 items-center justify-center rounded-full bg-white/90 text-base leading-none text-clay shadow-soft">×</span>
             </button>
@@ -971,8 +995,31 @@ function Images({ productId, images, kind, saving, onSending, extra }: { product
   const [progress, setProgress] = useState<string | null>(null);
   const [own, start] = useTransition();
   const pending = own || saving;
-  // A language picked shows at once, and goes back to the saved one if the save fails.
-  const [shownImages, pickLang] = useOptimistic(images, (list, c: { id: string; lang: PicLang }) => list.map((i) => (i.id === c.id ? { ...i, lang: c.lang } : i)));
+  // A change shows at once (a language, the order, a deletion), and goes back to the saved state if the save fails.
+  const [shownImages, change] = useOptimistic(images, (list, c: { lang: { id: string; lang: PicLang } } | { order: string[] } | { remove: string[] }) => {
+    if ("lang" in c) return list.map((i) => (i.id === c.lang.id ? { ...i, lang: c.lang.lang } : i));
+    if ("remove" in c) return list.filter((i) => !c.remove.includes(i.id));
+    return [...list].sort((a, b) => c.order.indexOf(a.id) - c.order.indexOf(b.id));
+  });
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const ticked = shownImages.filter((i) => selected.has(i.id)).map((i) => i.id);
+  const toggle = (id: string) => setSelected((s) => { const n = new Set(s); if (n.has(id)) n.delete(id); else n.add(id); return n; });
+  const reorder = (order: string[]) => run(() => { change({ order }); return orderImages(productId, kind, order); });
+  const move = (key: string, dir: -1 | 1) => {
+    const ids = shownImages.map((i) => i.id);
+    const i = ids.indexOf(key);
+    const j = i + dir;
+    if (i < 0 || j < 0 || j >= ids.length) return;
+    [ids[i], ids[j]] = [ids[j], ids[i]];
+    reorder(ids);
+  };
+  const remove = (ids: string[]) => {
+    if (!ids.length) return;
+    const one = kind === "DETAIL" ? "cette image" : "cette photo";
+    if (!confirm(ids.length === 1 ? `Supprimer ${one} ?` : `Supprimer ces ${ids.length} ${kind === "DETAIL" ? "images" : "photos"} ?`)) return;
+    setSelected((s) => new Set([...s].filter((x) => !ids.includes(x))));
+    run(() => { change({ remove: ids }); return deleteImages(ids); });
+  };
   // A page left with no long picture at all, said under the list (the shop may want it so).
   const bare = kind === "DETAIL" && images.length > 0 ? (["ar", "fr"] as const).filter((l) => !shownImages.some((i) => !i.lang || i.lang === l)) : [];
   const k = KIND[kind];
@@ -1004,18 +1051,36 @@ function Images({ productId, images, kind, saving, onSending, extra }: { product
     <Card title={k.title} hint={k.hint}>
       {"tip" in k && <p className="-mt-1 mb-2 text-xs text-muted">{k.tip}</p>}
       {images.length === 0 && <p className="text-sm text-muted">{k.none}</p>}
+      {shownImages.length > 1 && (
+        <div className="mb-2 flex flex-wrap items-center gap-2 text-sm" data-testid={`select-${kind}`}>
+          <button type="button" className="inline-flex h-9 items-center rounded-full border border-line px-3" onClick={() => setSelected(ticked.length === shownImages.length ? new Set() : new Set(shownImages.map((i) => i.id)))}>
+            {ticked.length === shownImages.length ? "Tout désélectionner" : "Tout sélectionner"}
+          </button>
+          {ticked.length > 0 && (
+            <>
+              <span className="text-muted">{ticked.length} sélectionnée{ticked.length > 1 ? "s" : ""}</span>
+              <button type="button" className="inline-flex h-9 items-center rounded-full border border-clay/40 px-3 font-medium text-clay" onClick={() => remove(ticked)}>
+                Supprimer la sélection
+              </button>
+            </>
+          )}
+        </div>
+      )}
       <PictureList
         kind={kind}
         items={shownImages.map((img) => ({ key: img.id, src: `/api/img/${img.mediaId}/256`, alt: img.alt, lang: img.lang }))}
-        busy={pending}
-        onMove={(key, dir) => run(() => moveImage(key, dir))}
-        onRemove={(key) => confirm(kind === "DETAIL" ? "Supprimer cette image ?" : "Supprimer cette photo ?") && run(() => deleteImage(key))}
+        busy={progress != null}
+        onMove={move}
+        onRemove={(key) => remove([key])}
+        selected={selected}
+        onSelect={toggle}
+        onFirst={kind === "GALLERY" ? (key) => reorder([key, ...shownImages.map((i) => i.id).filter((x) => x !== key)]) : undefined}
         onAlt={(key, alt) => run(() => setImageAlt(key, alt))}
         onLang={
           kind === "DETAIL"
             ? (key, lang) =>
                 run(() => {
-                  pickLang({ id: key, lang });
+                  change({ lang: { id: key, lang } });
                   return setImageLang(key, lang);
                 })
             : undefined
