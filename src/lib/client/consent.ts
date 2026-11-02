@@ -2,15 +2,18 @@
 
 import { store } from "./storage";
 
-/** "granted" | "denied" | null (not asked yet). Ad pixels load only on "granted". */
+/**
+ * The owner's choice: the ad and analytics tags load for every visitor, with
+ * no question asked. The functions keep their shape, so asking again one day
+ * is a change here only.
+ */
 const KEY = "mena_consent";
 type Listener = (v: Consent) => void;
 export type Consent = "granted" | "denied" | null;
 const listeners = new Set<Listener>();
 
 export function getConsent(): Consent {
-  const v = store.get(KEY);
-  return v === "granted" || v === "denied" ? v : null;
+  return "granted";
 }
 
 export function setConsent(v: "granted" | "denied") {

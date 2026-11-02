@@ -15,9 +15,9 @@ type Ids = { metaPixelId: string; ga4Id: string; tiktokPixelId: string };
 const FBCLID = "mena_fbclid";
 
 /**
- * The cookie choice, and the pixels that depend on it. Nothing from Meta,
- * TikTok or Google is loaded before "Accepter". First-party analytics (our
- * own /api/events, no cookie, no personal data) run either way.
+ * The pixels of Meta, TikTok and Google, loaded for every visitor once the
+ * page is live (no cookie question: see getConsent), and the shop's own
+ * analytics (/api/events).
  */
 export function ConsentAndPixels({ lang, ids }: { lang: Lang; ids: Ids }) {
   const t = dict(lang);

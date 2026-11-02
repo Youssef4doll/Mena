@@ -25,7 +25,7 @@ export default async function PrivacyRoute({ params }: PageProps<"/[lang]/confid
         </ul>
         <h2>الكوكيز الإشهارية</h2>
         {pixels.length > 0 ? (
-          <p>إذا قبلتها، نستعمل أدوات القياس الخاصة بـ <bdi dir="ltr">{pixels.join(", ")}</bdi> لقياس إعلاناتنا. إذا رفضتها، لا يتمّ تحميلها ويعمل الموقع بنفس الطريقة.</p>
+          <p>نستعمل أدوات القياس الخاصة بـ <bdi dir="ltr">{pixels.join(", ")}</bdi> لقياس إعلاناتنا. تنجم تمسح الكوكيز من إعدادات المتصفح متاعك.</p>
         ) : (
           <p>لا يستعمل الموقع حاليًا أيّ كوكيز إشهارية.</p>
         )}
@@ -44,7 +44,7 @@ export default async function PrivacyRoute({ params }: PageProps<"/[lang]/confid
       </ul>
       <h2>Cookies publicitaires</h2>
       {pixels.length > 0 ? (
-        <p>Si vous les acceptez, nous utilisons les outils de mesure de {pixels.join(", ")} pour mesurer nos publicités. Si vous refusez, ils ne sont pas chargés et le site fonctionne de la même façon.</p>
+        <p>Nous utilisons les outils de mesure de {pixels.join(", ")} pour mesurer nos publicités. Vous pouvez effacer ou bloquer ces cookies dans les réglages de votre navigateur.</p>
       ) : (
         <p>Le site n&apos;utilise actuellement aucun cookie publicitaire.</p>
       )}
