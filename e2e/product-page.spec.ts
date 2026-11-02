@@ -53,7 +53,7 @@ test("still above the form, the bar goes down to it; past it, the form opens in 
   const sheet = page.getByRole("dialog");
   await expect(sheet.locator("#os-title")).toHaveText("Diffuseur d'huiles essentielles");
   // Only the address is marked, so the phone's Back button closes the sheet.
-  await expect(page).toHaveURL(/\/fr\/produit\/diffuseur-huiles-essentielles#commande$/);
+  await expect(page).toHaveURL(/(?<!\/ar)\/produit\/diffuseur-huiles-essentielles#commande$/);
   // The close button has the focus: no keyboard over the form.
   await expect(sheet.getByRole("button", { name: "Fermer" }).last()).toBeFocused();
   await expect(sheet.getByTestId("offer-3")).toBeChecked();
@@ -63,7 +63,7 @@ test("still above the form, the bar goes down to it; past it, the form opens in 
 
   await page.goBack();
   await expect(sheet).toHaveCount(0);
-  await expect(page).toHaveURL(/\/fr\/produit\/diffuseur-huiles-essentielles$/);
+  await expect(page).toHaveURL(/(?<!\/ar)\/produit\/diffuseur-huiles-essentielles$/);
   expect(await page.evaluate(() => scrollY)).toBe(where);
   await expect(bar.getByRole("button")).toBeFocused();
   await expect(page.locator("#commander").getByTestId("address")).toHaveValue("Sfax Ville, rue de la République 12");
@@ -91,11 +91,11 @@ test("an order from the sheet at the end of the page reaches the thank-you page"
   const sent = page.waitForRequest((r) => r.url().endsWith("/api/orders") && r.method() === "POST");
   await sheet.getByTestId("place-order").click();
   expect((await sent).postDataJSON().origin).toBe("sheet");
-  await expect(page).toHaveURL(/\/fr\/commande\/merci\/MN-/);
+  await expect(page).toHaveURL(/(?<!\/ar)\/commande\/merci\/MN-/);
   await expect(page.getByText("Achetez 2, la 3e offerte")).toBeVisible();
   // The thank-you page took the sheet's entry: Back returns to the product page, not to a closed sheet's #commande.
   await page.goBack();
-  await expect(page).toHaveURL(/\/fr\/produit\/diffuseur-huiles-essentielles$/);
+  await expect(page).toHaveURL(/(?<!\/ar)\/produit\/diffuseur-huiles-essentielles$/);
 });
 
 test("an answer lost on the page, then the same order sent from the sheet, still make one order", async ({ page }) => {

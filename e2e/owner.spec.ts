@@ -41,7 +41,7 @@ test("several home banners, each leading somewhere, with arrows on a computer, t
     await page.goto("/fr");
     const dots = page.locator('button[aria-label^="Photo "][aria-current]');
     await expect(dots).toHaveCount(start + 2);
-    await expect(page.locator('a[href="/fr/boutique"]').filter({ has: page.locator("img") }).first()).toBeAttached();
+    await expect(page.locator('a[href="/boutique"]').filter({ has: page.locator("img") }).first()).toBeAttached();
     // A finger swipes: no arrows on the phone.
     await expect(page.getByRole("button", { name: "Photo suivante" })).toBeHidden();
 

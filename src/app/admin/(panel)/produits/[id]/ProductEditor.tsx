@@ -10,6 +10,7 @@ import { parseTND, toInputTND, formatTND } from "@/lib/money";
 import { offerCompareAt } from "@/lib/offer-display";
 import { offerLabelProblem, offerNote, offerTitle } from "@/lib/offer-label";
 import { slugify } from "@/lib/slug";
+import { href } from "@/i18n/lang";
 import { parseSpecs, parseVideo } from "@/lib/product-content";
 import { readHex } from "@/lib/color";
 import { VIDEO_MAX_MB, VIDEO_TYPES, VIDEO_UPLOAD_URL, videoPath } from "@/lib/video-upload";
@@ -764,7 +765,7 @@ function Seo({ p, set, price, category, shopName, siteUrl, everywhere, oldSlugs 
   const base = { ...p, price, category: category ? { name: category.name, nameAr: category.nameAr ?? null } : null, offers: [], variants: [] };
   const host = siteUrl.replace(/^https?:\/\//, "");
   const preview = (lang: "ar" | "fr") => ({
-    url: `${host}${lang === "fr" ? "/fr" : ""}/produit/${p.slug || slugify(p.name)}`,
+    url: `${host}${href(lang, `/produit/${p.slug || slugify(p.name)}`)}`,
     title: `${productTitle(base, lang)} · ${shopName}`,
     description: productDescription(base, lang, everywhere),
   });

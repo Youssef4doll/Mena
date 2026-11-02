@@ -3,13 +3,13 @@
  * read them without loading every sentence of the shop.
  *
  * The main language is served at the root, the other one under its prefix.
- * Arabic unless NEXT_PUBLIC_DEFAULT_LANG=fr (read at build time, by the proxy
+ * French unless NEXT_PUBLIC_DEFAULT_LANG=ar (read at build time, by the proxy
  * and by every link alike).
  */
 export const LOCALES = ["fr", "ar"] as const;
 export type Lang = (typeof LOCALES)[number];
 
-export const DEFAULT_LANG: Lang = process.env.NEXT_PUBLIC_DEFAULT_LANG === "fr" ? "fr" : "ar";
+export const DEFAULT_LANG: Lang = process.env.NEXT_PUBLIC_DEFAULT_LANG === "ar" ? "ar" : "fr";
 export const OTHER_LANG: Lang = DEFAULT_LANG === "ar" ? "fr" : "ar";
 
 /** The main language lives at the root (/produit/x), the other one under its prefix (/fr/produit/x). */

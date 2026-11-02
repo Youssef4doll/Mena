@@ -2,9 +2,9 @@ import { NextResponse, type NextRequest } from "next/server";
 import { DEFAULT_LANG, OTHER_LANG } from "@/i18n/lang";
 
 /**
- * The main language (Arabic, see DEFAULT_LANG) is served at the root, the
+ * The main language (French, see DEFAULT_LANG) is served at the root, the
  * other under its prefix; internally every page lives under app/[lang]. A
- * root URL is rewritten to /ar/..., and /ar/... typed by hand is redirected
+ * root URL is rewritten to /fr/..., and /fr/... typed by hand is redirected
  * to the root form, so each page has one URL.
  *
  * /admin gets an optimistic check only (no cookie → login page); every admin

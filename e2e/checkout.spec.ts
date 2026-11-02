@@ -10,21 +10,21 @@ async function fillDetails(page: Page, gov: string) {
 /** French pages live under /fr: Arabic, the shop's main language, is at the root. */
 const FR = "/fr";
 
-test("Arabic is the main language, at the root; French is one tap away", async ({ page }) => {
+test("French is the main language, at the root; Arabic is one tap away", async ({ page }) => {
   await page.goto("/produit/diffuseur-huiles-essentielles");
+  await expect(page.locator("html")).toHaveAttribute("dir", "ltr");
+  await expect(page.getByRole("heading", { level: 1 })).toHaveText("Diffuseur d'huiles essentielles");
+  // /fr/... is the root form; Arabic keeps its prefix.
+  await page.goto("/fr/produit/diffuseur-huiles-essentielles");
+  await expect(page).toHaveURL(/:\d+\/produit\/diffuseur-huiles-essentielles$/);
+  await page.getByRole("link", { name: "العربية" }).first().click();
+  await expect(page).toHaveURL(/\/ar\/produit\/diffuseur-huiles-essentielles$/);
   await expect(page.locator("html")).toHaveAttribute("dir", "rtl");
   await expect(page.locator("html")).toHaveAttribute("lang", "ar-TN");
   await expect(page.getByRole("heading", { level: 1 })).toHaveText("موزّع زيوت عطرية");
   // The short line under the name, in Tunisian.
   await expect(page.getByTestId("summary")).toContainText("بخار رقيق");
   await expect(page.getByTestId("place-order")).toContainText("اشري توّا");
-  // /ar/... is the root form; French keeps its prefix.
-  await page.goto("/ar/produit/diffuseur-huiles-essentielles");
-  await expect(page).toHaveURL(/\/produit\/diffuseur-huiles-essentielles$/);
-  await page.getByRole("link", { name: "Français" }).first().click();
-  await expect(page).toHaveURL(/\/fr\/produit\/diffuseur-huiles-essentielles$/);
-  await expect(page.locator("html")).toHaveAttribute("dir", "ltr");
-  await expect(page.getByRole("heading", { level: 1 })).toHaveText("Diffuseur d'huiles essentielles");
 });
 
 test("the basket: two products, one order, every price from the server", async ({ page }) => {
@@ -44,7 +44,7 @@ test("the basket: two products, one order, every price from the server", async (
   await page.getByRole("option", { name: /Doré/ }).click();
   await page.locator("#commander").getByTestId("add-to-cart").click();
   await page.getByTestId("go-to-cart").click();
-  await expect(page).toHaveURL(/\/fr\/panier$/);
+  await expect(page).toHaveURL(/(?<!\/ar)\/panier$/);
   await expect(page.getByTestId("cart-line")).toHaveCount(2);
 
   await fillDetails(page, "Sfax");
@@ -59,7 +59,7 @@ test("the basket: two products, one order, every price from the server", async (
   await expect(page.getByText("Votre panier est vide")).toBeVisible();
   // The old checkout address leads to the basket.
   await page.goto(`${FR}/commande`);
-  await expect(page).toHaveURL(/\/fr\/panier$/);
+  await expect(page).toHaveURL(/(?<!\/ar)\/panier$/);
 });
 
 test("the pictures open in full screen, zoom, and the phone's Back closes them", async ({ page }) => {
@@ -71,7 +71,7 @@ test("the pictures open in full screen, zoom, and the phone's Back closes them",
   await expect(viewer.getByRole("button", { name: "Réduire", exact: true })).toBeVisible();
   await page.goBack();
   await expect(page.getByRole("dialog")).toHaveCount(0);
-  await expect(page).toHaveURL(/\/fr\/produit\/diffuseur-huiles-essentielles$/);
+  await expect(page).toHaveURL(/(?<!\/ar)\/produit\/diffuseur-huiles-essentielles$/);
 });
 
 test("a phone visitor orders a product with options, cash on delivery", async ({ page }) => {
@@ -176,10 +176,10 @@ test("Acheter maintenant on a card orders without leaving the list", async ({ pa
   const sheet = page.getByRole("dialog");
   await expect(sheet.locator("#qb-title")).toHaveText("Diffuseur d'huiles essentielles");
   // Still the list: the sheet only marks the address, so the phone's Back button closes it.
-  await expect(page).toHaveURL(/\/fr\/categorie\/maison#commande$/);
+  await expect(page).toHaveURL(/(?<!\/ar)\/categorie\/maison#commande$/);
   await page.goBack();
   await expect(sheet).toHaveCount(0);
-  await expect(page).toHaveURL(/\/fr\/categorie\/maison$/);
+  await expect(page).toHaveURL(/(?<!\/ar)\/categorie\/maison$/);
   await card.getByRole("button", { name: "Acheter maintenant" }).click();
   await expect(sheet.locator("#qb-title")).toHaveText("Diffuseur d'huiles essentielles");
   await sheet.getByTestId("offer-3").check();
@@ -230,7 +230,7 @@ test("search finds the product despite a typing mistake, and completes like Goog
   // Arrow down picks the completion, Enter searches it.
   await box.press("ArrowDown");
   await box.press("Enter");
-  await expect(page).toHaveURL(/\/fr\/recherche\?q=Diffuseur/);
+  await expect(page).toHaveURL(/(?<!\/ar)\/recherche\?q=Diffuseur/);
   // A mistake in a full search: the page says what it searched instead.
   await page.goto(`${FR}/recherche?q=${encodeURIComponent("lamep de chevt")}`);
   await expect(page.getByRole("heading", { level: 1 })).toContainText("lampe de chevet");
