@@ -7,6 +7,7 @@ import { dict, href, pick, type Lang } from "@/i18n";
 import type { ProductPage } from "@/lib/catalog";
 import type { PublicSettings } from "@/lib/settings-schema";
 import { track } from "@/lib/client/track";
+import { rememberViewed } from "@/lib/client/recent";
 import { pixelViewContent } from "@/lib/client/pixels";
 import { formatTND } from "@/lib/money";
 import { descriptionBlocks } from "@/lib/description";
@@ -60,6 +61,7 @@ export function ProductView({ p, lang, settings, url }: { p: P; lang: Lang; sett
   const viewPrice = leadOffer(p.offers)?.price ?? p.price;
   useEffect(() => {
     track("product_viewed", { productId: p.id, value: viewPrice });
+    rememberViewed(p.id);
     pixelViewContent({ id: p.id, name: p.name, price: viewPrice, qty: 1 });
   }, [p.id, p.name, viewPrice]);
 

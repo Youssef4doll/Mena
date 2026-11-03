@@ -7,6 +7,7 @@ import { leadOffer, offerCompareAt, offerLastDay, offersApply } from "./offer-di
 import { parseSpecs, parseVideo, soldStep } from "./product-content";
 import { complete, normalize, rank, tokenize, withSynonyms, type Ranked } from "./search";
 import type { Lang } from "@/i18n/lang";
+import { rankFeed, type FeedItem } from "./home-feed";
 
 /**
  * Storefront reads, cached so a busy page costs nothing. Every read carries
@@ -645,3 +646,47 @@ export async function loadCatalog(ids: string[]): Promise<Map<string, CatalogPro
 export async function allProductSlugs() {
   return prisma.product.findMany({ where: { active: true }, select: { slug: true, updatedAt: true } });
 }
+
+/**
+ * The home page's ranked products (see home-feed): every product online, with
+ * its confirmed orders and its views of the last 30 days, ranked and spread
+ * by category. The categories' names come along for their shelves.
+ */
+export const getHomeFeed = unstable_cache(
+  async () => {
+    const rows = await prisma.product.findMany({
+      where: { active: true },
+      orderBy: NEWEST,
+      take: 400,
+      select: { ...cardSelect, featured: true, category: { select: { slug: true } } },
+    });
+    const ids = rows.map((r) => r.id);
+    const since = new Date(Date.now() - 30 * 86_400_000);
+    const [ratings, sold, views, cats, pics] = await Promise.all([
+      ratingsFor(ids),
+      soldFor(ids),
+      ids.length
+        ? prisma.analyticsEvent.groupBy({ by: ["productId"], where: { name: "product_viewed", productId: { in: ids }, createdAt: { gte: since } }, _count: { _all: true } })
+        : Promise.resolve([] as { productId: string | null; _count: { _all: number } }[]),
+      prisma.category.findMany({ where: { active: true }, orderBy: [{ sort: "asc" }, { name: "asc" }], select: { slug: true, name: true, nameAr: true } }),
+      ids.length ? prisma.productImage.groupBy({ by: ["productId", "kind"], where: { productId: { in: ids } }, _count: { _all: true } }) : Promise.resolve([]),
+    ]);
+    const picsOf = (id: string, kind: "GALLERY" | "DETAIL") => pics.find((g) => g.productId === id && g.kind === kind)?._count._all ?? 0;
+    const viewsOf = new Map(views.map((v) => [v.productId, v._count._all]));
+    const items: FeedItem[] = rows.map((r) => {
+      return {
+        card: toCard(r, ratings, sold),
+        category: r.category?.slug ?? null,
+        featured: r.featured,
+        createdAt: r.createdAt.getTime(),
+        orders: sold.get(r.id) ?? 0,
+        views: viewsOf.get(r.id) ?? 0,
+        photos: picsOf(r.id, "GALLERY"),
+        details: picsOf(r.id, "DETAIL"),
+      };
+    });
+    return { feed: rankFeed(items, Date.now()), categories: cats };
+  },
+  ["home-feed-v1"],
+  { tags: [CATALOG_TAG], revalidate: TTL },
+);

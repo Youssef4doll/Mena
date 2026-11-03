@@ -2,9 +2,12 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { dict, href, isLang, languages, pick } from "@/i18n";
-import { getHome, getHomeCategories } from "@/lib/catalog";
+import { getHome, getHomeCategories, getHomeFeed, type ProductCard } from "@/lib/catalog";
+import { saving } from "@/lib/home-feed";
+import { HomeForYou, HomeMore } from "@/components/shop/HomeFeed";
 import { getSettings } from "@/lib/settings";
 import { governorateLabel } from "@/lib/governorates";
+import { formatTND } from "@/lib/money";
 import { ProductRow } from "@/components/shop/ProductCard";
 import { Stars } from "@/components/shop/Stars";
 import { Img, WarmBlur } from "@/components/shop/Img";
@@ -14,6 +17,9 @@ import { HeroBanners, type Banner } from "@/components/shop/HeroBanners";
 import { bannerLink, heroSlides } from "@/lib/settings-schema";
 
 export const revalidate = 60;
+
+/** "À moins de 30 DT": the small prices' shelf, in millimes. */
+const SMALL_PRICE = 30_000;
 
 export async function generateMetadata({ params }: PageProps<"/[lang]">): Promise<Metadata> {
   const { lang } = await params;
@@ -29,7 +35,7 @@ export default async function Home({ params }: PageProps<"/[lang]">) {
   const { lang } = await params;
   if (!isLang(lang)) notFound();
   const t = dict(lang);
-  const [settings, home, cats] = await Promise.all([getSettings(), getHome(), getHomeCategories()]);
+  const [settings, home, cats, ranked] = await Promise.all([getSettings(), getHome(), getHomeCategories(), getHomeFeed()]);
   const hero = settings.hero;
   // The banners, each to a page of the shop in this language, or to an https address.
   const slides = heroSlides(hero);
@@ -44,6 +50,29 @@ export default async function Home({ params }: PageProps<"/[lang]">) {
   const best = home.bestsellers.length >= 4 ? home.bestsellers.slice(0, 8) : [];
   const seen = new Set([...home.featured, ...best].map((p) => p.id));
   const fresh = home.newest.filter((p) => !seen.has(p.id));
+
+  // The ranked shop (see home-feed), cut into shelves that each show something new: the products already on a
+  // shelf above go last on the next ones, never left out when a shelf would be too short without them.
+  const feed = ranked.feed;
+  const used = new Set(seen);
+  const shelf = (list: ProductCard[], n = 8) => {
+    const pick = [...list.filter((c) => !used.has(c.id)), ...list.filter((c) => used.has(c.id))].slice(0, n);
+    pick.forEach((c) => used.add(c.id));
+    return pick;
+  };
+  // Packs and struck prices the shop really has, the biggest saving first.
+  const deals = shelf(feed.map((f) => f.card).filter((c) => saving(c) >= 0.1).sort((a, b) => saving(b) - saving(a)));
+  // The categories in the order of their best product, each with its own best ones.
+  const catOrder = [...new Set(feed.map((f) => f.category).filter((c): c is string => Boolean(c)))];
+  const catShelves = catOrder
+    .map((slug) => ({ cat: ranked.categories.find((c) => c.slug === slug), list: feed.filter((f) => f.category === slug).map((f) => f.card) }))
+    .filter((x) => x.cat && x.list.length >= 4)
+    .slice(0, 4)
+    .map((x) => ({ cat: x.cat!, products: shelf(x.list) }));
+  const unit = (c: ProductCard) => (c.packOf ? c.price / c.packOf : c.price);
+  const small = shelf(feed.map((f) => f.card).filter((c) => unit(c) <= SMALL_PRICE));
+  // What the browser needs for "Pour vous" and the endless list: the cards and their category, nothing more.
+  const forClient = feed.slice(0, 80).map((f) => ({ card: f.card, category: f.category }));
 
   return (
     <>
@@ -89,17 +118,41 @@ export default async function Home({ params }: PageProps<"/[lang]">) {
           <ProductRow products={home.featured} lang={lang} list="home_featured" />
         </Shelf>
       )}
+      {/* A visitor who came before: their categories, and what they opened. */}
+      <HomeForYou feed={forClient} lang={lang} />
+
       {/* "Most ordered" only when at least four products really sold. */}
       {best.length > 0 && (
         <Shelf title={t.home.bestsellers} link={{ href: href(lang, "/boutique?tri=popular"), label: t.home.seeMore }}>
           <ProductRow products={best} lang={lang} list="home_best" />
         </Shelf>
       )}
+      {deals.length >= 4 && (
+        <Shelf title={t.home.deals} link={{ href: href(lang, "/boutique"), label: t.home.seeMore }}>
+          <ProductRow products={deals} lang={lang} list="home_deals" />
+        </Shelf>
+      )}
+      {catShelves.map((s, i) => (
+        <div key={s.cat.slug} className="contents">
+          <Shelf title={t.home.bestOf(pick(lang, s.cat.name, s.cat.nameAr))} link={{ href: href(lang, `/categorie/${s.cat.slug}`), label: t.home.seeMore }}>
+            <ProductRow products={s.products} lang={lang} list={`home_cat_${s.cat.slug}`} />
+          </Shelf>
+          {/* Small prices after the first category: a change of rhythm. */}
+          {i === 0 && small.length >= 4 && (
+            <Shelf title={t.home.small(formatTND(SMALL_PRICE, lang))} link={{ href: href(lang, "/boutique?tri=price_asc"), label: t.home.seeMore }}>
+              <ProductRow products={small} lang={lang} list="home_small" />
+            </Shelf>
+          )}
+        </div>
+      ))}
       {fresh.length >= 4 && (
         <Shelf title={t.home.newest} link={{ href: href(lang, "/boutique"), label: t.home.seeMore }}>
           <ProductRow products={fresh} lang={lang} list="home_new" />
         </Shelf>
       )}
+
+      {/* ------------------------------------- the whole shop, ranked, as the reader scrolls */}
+      <HomeMore feed={forClient} lang={lang} />
 
       {/* ------------------------------------- reviews (real buyers only) */}
       {home.reviews.length > 0 && (
