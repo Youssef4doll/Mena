@@ -1,4 +1,4 @@
-import { getSecrets, getSettings } from "@/lib/settings";
+import { getSecrets, readSettingsFresh } from "@/lib/settings";
 import { prisma } from "@/lib/prisma";
 import { PageTitle } from "@/components/admin/ui";
 import { SettingsForm } from "./SettingsForm";
@@ -6,8 +6,9 @@ import { SettingsForm } from "./SettingsForm";
 export const metadata = { title: "Paramètres" };
 
 export default async function SettingsPage() {
-  const [settings, secrets, categories, products] = await Promise.all([
-    getSettings(),
+  // Read from the database, not the shop's cache: the form must start from what is stored now.
+  const [{ settings }, secrets, categories, products] = await Promise.all([
+    readSettingsFresh(),
     getSecrets(),
     prisma.category.findMany({ where: { active: true }, orderBy: [{ sort: "asc" }, { name: "asc" }], select: { slug: true, name: true } }),
     prisma.product.findMany({ where: { active: true }, orderBy: { name: "asc" }, take: 1000, select: { slug: true, name: true } }),

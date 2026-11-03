@@ -3,6 +3,7 @@ import { prisma } from "./prisma";
 import { daysOf, tunisDay, type Range } from "./analytics-range";
 import { abandonedCarts } from "./abandoned";
 import { getSettings } from "./settings";
+import { groupSources } from "./source-groups";
 import { profit, spendInRange } from "./profit";
 
 /**
@@ -155,7 +156,7 @@ async function bySource(from: Date, to: Date, withCampaign: boolean): Promise<So
     Object.assign(row, { orders: n(o.orders), confirmed: n(o.confirmed), delivered: n(o.delivered), refused: n(o.refused), revenue: n(o.revenue) });
     map.set(k, row);
   }
-  return [...map.values()].sort((a, b) => b.orders - a.orders || b.sessions - a.sessions);
+  return groupSources([...map.values()], ["sessions", "orders", "confirmed", "delivered", "refused", "revenue"]).sort((a, b) => b.orders - a.orders || b.sessions - a.sessions);
 }
 
 export type DeviceRow = { device: string; sessions: number; orders: number; revenue: number };
@@ -597,7 +598,7 @@ export async function getLive() {
     forms: n(a.forms),
     phones: n(a.phones),
     pages: pages.map((p) => ({ path: p.path, visitors: n(p.visitors) })),
-    sources: sources.map((s) => ({ source: s.source, visitors: n(s.visitors) })),
+    sources: groupSources(sources.map((s) => ({ source: s.source, visitors: n(s.visitors) })), ["visitors"]).sort((a, b) => b.visitors - a.visitors),
     minutes: Array.from({ length: 30 }, (_, i) => ({ ago: 29 - i, visitors: pm.get(29 - i) ?? 0 })),
     orders: orders.map((o) => ({ ...o, createdAt: o.createdAt.toISOString() })),
     at: new Date().toISOString(),

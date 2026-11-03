@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { bestSource } from "@/lib/source-groups";
 import { getAnalytics, getLive } from "@/lib/analytics";
 import { parseRange, PRESETS, delta, ratio } from "@/lib/analytics-range";
 import { Card, PageTitle, btn, input } from "@/components/admin/ui";
@@ -443,11 +444,8 @@ function buildInsights(a: import("@/lib/analytics").Analytics): string[] {
   const leaks = f.slice(1, order + 1).map((s, i) => ({ from: f[i].step, to: s.step, drop: f[i].count >= 20 ? 1 - s.count / f[i].count : 0 }));
   const worst = leaks.reduce((x, y) => (y.drop > x.drop ? y : x), leaks[0]);
   if (worst && worst.drop > 0.5) out.push(`La plus grosse perte est entre « ${worst.from} » et « ${worst.to} » : ${fmt(worst.drop, "pct")} des visiteurs s'arrêtent là.`);
-  const srcs = a.sources.filter((s) => s.sessions >= 50);
-  if (srcs.length >= 2) {
-    const best = srcs.reduce((x, y) => ((ratio(y.orders, y.sessions) ?? 0) > (ratio(x.orders, x.sessions) ?? 0) ? y : x));
-    out.push(`« ${best.source} » convertit le mieux (${fmt(ratio(best.orders, best.sessions), "pct")} des visites deviennent des commandes).`);
-  }
+  const best = bestSource(a.sources);
+  if (best) out.push(`« ${best.source} » convertit le mieux (${fmt(ratio(best.orders, best.sessions), "pct")} des visites deviennent des commandes).`);
   const govs = a.governorates.filter((g) => g.delivered + g.refused >= 5).map((g) => ({ ...g, rate: g.refused / (g.delivered + g.refused) }));
   const badGov = govs.sort((x, y) => y.rate - x.rate)[0];
   if (badGov && badGov.rate >= 0.25) out.push(`${badGov.governorate} refuse ${fmt(badGov.rate, "pct")} des colis : confirmez ces commandes avec plus de soin, ou demandez un acompte.`);
