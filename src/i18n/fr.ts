@@ -40,6 +40,8 @@ export const fr = {
     bannerPrev: "Photo précédente",
     bannerNext: "Photo suivante",
     forYou: "Pour vous",
+    rowPrev: "Produits précédents",
+    rowNext: "Produits suivants",
     recent: "Vus récemment",
     deals: "Prenez-en plus, payez moins",
     bestOf: (name: string) => `Le meilleur de ${name}`,

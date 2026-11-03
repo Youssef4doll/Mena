@@ -42,6 +42,8 @@ export const ar: Dict = {
     bannerPrev: "الصورة اللي قبل",
     bannerNext: "الصورة اللي بعد",
     forYou: "اخترناهم ليك",
+    rowPrev: "المنتوجات اللي قبل",
+    rowNext: "المنتوجات اللي بعد",
     recent: "شفتهم مؤخرا",
     deals: "خوذ أكثر، خلّص أقل",
     bestOf: (name) => `الأحسن في ${name}`,

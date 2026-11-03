@@ -8,6 +8,7 @@ import { Img } from "./Img";
 import { QuickBuy } from "./QuickBuy";
 import { ListClicks } from "./ListClicks";
 import { OpeningHint } from "./OpeningHint";
+import { RowScroll } from "./RowScroll";
 import { Bidi } from "./Bidi";
 import { IconGift, IconStar, IconTruck } from "./Icons";
 
@@ -122,22 +123,19 @@ export function ProductGrid({ products, lang, priorityFirst = 0, list = "grid", 
 }
 
 /**
- * A shelf: swiped sideways on a phone; laid out in full on a computer, where
- * a mouse wheel cannot scroll sideways. `compact`: pictures, names and prices
- * only, for the suggestions under a product page.
+ * A shelf: swiped sideways on a phone; on a computer more cards side by side
+ * (four, five, then six on a wide screen), and the rest one arrow away.
+ * `compact`: pictures, names and prices only, for the suggestions under a
+ * product page.
  */
 export function ProductRow({ products, lang, compact = false, list = "row" }: { products: Card[]; lang: Lang; compact?: boolean; list?: string }) {
-  // On a computer, only full rows (of four, of five from 1280 px when there are five); a phone still swipes through all of them.
-  const full = (n: number) => (products.length >= 2 * n ? 2 * n : products.length >= n ? n : products.length);
-  const four = full(4);
-  const five = full(5);
   return (
     <ListClicks list={list}>
-      <div className={`-mx-4 grid auto-cols-[46%] grid-flow-col grid-rows-[repeat(4,auto)] gap-x-3 overflow-x-auto scroll-px-4 px-4 pb-2 snap-x no-scrollbar sm:auto-cols-[30%] md:mx-0 md:auto-cols-auto md:grid-flow-row md:grid-cols-4 md:grid-rows-none md:gap-x-5 md:gap-y-10 md:overflow-visible md:px-0 md:pb-0 ${products.length >= 5 ? "xl:grid-cols-5 xl:gap-y-8" : ""}`}>
+      <RowScroll prev={dict(lang).home.rowPrev} next={dict(lang).home.rowNext} className="-mx-4 grid auto-cols-[46%] grid-flow-col grid-rows-[repeat(4,auto)] gap-x-3 overflow-x-auto scroll-px-4 px-4 pb-2 snap-x no-scrollbar sm:auto-cols-[30%] md:mx-0 md:auto-cols-[calc((100%-3.75rem)/4)] md:scroll-px-0 md:gap-x-5 md:px-0 lg:auto-cols-[calc((100%-5rem)/5)] xl:auto-cols-[calc((100%-6.25rem)/6)]">
         {products.map((p, i) => (
-          <ProductCard key={p.id} p={p} lang={lang} compact={compact} pos={i} className={`snap-start ${i >= four ? "md:hidden" : ""} ${i >= five ? "xl:hidden" : i >= four ? "xl:grid" : ""}`} />
+          <ProductCard key={p.id} p={p} lang={lang} compact={compact} pos={i} className="snap-start" />
         ))}
-      </div>
+      </RowScroll>
     </ListClicks>
   );
 }

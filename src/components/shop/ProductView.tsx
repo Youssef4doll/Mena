@@ -227,7 +227,6 @@ export function ProductView({ p, lang, settings, url }: { p: P; lang: Lang; sett
             )}
           </p>
           <StockLine lang={lang} p={p} variant={choice.variant} />
-          {!out && <DeliveryLine lang={lang} settings={settings} free={Boolean(choice.offer?.freeDelivery)} price={pay.price} />}
         </div>
 
         <div ref={buyRef} className="min-w-0 pt-1 md:col-start-2 md:row-start-2">
