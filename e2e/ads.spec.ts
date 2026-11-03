@@ -78,7 +78,7 @@ test("a Meta export imported twice counts once, and its campaign gets a verdict 
   await carrier.fill("7");
   await back.fill("4");
   await page.getByRole("button", { name: "Enregistrer les paramètres" }).click();
-  await expect(page.getByText("Paramètres enregistrés.")).toBeVisible();
+  await expect(page.getByText(/^Enregistré : |^Rien n.a changé/)).toBeVisible();
 
   // The overview, with its tabs.
   await page.goto("/admin/publicites");
@@ -160,5 +160,5 @@ test("a Meta export imported twice counts once, and its campaign gets a verdict 
   await carrier.fill(before.carrier);
   await back.fill(before.back);
   await page.getByRole("button", { name: "Enregistrer les paramètres" }).click();
-  await expect(page.getByText("Paramètres enregistrés.")).toBeVisible();
+  await expect(page.getByText(/^Enregistré : |^Rien n.a changé/)).toBeVisible();
 });

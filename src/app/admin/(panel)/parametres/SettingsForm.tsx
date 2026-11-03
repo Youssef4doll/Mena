@@ -11,10 +11,16 @@ import { Card, btn, input, label } from "@/components/admin/ui";
 
 type Targets = { categories: { slug: string; name: string }[]; products: { slug: string; name: string }[] };
 
+/** The settings as the form shows them: the single picture of before becomes the first banner of the list. */
+const asForm = (x: Settings): Settings => ({ ...x, hero: { ...x.hero, slides: heroSlides(x.hero), imageId: null } });
+
 export function SettingsForm({ initial, secretsSet, targets }: { initial: Settings; secretsSet: Record<keyof Secrets, boolean>; targets: Targets }) {
   const router = useRouter();
-  // The single picture of before becomes the first banner of the list.
-  const [s, setS] = useState<Settings>(() => ({ ...initial, hero: { ...initial.hero, slides: heroSlides(initial.hero), imageId: null } }));
+  const [s, setS] = useState<Settings>(() => asForm(initial));
+  // What the form started from (the stored settings at the last read): only what differs from it is saved.
+  const [base, setBase] = useState<Settings>(() => asForm(initial));
+  // A refusal shown next to its field ("contact.messenger"), which is scrolled to.
+  const [fieldErr, setFieldErr] = useState<{ field: string; text: string } | null>(null);
   const [sec, setSec] = useState<Partial<Secrets>>({});
   const [fee, setFee] = useState(toInputTND(initial.delivery.fee));
   const [threshold, setThreshold] = useState(toInputTND(initial.delivery.freeThreshold));
@@ -25,12 +31,23 @@ export function SettingsForm({ initial, secretsSet, targets }: { initial: Settin
   const [pending, start] = useTransition();
 
   const up = <K extends keyof Settings>(k: K, patch: Partial<Settings[K]>) => setS((x) => ({ ...x, [k]: { ...x[k], ...patch } }));
+  // Nothing here is a login: the browser's password manager must not fill or rewrite these fields.
+  const noFill = { autoComplete: "off", "data-1p-ignore": true, "data-lpignore": "true", "data-form-type": "other", spellCheck: false } as const;
   const text = <K extends keyof Settings>(k: K, f: keyof Settings[K] & string, extra: React.InputHTMLAttributes<HTMLInputElement> = {}) => ({
     value: String(s[k][f] ?? ""),
-    onChange: (e: React.ChangeEvent<HTMLInputElement>) => up(k, { [f]: e.target.value } as Partial<Settings[K]>),
-    className: input,
+    onChange: (e: React.ChangeEvent<HTMLInputElement>) => {
+      up(k, { [f]: e.target.value } as Partial<Settings[K]>);
+      if (fieldErr?.field === `${String(k)}.${f}`) setFieldErr(null);
+    },
+    className: `${input} ${fieldErr?.field === `${String(k)}.${f}` ? "!border-danger" : ""}`,
+    name: `mena-${String(k)}-${f}`,
+    "data-field": `${String(k)}.${f}`,
+    "aria-invalid": fieldErr?.field === `${String(k)}.${f}` || undefined,
+    ...noFill,
     ...extra,
   });
+  /** The refusal of this field, under it. */
+  const err = (field: string) => (fieldErr?.field === field ? <span className="text-xs font-normal text-danger" role="alert">{fieldErr.text}</span> : null);
   const check = <K extends keyof Settings>(k: K, f: keyof Settings[K] & string) => ({
     type: "checkbox" as const,
     checked: Boolean(s[k][f]),
@@ -40,25 +57,50 @@ export function SettingsForm({ initial, secretsSet, targets }: { initial: Settin
   const secret = (k: keyof Secrets, title: string) => (
     <label className={label}>
       {title} {secretsSet[k] ? <span className="text-xs font-normal text-olive">· enregistré</span> : <span className="text-xs font-normal text-muted">· non renseigné</span>}
-      <input type="password" autoComplete="off" placeholder={secretsSet[k] ? "laisser vide pour garder" : ""} value={sec[k] ?? ""} onChange={(e) => setSec({ ...sec, [k]: e.target.value })} className={input} />
+      {/* Shown as dots but not a password field: a password field makes the browser treat the page as a login
+          and fill the field before it (Messenger, the Pixel ID) with the admin's e-mail. */}
+      <input type="text" name={`mena-key-${k}`} {...noFill} style={{ WebkitTextSecurity: "disc" } as React.CSSProperties} placeholder={secretsSet[k] ? "laisser vide pour garder" : ""} value={sec[k] ?? ""} onChange={(e) => setSec({ ...sec, [k]: e.target.value })} className={input} />
     </label>
   );
 
+  /** A refusal: next to its field when it has one (scrolled to and focused), and at the bottom. */
+  function refuse(text: string, field?: string) {
+    setMsg({ ok: false, text });
+    setFieldErr(field ? { field, text } : null);
+    if (!field) return;
+    requestAnimationFrame(() => {
+      const el = document.querySelector<HTMLElement>(`[data-field="${field}"]`);
+      el?.scrollIntoView({ behavior: "smooth", block: "center" });
+      el?.focus({ preventScroll: true });
+    });
+  }
+
   function save() {
     const deliveryFee = parseTND(fee);
-    if (deliveryFee == null) return setMsg({ ok: false, text: "Frais de livraison invalides." });
+    if (deliveryFee == null) return refuse("Frais de livraison invalides.", "delivery.fee");
     const ft = threshold.trim() ? parseTND(threshold) : null;
-    if (threshold.trim() && ft == null) return setMsg({ ok: false, text: "Seuil de livraison offerte invalide." });
+    if (threshold.trim() && ft == null) return refuse("Seuil de livraison offerte invalide.", "delivery.freeThreshold");
     const cc = carrierCost.trim() ? parseTND(carrierCost) : null;
     const rc = returnCost.trim() ? parseTND(returnCost) : null;
-    if ((carrierCost.trim() && cc == null) || (returnCost.trim() && rc == null)) return setMsg({ ok: false, text: "Coût de transport invalide." });
+    if (carrierCost.trim() && cc == null) return refuse("Coût de transport invalide.", "costs.carrierPerParcel");
+    if (returnCost.trim() && rc == null) return refuse("Coût de transport invalide.", "costs.returnPerParcel");
+    setFieldErr(null);
+    // The money fields of the base as the form would send them unchanged, so they count as changed only when edited.
+    const from: Settings = { ...base, costs: { carrierPerParcel: base.costs?.carrierPerParcel ?? null, returnPerParcel: base.costs?.returnPerParcel ?? null } };
     start(async () => {
-      const r = await saveAll({ ...s, delivery: { ...s.delivery, fee: deliveryFee, freeThreshold: ft }, costs: { carrierPerParcel: cc, returnPerParcel: rc } }, sec);
-      setMsg(r.ok ? { ok: true, text: "Paramètres enregistrés." } : { ok: false, text: r.error });
-      if (r.ok) {
-        setSec({});
-        router.refresh();
-      }
+      const r = await saveAll(from, { ...s, delivery: { ...s.delivery, fee: deliveryFee, freeThreshold: ft }, costs: { carrierPerParcel: cc, returnPerParcel: rc } }, sec).catch(() => ({ ok: false as const, error: "Pas de connexion : rien n'est enregistré, réessayez." }));
+      if (!r.ok) return refuse(r.error, "field" in r ? r.field : undefined);
+      // What is stored now, read back: the form shows exactly that, and starts from it for the next save.
+      const stored = asForm(r.settings);
+      setS(stored);
+      setBase(stored);
+      setFee(toInputTND(stored.delivery.fee));
+      setThreshold(toInputTND(stored.delivery.freeThreshold));
+      setCarrierCost(toInputTND(stored.costs?.carrierPerParcel ?? null));
+      setReturnCost(toInputTND(stored.costs?.returnPerParcel ?? null));
+      setSec({});
+      setMsg({ ok: true, text: r.changed.length ? `Enregistré : ${r.changed.join(", ")}.` : "Rien n'a changé." });
+      router.refresh();
     });
   }
 
@@ -80,9 +122,9 @@ export function SettingsForm({ initial, secretsSet, targets }: { initial: Settin
           <label className={label}>E-mail<input {...text("shop", "email")} /></label>
           <label className={label}>Matricule fiscal / RNE<input {...text("shop", "legalId")} /></label>
           <label className={`${label} col-span-2`}>Adresse ou ville<input {...text("shop", "address")} /></label>
-          <label className={label}>Instagram (adresse du profil, ou vide)<input {...text("shop", "instagram")} placeholder="https://www.instagram.com/votre.page" /></label>
-          <label className={label}>Facebook (adresse de la page, ou vide)<input {...text("shop", "facebook")} placeholder="https://www.facebook.com/votre.page" /></label>
-          <label className={label}>TikTok (adresse du profil, ou vide)<input {...text("shop", "tiktok")} placeholder="https://www.tiktok.com/@votre.page" /></label>
+          <label className={label}>Instagram (adresse du profil, ou vide)<input {...text("shop", "instagram")} placeholder="https://www.instagram.com/votre.page" />{err("shop.instagram")}</label>
+          <label className={label}>Facebook (adresse de la page, ou vide)<input {...text("shop", "facebook")} placeholder="https://www.facebook.com/votre.page" />{err("shop.facebook")}</label>
+          <label className={label}>TikTok (adresse du profil, ou vide)<input {...text("shop", "tiktok")} placeholder="https://www.tiktok.com/@votre.page" />{err("shop.tiktok")}</label>
         </div>
       </Card>
 
@@ -110,8 +152,8 @@ export function SettingsForm({ initial, secretsSet, targets }: { initial: Settin
 
       <Card title="Contact client">
         <div className="grid grid-cols-2 gap-2">
-          <label className={label}>WhatsApp (8 chiffres)<input {...text("contact", "whatsapp", { inputMode: "tel" })} /></label>
-          <label className={label}>Messenger (nom d&apos;utilisateur de la page, celui de m.me/…, ou vide)<input {...text("contact", "messenger")} placeholder="votre.page" /></label>
+          <label className={label}>WhatsApp (8 chiffres)<input {...text("contact", "whatsapp", { inputMode: "tel" })} />{err("contact.whatsapp")}</label>
+          <label className={label}>Messenger (nom d&apos;utilisateur de la page, celui de m.me/…, ou vide)<input {...text("contact", "messenger")} placeholder="votre.page" />{err("contact.messenger")}</label>
         </div>
         <p className="mt-2 text-xs text-muted">Vide = les boutons WhatsApp disparaissent de la boutique.</p>
       </Card>
@@ -126,15 +168,15 @@ export function SettingsForm({ initial, secretsSet, targets }: { initial: Settin
 
       <Card title="Livraison" hint="Un seul tarif pour tous les gouvernorats : c'est ce que la boutique affiche et ce que le serveur facture. Les délais, par gouvernorat, sont des fourchettes en jours ouvrés après confirmation." className="xl:col-span-2">
         <div className="grid gap-2 sm:grid-cols-4">
-          <label className={label}>Frais de livraison, tous les gouvernorats (DT)<input value={fee} onChange={(e) => setFee(e.target.value)} inputMode="decimal" className={input} data-testid="delivery-fee" /></label>
+          <label className={label}>Frais de livraison, tous les gouvernorats (DT)<input value={fee} onChange={(e) => setFee(e.target.value)} inputMode="decimal" className={input} data-testid="delivery-fee" data-field="delivery.fee" {...noFill} />{err("delivery.fee")}</label>
           <label className={label}>Nom affiché<input {...text("delivery", "carrierName")} /></label>
-          <label className={label}>Livraison offerte dès (DT, vide = jamais)<input value={threshold} onChange={(e) => setThreshold(e.target.value)} inputMode="decimal" className={input} /></label>
+          <label className={label}>Livraison offerte dès (DT, vide = jamais)<input value={threshold} onChange={(e) => setThreshold(e.target.value)} inputMode="decimal" className={input} data-field="delivery.freeThreshold" {...noFill} />{err("delivery.freeThreshold")}</label>
           <label className="flex items-center gap-2 pt-5 text-sm"><input {...check("delivery", "openBeforePaying")} />Le client peut ouvrir le colis avant de payer</label>
         </div>
         {/* Private: only the analytics read them, to compute what the shop really keeps. */}
         <div className="mt-3 grid gap-2 sm:grid-cols-2">
-          <label className={label}>Ce que le transporteur vous facture par colis (DT, jamais affiché)<input value={carrierCost} onChange={(e) => setCarrierCost(e.target.value)} inputMode="decimal" className={input} placeholder="vide = inconnu" /></label>
-          <label className={label}>Coût en plus d&apos;un colis refusé ou retourné (DT, jamais affiché)<input value={returnCost} onChange={(e) => setReturnCost(e.target.value)} inputMode="decimal" className={input} placeholder="vide = inconnu" /></label>
+          <label className={label}>Ce que le transporteur vous facture par colis (DT, jamais affiché)<input value={carrierCost} onChange={(e) => setCarrierCost(e.target.value)} inputMode="decimal" className={input} placeholder="vide = inconnu" data-field="costs.carrierPerParcel" {...noFill} />{err("costs.carrierPerParcel")}</label>
+          <label className={label}>Coût en plus d&apos;un colis refusé ou retourné (DT, jamais affiché)<input value={returnCost} onChange={(e) => setReturnCost(e.target.value)} inputMode="decimal" className={input} placeholder="vide = inconnu" data-field="costs.returnPerParcel" {...noFill} />{err("costs.returnPerParcel")}</label>
         </div>
         <div className="mt-3 flex flex-wrap items-end gap-2 rounded-xl bg-cream p-3">
           <span className="text-xs text-muted">Délais pour tous :</span>
@@ -177,11 +219,11 @@ export function SettingsForm({ initial, secretsSet, targets }: { initial: Settin
 
       <Card title="Pixels publicitaires" hint="Chargés seulement si le visiteur accepte les cookies. Les jetons serveur (API Conversions) envoient les achats depuis le serveur, ce qui résiste aux bloqueurs.">
         <div className="grid gap-2 sm:grid-cols-2">
-          <label className={label}>Meta Pixel ID<input {...text("tracking", "metaPixelId")} /></label>
+          <label className={label}>Meta Pixel ID<input {...text("tracking", "metaPixelId")} />{err("tracking.metaPixelId")}</label>
           {secret("metaCapiToken", "Meta — jeton API Conversions")}
-          <label className={label}>TikTok Pixel ID<input {...text("tracking", "tiktokPixelId")} /></label>
+          <label className={label}>TikTok Pixel ID<input {...text("tracking", "tiktokPixelId")} />{err("tracking.tiktokPixelId")}</label>
           {secret("tiktokToken", "TikTok — jeton Events API")}
-          <label className={label}>GA4 ID (G-…)<input {...text("tracking", "ga4Id")} /></label>
+          <label className={label}>GA4 ID (G-…)<input {...text("tracking", "ga4Id")} />{err("tracking.ga4Id")}</label>
           {secret("ga4ApiSecret", "GA4 — secret Measurement Protocol")}
         </div>
         <label className={`${label} mt-3`}>

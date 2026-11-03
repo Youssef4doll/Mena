@@ -36,7 +36,7 @@ test("several home banners, each leading somewhere, with arrows on a computer, t
     await upload(200);
     await banners.getByLabel("Lien de la photo").nth(start).selectOption({ label: "Toute la boutique" });
     await page.getByRole("button", { name: "Enregistrer les paramètres" }).click();
-    await expect(page.getByText("Paramètres enregistrés.")).toBeVisible();
+    await expect(page.getByText(/^Enregistré : |^Rien n.a changé/)).toBeVisible();
 
     await page.goto("/fr");
     const dots = page.locator('button[aria-label^="Photo "][aria-current]');
@@ -66,7 +66,7 @@ test("several home banners, each leading somewhere, with arrows on a computer, t
     await page.goto("/admin/parametres");
     while ((await banners.locator("img").count()) > start) await banners.getByRole("button", { name: "Retirer" }).last().click();
     await page.getByRole("button", { name: "Enregistrer les paramètres" }).click();
-    await expect(page.getByText("Paramètres enregistrés.")).toBeVisible();
+    await expect(page.getByText(/^Enregistré : |^Rien n.a changé/)).toBeVisible();
   }
 });
 
