@@ -1,5 +1,4 @@
 import { z } from "zod";
-import { KEYWORDS_RULE, SEO_RULE, SHOP_VOICE } from "./translate-prompt";
 
 /**
  * Completing a product page from the web: the request, shared by the
@@ -50,29 +49,45 @@ export const REPORT_SCHEMA = {
   additionalProperties: false,
 };
 
-export const WEB_SYSTEM = `${SHOP_VOICE}
+/**
+ * The owner's brief for these texts, word for word ("Product texts for Meta
+ * ads traffic"). Its reply form is said apart: claude.ai answers with the
+ * JSON list (WEB_REPLY), the API with its "report" tool (webTask).
+ */
+export const WEB_SYSTEM = `You write the product page texts of Mena, a Tunisian online shop with cash on delivery. Almost every visitor arrives from a Facebook or Instagram ad, on a phone, does not know the shop, and decides in a few seconds. Many are older people.
 
-You complete a product page of Mena from the web. You get the product as the shop has it.
+Arabic texts are in Tunisian derja, in Arabic letters, with everyday words an older Tunisian understands at once (توّا، برشا، متاع، كي، باش، يتشحن، الكرطونة). Not formal Arabic, not Moroccan, Algerian, Egyptian or Gulf dialect. Keep the French or English product words Tunisians say (LED, USB-C, سشوار). French texts are plain, correct French.
 
 How to work:
-1. Search the web for this exact product: first the page of its brand or manufacturer, then big shops that sell the same model (Amazon, Jumia, Cdiscount, AliExpress, the brand's distributors), then a video that shows it (YouTube first). Use the name, the brand, the model and the numbers (size, capacity, power, number of pieces) to be sure it is the same product. A similar product of another brand, model or size is not the same product: leave it out.
-2. Read the 2 to 4 best pages of this product.
-3. Give your answer once, at the end.
+1. Search the web for this exact product (brand or maker first, then big shops such as Amazon, Jumia, AliExpress, then a YouTube video). A product of another model or size is not the same product: leave it out.
+2. Read the 2 to 4 best pages of this exact product.
+3. Write the texts for a visitor who just clicked an ad: result first, proof second, details last.
 
-The answer:
-- "pages": the pages of this exact product that you read or found (address, title, and "sure": true only when the brand, the model and the numbers match). The shop downloads the large pictures from these pages itself, so list the pages that show the product's photos, best first. [] when you found nothing sure.
-- "images": direct addresses (https) of large photos of this product that you saw written in the pages; [] when you saw none. Never make up an address.
-- "video": the address of one video that shows this exact product (YouTube, Vimeo or TikTok), found in the results or the pages; "" when there is none. Never make up an address.
-- "texts": written by you, in the shop's voice, from the facts the pages give about this product. Never copy a sentence from a page: write your own (the other shops' texts are theirs, and Google ranks a copied text lower).
-  - Use only facts the pages say about this exact product, or that the shop's own texts already say. Never add a number, a size, a material, a feature or a use that no page gives. When the pages say little, write little.
-  - Never write a rating, a review, a number of buyers or of sales, "best-seller", "n°1", an award, a certification, a guarantee, a delivery time, a stock or a price, even when a page says one: the shop cannot check them.
-  - Keep every number, unit, model and brand exactly. No exclamation marks, no emojis, no whole words in capitals.
-  - "summary" / "summaryAr": one sentence of at most 160 characters: what the product does for the buyer.
-  - "description" / "descriptionAr", laid out like Amazon's "About this item" for a phone: first one or two sentences on what it is and the main benefit; then a blank line and 3 to 6 lines that each start with "- ", one benefit per line, the benefit first and then the fact that proves it; then, when a page says what is in the box, a blank line and "Dans la boîte : …" (in Arabic "في الكرطونة: …").
-  - "specs" / "specsAr": one "label: value" per line, only values the pages give (dimensions, weight, material, power, battery, capacity, colours, contents), the same lines in the same order in both languages. "" when the pages give none.
-  - ${KEYWORDS_RULE}
-  - ${SEO_RULE}
-  - Every text "" when you found nothing sure about this exact product: never guess.`;
+The texts:
+- "summary" / "summaryAr": one sentence, at most 120 characters: the main result for the buyer, as the ad would promise it. No feature list.
+- "description" / "descriptionAr", built for a phone screen:
+  1. One short opening line that names the everyday problem and the result ("Fini les câbles emmêlés : …").
+  2. A blank line, then 3 to 5 lines starting with "- ", each one benefit first, then the fact that proves it, at most 12 words per line.
+  3. When a page says what is in the box: a blank line and "Dans la boîte : …" (in Arabic "في الكرطونة: …").
+  4. One last line that removes the fear of ordering, using only what is true for every Mena order: "Vous payez à la livraison, après avoir vu le produit." (in Arabic "تخلّص كي توصلك وتشوفها بعينيك.").
+- "specs" / "specsAr": one "label: value" per line, only values a page gives (dimensions, weight, material, power, battery, capacity, colours, contents), the same lines in the same order in both languages. "" when the pages give none.
+- "keywords": 8 to 20 comma-separated terms a Tunisian would type or say: French synonyms, derja in Arabic letters, derja in Latin letters (arabizi), common misspellings. Lower case, no duplicates.
+- "seoTitle" / "seoTitleAr": at most 60 characters: what it is, then what sets it apart. No shop name, price, "pas cher", "meilleur", "promo".
+- "seoDescription" / "seoDescriptionAr": 120 to 155 characters: the main result and one or two facts, ending with "Paiement à la livraison." (in Arabic "الدفع عند الاستلام.").
+
+Rules (Meta rejects pages that break them, and the shop cannot prove them):
+- Use only facts the pages or the shop's own texts give. Never add a number, size, material, feature or use that no page gives. When the pages say little, write little.
+- Never write a price, discount, countdown, "stock limité", rating, review, number of buyers, "best-seller", "n°1", award, certification, guarantee, delivery time, or a health, weight-loss or miracle claim.
+- Never copy a sentence from another shop: write your own.
+- No exclamation marks, no emojis, no whole words in capitals. Keep every number, unit, model and brand exactly.
+- Every text "" when you found nothing sure about this exact product.`;
+
+/** The brief's own reply form, for claude.ai. */
+export const WEB_REPLY = `Reply with only a JSON list, one object per product, with its "ref":
+[{"ref": "...", "pages": [{"url": "...", "title": "...", "sure": true}], "images": ["https://..."], "video": "", "texts": {"summary": "...", "summaryAr": "...", "description": "...", "descriptionAr": "...", "specs": "...", "specsAr": "...", "keywords": "...", "seoTitle": "...", "seoTitleAr": "...", "seoDescription": "...", "seoDescriptionAr": "..."}}]`;
+
+/** What the brief's reply form says of the pages, photos and video, for the API's tool. */
+const REPORT_NOTE = `Give your answer once, with the tool "report": the pages of this exact product that you read or found ("sure": true only when the brand, the model and the numbers match; the shop downloads their large photos itself), the direct https addresses of large photos of this product written in those pages, and the address of one video of this exact product (YouTube, Vimeo or TikTok), "" when there is none. Never make up an address.`;
 
 const productBlock = (p: WebProduct) =>
   JSON.stringify({ ref: p.ref, name: p.name, nameAr: p.nameAr, summary: p.summary, description: p.description.slice(0, 1500), specs: p.specs.slice(0, 800) });
@@ -81,21 +96,23 @@ const productBlock = (p: WebProduct) =>
 export const webTask = (p: WebProduct) => `The product, as the shop has it now:
 ${productBlock(p)}
 
-Search, read the pages, then call the tool "report" once with your answer.`;
+Search, read the pages, then answer.
+
+${REPORT_NOTE}`;
 
 /** How many products one claude.ai request asks for: each needs its own searches, and the reply must come in one piece. */
 export const WEB_BATCH = 4;
 
 /** The whole request for claude.ai: the rules, the products, and the reply's form (a JSON list, one object per product). */
 export function webBatchRequest(products: WebProduct[]): string {
-  const shape = `{"ref": "...", "pages": [{"url": "...", "title": "...", "sure": true}], "images": ["https://..."], "video": "", "texts": {${TEXT_KEYS.map((k) => `"${k}": "..."`).join(", ")}}}`;
   return `${WEB_SYSTEM}
 
 The products (each has its "ref"):
 ${products.map(productBlock).join("\n")}
 
-Do the work above for each product, one after the other. Then reply with only a JSON list, one object per product, in this form, with the product's "ref":
-[${shape}]`;
+Do the work above for each product, one after the other. Never make up an address.
+
+${WEB_REPLY}`;
 }
 
 /** The objects of a reply's list, even when the list is cut short or written among other words. */
