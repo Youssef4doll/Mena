@@ -9,10 +9,14 @@ test("the request: the products by their ref, the rules against invented facts a
   assert.match(r, /"ref":"P1"/);
   assert.match(r, /"ref":"P2"/);
   assert.match(r, /Never copy a sentence/);
-  assert.match(r, /Never write a rating, a review/);
+  assert.match(r, /Never write a price, discount, countdown/);
+  assert.match(r, /Reply with only a JSON list, one object per product, with its "ref"/);
   assert.match(r, /Never make up an address/);
-  assert.match(webTask(product), /call the tool "report" once/);
-  assert.ok(WEB_SYSTEM.includes("Tunisian Arabic"));
+  assert.match(webTask(product), /with the tool "report"/);
+  assert.match(webTask(product), /Never make up an address/);
+  assert.ok(WEB_SYSTEM.startsWith("You write the product page texts of Mena"));
+  // The reply form is for claude.ai only: the API answers with its tool.
+  assert.ok(!WEB_SYSTEM.includes("Reply with only a JSON list"));
   // The API's form and the reply's ask for the same texts.
   assert.deepEqual(REPORT_SCHEMA.properties.texts.required, TEXT_KEYS);
 });
