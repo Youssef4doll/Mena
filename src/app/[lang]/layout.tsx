@@ -59,6 +59,10 @@ export default async function ShopLayout({ children, params }: LayoutProps<"/[la
 
   return (
     <html lang={lang === "ar" ? "ar-TN" : "fr-TN"} dir={t.dir} className={`shop-root ${body.variable}`}>
+      <head>
+        {/* Meta Business domain check: written straight into <head> (metadata from generateMetadata streams into <body> for browsers). */}
+        <meta name="facebook-domain-verification" content="ea2z4wt9uo28w8hpxgzduab5r3s4el" />
+      </head>
       <body className="min-h-dvh">
         {/* For keyboard and screen-reader users: past the header in one step. Visible only when focused. */}
         <a href="#main" className="sr-only focus:not-sr-only focus:fixed focus:start-3 focus:top-3 focus:z-50 focus:rounded-full focus:bg-ink focus:px-5 focus:py-3 focus:text-[16px] focus:font-bold focus:text-white">
