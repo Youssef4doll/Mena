@@ -23,6 +23,7 @@ export type SaveResult = { ok: true; settings: Settings; changed: string[] } | R
 function trackingProblem(t: Settings["tracking"]): Refusal | null {
   if (t.metaPixelId.trim() && !/^\d{10,20}$/.test(t.metaPixelId.trim())) return { ok: false, field: "tracking.metaPixelId", error: "Meta Pixel ID : seulement des chiffres (15 ou 16 en général)." };
   if (t.ga4Id.trim() && !/^G-[A-Z0-9]{4,15}$/.test(t.ga4Id.trim())) return { ok: false, field: "tracking.ga4Id", error: "GA4 ID : de la forme G-XXXXXXXXXX." };
+  if (t.gtmId.trim() && !/^GTM-[A-Z0-9]{4,12}$/.test(t.gtmId.trim())) return { ok: false, field: "tracking.gtmId", error: "Google Tag Manager ID : de la forme GTM-XXXXXXX." };
   if (t.tiktokPixelId.trim() && !/^[A-Z0-9]{10,30}$/.test(t.tiktokPixelId.trim())) return { ok: false, field: "tracking.tiktokPixelId", error: "TikTok Pixel ID : lettres majuscules et chiffres seulement." };
   return null;
 }
@@ -48,7 +49,7 @@ export async function saveAll(base: Settings, settings: Settings, secrets: Parti
   }
   const messengerProblem = socialProblem("messenger", settings.contact.messenger);
   if (messengerProblem) return { ok: false, field: "contact.messenger", error: messengerProblem };
-  const tracking = { ...settings.tracking, metaPixelId: settings.tracking.metaPixelId.trim(), ga4Id: settings.tracking.ga4Id.trim(), tiktokPixelId: settings.tracking.tiktokPixelId.trim() };
+  const tracking = { ...settings.tracking, metaPixelId: settings.tracking.metaPixelId.trim(), ga4Id: settings.tracking.ga4Id.trim(), gtmId: settings.tracking.gtmId.trim(), tiktokPixelId: settings.tracking.tiktokPixelId.trim() };
   const trackingRefused = trackingProblem(tracking);
   if (trackingRefused) return trackingRefused;
   settings = {

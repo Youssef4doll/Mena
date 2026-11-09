@@ -84,6 +84,8 @@ export const settingsSchema = z.object({
   tracking: z.object({
     metaPixelId: z.string().max(30),
     ga4Id: z.string().max(30),
+    /** Google Tag Manager container (GTM-…); empty: none. Old saved settings have none. */
+    gtmId: z.string().max(30).default(""),
     tiktokPixelId: z.string().max(40),
     /** When the ad platforms are told about a "Purchase": as soon as the order
      *  is placed, once it is confirmed by phone (fewer fake orders in the
@@ -161,7 +163,7 @@ export const DEFAULT_SETTINGS: Settings = {
   returns: { days: 10 },
   payments: { cod: true, card: false, konnectWalletId: "", konnectSandbox: true },
   checkout: { askEmail: false, maxOrdersPerPhonePerDay: 3 },
-  tracking: { metaPixelId: "", ga4Id: "", tiktokPixelId: "", purchaseAt: "placed" },
+  tracking: { metaPixelId: "", ga4Id: "", gtmId: "", tiktokPixelId: "", purchaseAt: "placed" },
   notify: {
     smsUrl: "",
     smsMethod: "GET",
@@ -219,7 +221,7 @@ export function publicSettings(s: Settings) {
     returns: s.returns,
     payments: { cod: true, card: s.payments.card && Boolean(s.payments.konnectWalletId) },
     checkout: { askEmail: s.checkout.askEmail },
-    tracking: { metaPixelId: s.tracking.metaPixelId, ga4Id: s.tracking.ga4Id, tiktokPixelId: s.tracking.tiktokPixelId, purchaseAt: s.tracking.purchaseAt },
+    tracking: { metaPixelId: s.tracking.metaPixelId, ga4Id: s.tracking.ga4Id, gtmId: s.tracking.gtmId, tiktokPixelId: s.tracking.tiktokPixelId, purchaseAt: s.tracking.purchaseAt },
   };
 }
 export type PublicSettings = ReturnType<typeof publicSettings>;
