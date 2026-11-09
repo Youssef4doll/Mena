@@ -14,27 +14,33 @@ async function readPastTheForm(page: Page) {
   await expect(page.getByTestId("sticky-bar")).toHaveAttribute("aria-hidden", "false");
 }
 
-test("a phone opens on the long pictures, and the bar goes down to the form", async ({ page }) => {
+test("a phone shows the long pictures before the form, and the bar goes down to the form", async ({ page }) => {
   await page.goto(PRODUCT);
   const pictures = page.getByTestId("long-pictures");
   expect(await pictures.locator("img").count()).toBeGreaterThan(0);
-  // The first thing under the header, edge to edge; the photos, the name and the form come after.
+  // Photos, name and price, then the long pictures edge to edge, then the form, then the text.
   const at = await page.evaluate(() => {
     const top = (sel: string) => document.querySelector(sel)!.getBoundingClientRect();
-    return { header: top("header").bottom, pictures: top('[data-testid="long-pictures"]'), h1: top("h1").top, form: top("#commander").top, width: document.documentElement.clientWidth, over: document.documentElement.scrollWidth - document.documentElement.clientWidth };
+    return { header: top("header").bottom, pictures: top('[data-testid="long-pictures"]'), price: top('[data-testid="price"]').bottom, h1: top("h1").top, form: top("#commander").top, text: top("#desc-title").top, width: document.documentElement.clientWidth, over: document.documentElement.scrollWidth - document.documentElement.clientWidth };
   });
-  expect(Math.abs(at.pictures.top - at.header)).toBeLessThanOrEqual(1);
+  expect(at.h1).toBeGreaterThan(at.header);
+  expect(at.pictures.top).toBeGreaterThan(at.price);
   expect(at.pictures.left).toBe(0);
   expect(Math.round(at.pictures.width)).toBe(at.width);
-  expect(at.h1).toBeGreaterThan(at.pictures.bottom);
-  expect(at.form).toBeGreaterThan(at.h1);
+  expect(at.form).toBeGreaterThan(at.pictures.bottom);
+  expect(at.text).toBeGreaterThan(at.form);
   expect(at.over).toBeLessThanOrEqual(0);
-  // The header stays on one line at 360 px: the pictures start high.
+  // The header stays on one line at 360 px.
   expect(at.header).toBeLessThan(120);
-  // The link down to the pictures is for a computer: here they were just read.
-  await expect(page.getByTestId("details-link")).toBeHidden();
 
-  // The price and the button are there from the first screen; the button goes down to the form, and opens no sheet.
+  // The gallery's link leads down to the pictures.
+  const link = page.getByTestId("details-link");
+  await expect(link).toBeVisible();
+  await link.click();
+  await expect(pictures).toBeInViewport();
+  await page.evaluate(() => scrollTo(0, 0));
+
+  // The price and the button are there from the first screen; the button goes down to the form, past the pictures, and opens no sheet.
   const bar = page.getByTestId("sticky-bar");
   await expect(bar).toHaveAttribute("aria-hidden", "false");
   await bar.getByRole("button").click();
