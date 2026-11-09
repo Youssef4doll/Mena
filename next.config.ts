@@ -34,6 +34,25 @@ const csp = [
 ].join("; ");
 if (process.env.NODE_ENV === "production") securityHeaders.push({ key: "Content-Security-Policy", value: csp });
 
+/**
+ * One address for the whole shop (SEO). The live site answers on several
+ * domains (each *.vercel.app alias, the deployment URLs); Google must see
+ * only NEXT_PUBLIC_SITE_URL, or it splits the ranking between copies and may
+ * pick the wrong one. Every page on another host is sent there for good
+ * (308), keeping its path and query. Production only, so previews and
+ * localhost still work. /api is left alone: payment callbacks and crons may
+ * still call an older domain, and a webhook does not always follow a redirect.
+ */
+const SITE_URL = (process.env.NEXT_PUBLIC_SITE_URL ?? "").replace(/\/$/, "");
+const SITE_HOST = (() => {
+  try {
+    return SITE_URL ? new URL(SITE_URL).host : "";
+  } catch {
+    return "";
+  }
+})();
+const oneHost = process.env.VERCEL_ENV === "production" && SITE_HOST && !SITE_HOST.startsWith("localhost");
+
 const nextConfig: NextConfig = {
   // The e2e server runs beside the dev server and needs its own build folder.
   distDir: process.env.NEXT_DIST_DIR || ".next",
@@ -51,6 +70,17 @@ const nextConfig: NextConfig = {
   experimental: {
     serverActions: { bodySizeLimit: "10mb" },
     proxyClientMaxBodySize: "10mb",
+  },
+  async redirects() {
+    if (!oneHost) return [];
+    return [
+      {
+        source: "/:path((?!api/).*)",
+        missing: [{ type: "host", value: SITE_HOST.replace(/\./g, "\\.") }],
+        destination: `${SITE_URL}/:path`,
+        permanent: true,
+      },
+    ];
   },
   async headers() {
     return [

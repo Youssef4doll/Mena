@@ -23,6 +23,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     both("/boutique"),
     ...categories.map((c) => both(`/categorie/${c.slug}`)),
     ...products.map((p) => both(`/produit/${p.slug}`, p.updatedAt, p.images.map((i) => `${SITE_URL}/api/img/${i.mediaId}/1080`))),
-    both("/livraison-retours"),
+    // The help pages: indexable (each has its own title and canonical), and what Google checks for a real shop.
+    ...["/livraison-retours", "/contact", "/conditions", "/confidentialite"].map((p) => both(p)),
   ];
 }
