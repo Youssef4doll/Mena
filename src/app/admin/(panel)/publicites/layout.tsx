@@ -3,7 +3,7 @@ import { PageTitle } from "@/components/admin/ui";
 import { AdsNav, AdsNavFallback } from "./_ui/AdsNav";
 
 /**
- * The "Publicités" section: one title, the eight tabs and the period picker
+ * The "Publicités" section: one title, the nine tabs and the period picker
  * above whatever tab is open. Each tab reads the period from its own
  * address (adRange in ./_ui/range), so the layout holds no data.
  */
