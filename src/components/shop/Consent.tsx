@@ -11,6 +11,9 @@ const subscribeConsent = (cb: () => void) => onConsent(() => cb());
 import { track } from "@/lib/client/track";
 import { store } from "@/lib/client/storage";
 
+/** The shop's Google Tag Manager container, given by the owner; Paramètres can change it. */
+const GTM_ID = "GTM-W7T87BV3";
+
 type Ids = { metaPixelId: string; ga4Id: string; gtmId?: string; tiktokPixelId: string };
 const FBCLID = "mena_fbclid";
 
@@ -87,20 +90,14 @@ export function ConsentAndPixels({ lang, ids }: { lang: Lang; ids: Ids }) {
           {`!function(w,d,t){w.TiktokAnalyticsObject=t;var ttq=w[t]=w[t]||[];ttq.methods=["page","track","identify","instances","debug","on","off","once","ready","alias","group","enableCookie","disableCookie","holdConsent","revokeConsent","grantConsent"],ttq.setAndDefer=function(t,e){t[e]=function(){t.push([e].concat(Array.prototype.slice.call(arguments,0)))}};for(var i=0;i<ttq.methods.length;i++)ttq.setAndDefer(ttq,ttq.methods[i]);ttq.instance=function(t){for(var e=ttq._i[t]||[],n=0;n<ttq.methods.length;n++)ttq.setAndDefer(e,ttq.methods[n]);return e},ttq.load=function(e,n){var r="https://analytics.tiktok.com/i18n/pixel/events.js";ttq._i=ttq._i||{},ttq._i[e]=[],ttq._i[e]._u=r,ttq._t=ttq._t||{},ttq._t[e]=+new Date,ttq._o=ttq._o||{},ttq._o[e]=n||{};var o=d.createElement("script");o.type="text/javascript",o.async=!0,o.src=r+"?sdkid="+e+"&lib="+t;var a=d.getElementsByTagName("script")[0];a.parentNode.insertBefore(o,a)};ttq.load(${JSON.stringify(ids.tiktokPixelId)});ttq.page();}(window,document,'ttq');`}
         </Script>
       )}
-      {consent === "granted" && ids.ga4Id && (
+      {/* Google: only the owner's Google Tag Manager container (GA4 and the rest are set up inside it), as Google gives the snippet. */}
+      {consent === "granted" && (
         <>
-          <Script src={`https://www.googletagmanager.com/gtag/js?id=${encodeURIComponent(ids.ga4Id)}`} strategy="afterInteractive" />
-          <Script id="ga4" strategy="afterInteractive">
-            {`window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments)}window.gtag=gtag;gtag('js',new Date());gtag('config',${JSON.stringify(ids.ga4Id)});`}
+          <Script src={`https://www.googletagmanager.com/gtm.js?id=${encodeURIComponent(ids.gtmId || GTM_ID)}`} strategy="afterInteractive" />
+          <Script id="gtm-init" strategy="afterInteractive">
+            {`window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments)}window.gtag=gtag;gtag('js',new Date());`}
           </Script>
         </>
-      )}
-
-      {/* Google Tag Manager: the container the owner set up, on the same dataLayer as GA4. */}
-      {consent === "granted" && ids.gtmId && (
-        <Script id="gtm" strategy="afterInteractive">
-          {`window.dataLayer=window.dataLayer||[];window.dataLayer.push({'gtm.start':new Date().getTime(),event:'gtm.js'});var s=document.createElement('script');s.async=true;s.src='https://www.googletagmanager.com/gtm.js?id='+encodeURIComponent(${JSON.stringify(ids.gtmId)});document.head.appendChild(s);`}
-        </Script>
       )}
 
       {asking && (
