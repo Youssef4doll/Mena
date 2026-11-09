@@ -12,7 +12,7 @@ export default async function PrivacyRoute({ params }: PageProps<"/[lang]/confid
   const { lang } = await params;
   if (!isLang(lang)) notFound();
   const s = await getSettings();
-  const pixels = [s.tracking.metaPixelId && "Meta (Facebook, Instagram)", s.tracking.tiktokPixelId && "TikTok", s.tracking.ga4Id && "Google Analytics"].filter(Boolean);
+  const pixels = [s.tracking.metaPixelId && "Meta (Facebook, Instagram)", s.tracking.tiktokPixelId && "TikTok", s.tracking.ga4Id && "Google Analytics", s.tracking.gtmId && "Google Tag Manager"].filter(Boolean);
   if (lang === "ar")
     return (
       <Prose title="الخصوصية والكوكيز">

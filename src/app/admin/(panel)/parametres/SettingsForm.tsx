@@ -225,6 +225,7 @@ export function SettingsForm({ initial, secretsSet, targets }: { initial: Settin
           {secret("tiktokToken", "TikTok — jeton Events API")}
           <label className={label}>GA4 ID (G-…)<input {...text("tracking", "ga4Id")} />{err("tracking.ga4Id")}</label>
           {secret("ga4ApiSecret", "GA4 — secret Measurement Protocol")}
+          <label className={label}>Google Tag Manager ID (GTM-…)<input {...text("tracking", "gtmId")} />{err("tracking.gtmId")}</label>
         </div>
         <label className={`${label} mt-3`}>
           Signaler l&apos;achat aux publicités

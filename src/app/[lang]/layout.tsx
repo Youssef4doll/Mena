@@ -73,7 +73,7 @@ export default async function ShopLayout({ children, params }: LayoutProps<"/[la
         <Footer lang={lang} settings={settings} />
         <WhatsAppFloat lang={lang} phone={settings.contact.whatsapp} />
         <CartAdded lang={lang} />
-        <ConsentAndPixels lang={lang} ids={{ metaPixelId: settings.tracking.metaPixelId, ga4Id: settings.tracking.ga4Id, tiktokPixelId: settings.tracking.tiktokPixelId }} />
+        <ConsentAndPixels lang={lang} ids={{ metaPixelId: settings.tracking.metaPixelId, ga4Id: settings.tracking.ga4Id, gtmId: settings.tracking.gtmId, tiktokPixelId: settings.tracking.tiktokPixelId }} />
       </body>
     </html>
   );

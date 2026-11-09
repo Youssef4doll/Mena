@@ -6,7 +6,7 @@ const LABELS: Record<string, string> = {
   "contact.whatsapp": "WhatsApp", "contact.messenger": "Messenger",
   "delivery.fee": "Frais de livraison", "delivery.freeThreshold": "Livraison offerte dès", "delivery.zones": "Délais de livraison", "delivery.carrierName": "Nom du transporteur", "delivery.openBeforePaying": "Ouverture du colis avant paiement",
   "costs.carrierPerParcel": "Coût transporteur", "costs.returnPerParcel": "Coût d'un retour",
-  "tracking.metaPixelId": "Meta Pixel ID", "tracking.ga4Id": "GA4 ID", "tracking.tiktokPixelId": "TikTok Pixel ID", "tracking.purchaseAt": "Moment de l'achat signalé",
+  "tracking.metaPixelId": "Meta Pixel ID", "tracking.ga4Id": "GA4 ID", "tracking.gtmId": "Google Tag Manager ID", "tracking.tiktokPixelId": "TikTok Pixel ID", "tracking.purchaseAt": "Moment de l'achat signalé",
   "notify.orderAlertTo": "E-mail des nouvelles commandes", "notify.emailFrom": "Expéditeur des e-mails",
   "returns.days": "Délai de retour", "checkout.maxOrdersPerPhonePerDay": "Commandes par numéro",
   "secrets.metaCapiToken": "Jeton API Conversions Meta", "secrets.tiktokToken": "Jeton TikTok", "secrets.ga4ApiSecret": "Secret GA4", "secrets.smsKey": "Clé SMS", "secrets.resendKey": "Clé Resend", "secrets.konnectApiKey": "Clé Konnect",

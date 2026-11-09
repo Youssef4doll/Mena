@@ -11,7 +11,7 @@ const subscribeConsent = (cb: () => void) => onConsent(() => cb());
 import { track } from "@/lib/client/track";
 import { store } from "@/lib/client/storage";
 
-type Ids = { metaPixelId: string; ga4Id: string; tiktokPixelId: string };
+type Ids = { metaPixelId: string; ga4Id: string; gtmId?: string; tiktokPixelId: string };
 const FBCLID = "mena_fbclid";
 
 /**
@@ -24,7 +24,7 @@ export function ConsentAndPixels({ lang, ids }: { lang: Lang; ids: Ids }) {
   // The stored choice, read as an external store: "unknown" on the server and during hydration.
   const consent = useSyncExternalStore<C | "unknown">(subscribeConsent, getConsent, () => "unknown");
   const pathname = usePathname();
-  const anyPixel = Boolean(ids.metaPixelId || ids.ga4Id || ids.tiktokPixelId);
+  const anyPixel = Boolean(ids.metaPixelId || ids.ga4Id || ids.gtmId || ids.tiktokPixelId);
 
   // The ad click ids of the landing URL, kept for the order: the visitor may accept or order several pages later.
   useEffect(() => {
@@ -94,6 +94,13 @@ export function ConsentAndPixels({ lang, ids }: { lang: Lang; ids: Ids }) {
             {`window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments)}window.gtag=gtag;gtag('js',new Date());gtag('config',${JSON.stringify(ids.ga4Id)});`}
           </Script>
         </>
+      )}
+
+      {/* Google Tag Manager: the container the owner set up, on the same dataLayer as GA4. */}
+      {consent === "granted" && ids.gtmId && (
+        <Script id="gtm" strategy="afterInteractive">
+          {`window.dataLayer=window.dataLayer||[];window.dataLayer.push({'gtm.start':new Date().getTime(),event:'gtm.js'});var s=document.createElement('script');s.async=true;s.src='https://www.googletagmanager.com/gtm.js?id='+encodeURIComponent(${JSON.stringify(ids.gtmId)});document.head.appendChild(s);`}
+        </Script>
       )}
 
       {asking && (
