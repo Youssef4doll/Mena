@@ -61,8 +61,9 @@ export function Header({ lang, categories, announcement, phone }: { lang: Lang; 
   return (
     <>
       {/* Two facts from the settings, quietly: how one pays, and what delivery costs. */}
-      <div className="border-b border-line bg-sand text-[15px] text-ink-2">
-        <p className="mx-auto flex min-h-9 max-w-6xl flex-wrap items-center justify-center gap-x-2 px-4 py-1.5 text-center">
+      {/* Under 375 px a little smaller and closer to the edges: the two facts stay on one line at 360 px. */}
+      <div className="border-b border-line bg-sand text-[14px] text-ink-2 min-[375px]:text-[15px]">
+        <p className="mx-auto flex min-h-9 max-w-6xl flex-wrap items-center justify-center gap-x-2 px-2 py-1.5 text-center min-[375px]:px-4">
           {announcement.map((a, i) => (
             <Fragment key={a}>
               {i > 0 && <span aria-hidden className="text-muted">·</span>}
@@ -75,8 +76,10 @@ export function Header({ lang, categories, announcement, phone }: { lang: Lang; 
           On a product page on a phone, search becomes an icon and the category strip goes, so the
           picture, the name, the price and the stock fit on the first screen. */}
       <header className="z-30 border-b border-line bg-white text-ink md:sticky md:top-0">
-        {/* Tight on a phone: menu, logo, search, language and basket fit on one line from 360 px. */}
-        <div className="mx-auto flex max-w-6xl flex-wrap items-center gap-x-2 gap-y-2 px-3 pb-3 pt-2 sm:gap-x-3 sm:px-4">
+        {/* Tight on a phone: menu, logo, search, language and basket fit on one line from 320 px. Under 375 px the
+            gaps and the language button's sides give back a few pixels each (the flag had pushed a 360 px phone
+            onto two lines); under 360 px the language is its flag alone, its name kept for screen readers. */}
+        <div className="mx-auto flex max-w-6xl flex-wrap items-center gap-x-1.5 gap-y-2 px-2 pb-3 pt-2 min-[375px]:gap-x-2 min-[375px]:px-3 sm:gap-x-3 sm:px-4">
           <button ref={openBtn} type="button" onClick={() => setMenu(true)} className="-ms-1.5 flex h-11 w-11 items-center justify-center rounded-full text-ink hover:bg-sand" aria-label={t.nav.menu}>
             <IconMenu className="h-6 w-6" />
           </button>
@@ -117,9 +120,9 @@ export function Header({ lang, categories, announcement, phone }: { lang: Lang; 
                 <span className="text-[16px] font-bold text-ink ltr-nums">{formatPhone(phone)}</span>
               </a>
             )}
-            <LangLink lang={lang} pathname={pathname} className="flex h-11 items-center rounded-full border border-line gap-2 px-4 text-[16px] font-bold text-ink hover:border-field">
+            <LangLink lang={lang} pathname={pathname} className="flex h-11 items-center gap-1.5 rounded-full border border-line px-3 text-[16px] font-bold text-ink hover:border-field min-[375px]:gap-2 min-[375px]:px-4">
               <Flag of={lang === "ar" ? "fr" : "tn"} />
-              {t.nav.language}
+              <span className="max-[359px]:sr-only">{t.nav.language}</span>
             </LangLink>
             <CartLink lang={lang} />
           </div>

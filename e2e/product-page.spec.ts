@@ -7,18 +7,61 @@ const PRODUCT = `${FR}/produit/diffuseur-huiles-essentielles`;
 // The phones most customers have.
 test.use({ viewport: { width: 360, height: 800 } });
 
-/** Down to the long pictures, past the form, the way a reader gets there. */
+/** Down to the text under the form, the way a reader gets there. */
 async function readPastTheForm(page: Page) {
   await page.evaluate(() => scrollTo(0, document.getElementById("desc-title")!.getBoundingClientRect().top + scrollY));
   await expect.poll(() => page.locator("#commander").evaluate((el) => el.getBoundingClientRect().bottom)).toBeLessThan(0);
   await expect(page.getByTestId("sticky-bar")).toHaveAttribute("aria-hidden", "false");
 }
 
-test("the gallery's link counts the long pictures and leads to them", async ({ page }) => {
+test("a phone opens on the long pictures, and the bar goes down to the form", async ({ page }) => {
   await page.goto(PRODUCT);
-  // The real number: the long pictures this page shows.
+  const pictures = page.getByTestId("long-pictures");
+  expect(await pictures.locator("img").count()).toBeGreaterThan(0);
+  // The first thing under the header, edge to edge; the photos, the name and the form come after.
+  const at = await page.evaluate(() => {
+    const top = (sel: string) => document.querySelector(sel)!.getBoundingClientRect();
+    return { header: top("header").bottom, pictures: top('[data-testid="long-pictures"]'), h1: top("h1").top, form: top("#commander").top, width: document.documentElement.clientWidth, over: document.documentElement.scrollWidth - document.documentElement.clientWidth };
+  });
+  expect(Math.abs(at.pictures.top - at.header)).toBeLessThanOrEqual(1);
+  expect(at.pictures.left).toBe(0);
+  expect(Math.round(at.pictures.width)).toBe(at.width);
+  expect(at.h1).toBeGreaterThan(at.pictures.bottom);
+  expect(at.form).toBeGreaterThan(at.h1);
+  expect(at.over).toBeLessThanOrEqual(0);
+  // The header stays on one line at 360 px: the pictures start high.
+  expect(at.header).toBeLessThan(120);
+  // The link down to the pictures is for a computer: here they were just read.
+  await expect(page.getByTestId("details-link")).toBeHidden();
+
+  // The price and the button are there from the first screen; the button goes down to the form, and opens no sheet.
+  const bar = page.getByTestId("sticky-bar");
+  await expect(bar).toHaveAttribute("aria-hidden", "false");
+  await bar.getByRole("button").click();
+  await expect(page.locator("#bb-name")).toBeFocused();
+  await expect(page.locator("#commander")).toBeInViewport();
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+  await expect(bar).toHaveAttribute("aria-hidden", "true");
+  // What is left under the form is the text, named as such.
+  await expect(page.getByRole("heading", { name: "Description" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Détails en images" })).toBeHidden();
+
+  // A product without long pictures opens on its photos, as before.
+  await page.goto(`${FR}/produit/montre-minimaliste`);
+  await expect(page.getByRole("heading", { level: 1 })).toHaveText("Montre minimaliste");
+  await expect(page.getByTestId("long-pictures")).toHaveCount(0);
+  await expect(page.getByTestId("details-link")).toHaveCount(0);
+  await expect(page.getByRole("heading", { name: "Description" })).toBeVisible();
+});
+
+test("on a computer the photos and the form come first, and the gallery's link leads to the long pictures", async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await page.goto(PRODUCT);
+  // The real number: the long pictures this page shows, under the form.
   const pictures = await page.locator("#details img").count();
   expect(pictures).toBeGreaterThan(0);
+  const at = await page.evaluate(() => ({ pictures: document.querySelector('[data-testid="long-pictures"]')!.getBoundingClientRect().top, form: document.querySelector("#commander")!.getBoundingClientRect().bottom }));
+  expect(at.pictures).toBeGreaterThan(at.form);
   const link = page.getByTestId("details-link");
   await expect(link).toHaveText(new RegExp(`^Voir les détails en images\\s\\(${pictures}\\)$`));
   await link.click();
@@ -26,12 +69,6 @@ test("the gallery's link counts the long pictures and leads to them", async ({ p
   const title = page.getByRole("heading", { name: "Détails en images" });
   await expect(title).toBeFocused();
   await expect(title).toBeInViewport();
-
-  // A product without long pictures has no link, and its text keeps its usual title.
-  await page.goto(`${FR}/produit/montre-minimaliste`);
-  await expect(page.getByRole("heading", { level: 1 })).toHaveText("Montre minimaliste");
-  await expect(page.getByTestId("details-link")).toHaveCount(0);
-  await expect(page.getByRole("heading", { name: "Description" })).toBeVisible();
 });
 
 test("still above the form, the bar goes down to it; past it, the form opens in place with the choice and what was typed", async ({ page }) => {
