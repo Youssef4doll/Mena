@@ -439,6 +439,7 @@ export async function baseline(to: Date = new Date(), costs?: Costs): Promise<Ba
     deliveryRate,
     netDeliveryRate: rate(b.mature_delivered, b.mature),
     staleDeliveredRate: n(b.stale) >= STALE_MIN_ORDERS ? n(b.stale_delivered) / n(b.stale) : null,
+    counts: { confirmed: n(b.confirmed), decided: n(b.decided), delivered: n(b.delivered), back: n(b.back) },
     aov: n(b.not_cancelled) > 0 ? Math.round(n(b.placed) / n(b.not_cancelled)) : null,
     daysToDeliver: b.days_to_deliver == null ? null : Math.round(Number(b.days_to_deliver) * 10) / 10,
     // Null: no delivered order with a known product cost, or a carrier or return cost not given.

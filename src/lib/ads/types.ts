@@ -109,6 +109,8 @@ export type Baseline = {
    * assumed: null or absent when too few orders were in that case.
    */
   staleDeliveredRate?: number | null;
+  /** The counts behind confirmRate and deliveryRate, for a forecast that weighs them. Optional. */
+  counts?: { confirmed: number; decided: number; delivered: number; back: number };
 };
 
 /** Hours after which an order nobody has confirmed yet counts as stale. */

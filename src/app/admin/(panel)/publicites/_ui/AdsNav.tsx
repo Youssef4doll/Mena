@@ -7,7 +7,7 @@ import { AD_PRESETS, DEFAULT_PRESET, periodQuery, withPeriod } from "./range";
 
 /**
  * The tab bar and the period picker of the "Publicités" section, shared by
- * its eight tabs through the layout. A layout cannot read the address's
+ * its nine tabs through the layout. A layout cannot read the address's
  * query, so this runs in the browser: the tabs carry the period along, and
  * the picker keeps the tab's own parameters (a metric, a campaign) while it
  * changes the period.
@@ -27,11 +27,12 @@ export const AD_TABS = [
   { key: "audience", label: "Audience" },
   { key: "clients", label: "Clients" },
   { key: "idees", label: "Idées" },
+  { key: "prevision", label: "Prévision" },
   { key: "importer", label: "Importer" },
 ] as const;
 
-/** The import reads a file, not a period. */
-export const NO_PERIOD: string[] = ["importer"];
+/** The import reads a file, and the forecast plans its own days: no period. */
+export const NO_PERIOD: string[] = ["importer", "prevision"];
 
 const PERIOD_KEYS = ["p", "from", "to"];
 /** The kit's input at a date's width (its own w-full would stretch it to the row). */

@@ -645,3 +645,32 @@ model AnalyticsEvent {
   @@index([visitorId])
   @@index([productId, name])
 }
+
+// ------------------------------------------------------------------ ads forecast
+
+/// A forecast saved from Publicités → Prévision: the plan, Claude's reading of
+/// the creatives, the figures it rests on, and what it expected; the ad names
+/// find its real results in the platform's export afterwards, so the next
+/// forecasts learn from the gap. No link to the product: a deleted product
+/// keeps its forecasts' history.
+model AdForecast {
+  id          String   @id @default(cuid())
+  productId   String
+  productName String
+  /// First Tunisian day of spend, and the days the plan runs.
+  startDay    DateTime @db.Date
+  days        Int
+  /// As written in Ads Manager (the ads' utm_content), to match the export.
+  campaign    String?
+  adNames     String[]
+  /// "api" (run on the server) or "manual" (claude.ai).
+  mode        String
+  /// The plan, the creatives' review and the figures used (forecast-data.ts SavedPlan).
+  plan        Json
+  /// What it expected (SavedForecast plus the quantiles shown).
+  forecast    Json
+  createdAt   DateTime @default(now())
+
+  @@index([productId])
+  @@index([createdAt])
+}
