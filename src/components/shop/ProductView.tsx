@@ -1,8 +1,9 @@
 "use client";
 
-import Image from "next/image";
+import Image, { getImageProps } from "next/image";
 import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { preload } from "react-dom";
 import { dict, href, pick, type Lang } from "@/i18n";
 import type { ProductPage } from "@/lib/catalog";
 import type { PublicSettings } from "@/lib/settings-schema";
@@ -24,6 +25,12 @@ import { IconCash, IconCheck, IconChevronDown, IconTruck } from "./Icons";
 
 type P = Omit<ProductPage, "related">;
 
+/** Tailwind's md, as a media query: under it the phone layout, from it the computer's. */
+const PHONE = "(max-width: 767.98px)";
+const COMPUTER = "(min-width: 768px)";
+/** The widths a long picture is shown at: its column on a computer, the whole screen on a phone. */
+const DETAIL_SIZES = "(min-width: 1024px) 500px, (min-width: 768px) 540px, 100vw";
+
 /**
  * The product page, kept to what a cash-on-delivery customer needs, in the
  * order they need it: the pictures (and the video), the name and a line about
@@ -31,6 +38,12 @@ type P = Omit<ProductPage, "related">;
  * long pictures and the description, the reviews of customers who received
  * it, the questions asked before ordering, the price again with one button,
  * then the specifications. Few words, plain sizes, one strong button.
+ *
+ * On a phone, a product with long pictures opens on them (they are what the
+ * ad promised), edge to edge under the header; the bar at the bottom, there
+ * from the first screen, holds the price and the button that goes down to
+ * the form. The photos, the name, the price and the form follow, then the
+ * description. A computer keeps the photos and the form side by side first.
  *
  * Past the form, the order comes to the reader (in a sheet over the page)
  * rather than the reader going back up to it.
@@ -177,13 +190,24 @@ export function ProductView({ p, lang, settings, url }: { p: P; lang: Lang; sett
   const description = pick(lang, p.description, p.descriptionAr);
   const specs = lang === "ar" && p.specsAr ? p.specsAr : p.specs;
 
+  // A phone opens on the first long picture: fetched ahead there, and only there (a computer opens on the photos).
+  const lead = details[0];
+  if (lead) {
+    const { props } = getImageProps({ src: `/api/img/${lead.id}`, alt: "", width: lead.width, height: lead.height, sizes: DETAIL_SIZES });
+    preload(props.src, { as: "image", imageSrcSet: props.srcSet, imageSizes: props.sizes, fetchPriority: "high", media: PHONE });
+  }
+
   return (
     <div className="mx-auto max-w-6xl px-4 pb-28 md:pb-16">
       {/* One copy of everything. Phone: pictures → name and price → offers and form → details.
           Computer: the pictures on the left (they stay in view), the rest on the right. */}
+      {/* With long pictures, a phone lays this block and the details' own boxes in one column (the section below is
+          display: contents there), and the pictures go first; from 768 px up, nothing here changes anything. */}
+      <div className={hasDetails ? "max-md:flex max-md:flex-col" : "contents"}>
       <div className="grid gap-4 pt-1 md:grid-cols-[minmax(0,1.1fr)_minmax(0,1fr)] md:grid-rows-[auto_1fr] md:gap-x-10 md:gap-y-5 md:pt-4">
         <div className="min-w-0 md:sticky md:top-36 md:col-start-1 md:row-span-2 md:row-start-1 md:self-start">
-          <Gallery slides={slides} name={name} productId={p.id} lang={lang} badge={0} details={hasDetails ? { count: details.length, label: t.product.detailsLink, onClick: toDetails } : undefined} />
+          {/* The link down to the long pictures is for a computer: a phone has just read them. */}
+          <Gallery slides={slides} name={name} productId={p.id} lang={lang} badge={0} leadMedia={hasDetails ? COMPUTER : undefined} details={hasDetails ? { count: details.length, label: t.product.detailsLink, onClick: toDetails, className: "max-md:hidden" } : undefined} />
         </div>
 
         <div className="flex min-w-0 flex-col gap-2 md:col-start-2 md:row-start-1">
@@ -241,21 +265,32 @@ export function ProductView({ p, lang, settings, url }: { p: P; lang: Lang; sett
           wrappers are display: contents, so a phone lays out the same boxes as before the computer layout existed
           (Safari shrank the pictures when their column was aligned to its start). */}
       {(description || hasDetails) && (
-        <section id="details" className="mx-auto mt-10 flex max-w-5xl flex-col gap-4 border-t border-line pt-8" aria-labelledby="desc-title">
-          <TabTitle id="desc-title" ref={detailsTitle}>
-            {hasDetails ? t.product.detailsTitle : t.product.description}
+        <section id="details" className={`mx-auto mt-10 flex max-w-5xl flex-col gap-4 border-t border-line pt-8 ${hasDetails ? "max-md:contents" : ""}`} aria-labelledby="desc-title">
+          {/* On a phone that opened on the pictures, the title names what is left here, the text, and carries the
+              section's line and spacing; without a text there is nothing left to name. */}
+          <TabTitle id="desc-title" ref={detailsTitle} className={hasDetails ? (description ? "max-md:mt-10 max-md:border-t max-md:border-line max-md:pt-8" : "max-md:hidden") : ""}>
+            {hasDetails ? (
+              <>
+                <span className="md:hidden">{t.product.description}</span>
+                <span className="max-md:hidden">{t.product.detailsTitle}</span>
+              </>
+            ) : (
+              t.product.description
+            )}
           </TabTitle>
           <div className={hasDetails ? "contents lg:grid lg:grid-cols-[500px_minmax(0,1fr)] lg:gap-12" : "contents"}>
             {hasDetails && (
-              <div ref={picturesRef} className="relative -mx-4 flex flex-col overflow-hidden md:mx-auto md:w-full md:max-w-[540px] md:rounded-2xl lg:mx-0 lg:max-w-none lg:self-start">
-                {details.map((img) => (
+              <div ref={picturesRef} className="relative -mx-4 flex flex-col overflow-hidden max-md:order-first md:mx-auto md:w-full md:max-w-[540px] md:rounded-2xl lg:mx-0 lg:max-w-none lg:self-start" data-testid="long-pictures">
+                {details.map((img, n) => (
                   <Image
                     key={img.id}
                     src={`/api/img/${img.id}`}
                     alt={img.alt ?? ""}
                     width={img.width}
                     height={img.height}
-                    sizes="(min-width: 1024px) 500px, (min-width: 768px) 540px, 100vw"
+                    sizes={DETAIL_SIZES}
+                    // Lazy, so a computer (where they are far down) does not fetch them on arrival; the first is asked first where it shows.
+                    {...(n === 0 ? { fetchPriority: "high" as const } : {})}
                     className="block h-auto w-full"
                     {...(img.blur ? { placeholder: "blur" as const, blurDataURL: img.blur } : {})}
                   />
@@ -267,7 +302,7 @@ export function ProductView({ p, lang, settings, url }: { p: P; lang: Lang; sett
             {(description || (hasDetails && !out)) && (
               <div className="flex min-w-0 flex-col gap-6 max-lg:contents">
                 {description && (
-                  <div className={`flex max-w-3xl flex-col gap-3 text-[17px] leading-relaxed text-ink-2 ${hasDetails ? "md:mx-auto md:w-full md:max-w-[540px] lg:mx-0 lg:max-w-none" : ""}`}>
+                  <div className={`flex max-w-3xl flex-col gap-3 text-[17px] leading-relaxed text-ink-2 ${hasDetails ? "max-md:mt-4 md:mx-auto md:w-full md:max-w-[540px] lg:mx-0 lg:max-w-none" : ""}`}>
                     {/* Lines starting with "- " read as a list of ticks, like Amazon's "About this item". */}
                     {descriptionBlocks(description).map((b, i) =>
                       b.kind === "text" ? (
@@ -295,6 +330,7 @@ export function ProductView({ p, lang, settings, url }: { p: P; lang: Lang; sett
           </div>
         </section>
       )}
+      </div>
 
       {/* Only real reviews: a new product shows no empty box. */}
       {p.reviews.length > 0 && (
@@ -385,9 +421,9 @@ export function ProductView({ p, lang, settings, url }: { p: P; lang: Lang; sett
 }
 
 /** A section's name; the hairline above the section already separates it. One a link leads to takes the focus (`ref`). */
-function TabTitle({ id, ref, children }: { id: string; ref?: React.Ref<HTMLHeadingElement>; children: React.ReactNode }) {
+function TabTitle({ id, ref, className = "", children }: { id: string; ref?: React.Ref<HTMLHeadingElement>; className?: string; children: React.ReactNode }) {
   return (
-    <h2 id={id} ref={ref} tabIndex={ref ? -1 : undefined} className="scroll-mt-4 text-[20px] font-bold text-ink">
+    <h2 id={id} ref={ref} tabIndex={ref ? -1 : undefined} className={`scroll-mt-4 text-[20px] font-bold text-ink ${className}`}>
       {children}
     </h2>
   );

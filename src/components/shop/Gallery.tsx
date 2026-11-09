@@ -1,8 +1,8 @@
 "use client";
 
 import dynamic from "next/dynamic";
-import { createPortal } from "react-dom";
-import Image from "next/image";
+import { createPortal, preload } from "react-dom";
+import Image, { getImageProps } from "next/image";
 import { useEffect, useRef, useState } from "react";
 import { dict, type Lang } from "@/i18n";
 import type { ImageRef } from "@/lib/catalog";
@@ -31,8 +31,21 @@ export function slidesOf(images: ImageRef[], video: Video | null): Slide[] {
  * place, loaded only when asked for. A product with long pictures says so on
  * the first screen: a link in the picture's corner, with their real number.
  */
-export function Gallery({ slides, name, productId, badge, lang, details }: { slides: Slide[]; name: string; productId: string; badge: number; lang: Lang; details?: { count: number; label: string; onClick: () => void } }) {
+/** The widths a photo is shown at. */
+const PHOTO_SIZES = "(min-width: 1024px) 560px, (min-width: 768px) 50vw, 100vw";
+
+/**
+ * `leadMedia`: the screens on which the first photo opens the page. Without it, everywhere (it is fetched ahead
+ * on every screen). With it, fetched ahead only where the media query matches: a phone that opens on the long
+ * pictures has the photos further down, and must not spend its first seconds of network on them.
+ */
+export function Gallery({ slides, name, productId, badge, lang, details, leadMedia }: { slides: Slide[]; name: string; productId: string; badge: number; lang: Lang; details?: { count: number; label: string; onClick: () => void; className?: string }; leadMedia?: string }) {
   const t = dict(lang);
+  const cover = slides[0]?.kind === "image" ? slides[0].image : null;
+  if (leadMedia && cover) {
+    const { props } = getImageProps({ src: `/api/img/${cover.id}`, alt: "", fill: true, sizes: PHOTO_SIZES });
+    preload(props.src, { as: "image", imageSrcSet: props.srcSet, imageSizes: props.sizes, fetchPriority: "high", media: leadMedia });
+  }
   const [i, setI] = useState(0);
   const [playing, setPlaying] = useState(false);
   const [viewer, setViewer] = useState<number | null>(null);
@@ -48,7 +61,7 @@ export function Gallery({ slides, name, productId, badge, lang, details }: { sli
   // and a gap (12 + 44 + 8 + 12 px), it goes on two lines rather than over it. One line on a 360 px phone.
   const link =
     details && details.count > 0 ? (
-      <button type="button" onClick={details.onClick} className="absolute bottom-3 start-3 flex min-h-11 max-w-[calc(100%-4.75rem)] items-center gap-1 rounded-[22px] border border-line bg-white/95 py-1 ps-3 pe-2.5 text-start text-[16px] font-bold leading-tight text-ink shadow-[0_2px_10px_-4px_rgb(0_0_0/.3)]" data-testid="details-link">
+      <button type="button" onClick={details.onClick} className={`absolute bottom-3 start-3 flex min-h-11 max-w-[calc(100%-4.75rem)] items-center gap-1 rounded-[22px] border border-line bg-white/95 py-1 ps-3 pe-2.5 text-start text-[16px] font-bold leading-tight text-ink shadow-[0_2px_10px_-4px_rgb(0_0_0/.3)] ${details.className ?? ""}`} data-testid="details-link">
         <span>
           {details.label}&nbsp;<span className="ltr-nums">({details.count})</span>
         </span>
@@ -106,9 +119,9 @@ export function Gallery({ slides, name, productId, badge, lang, details }: { sli
                     src={`/api/img/${s.image.id}`}
                     alt={s.image.alt ?? (n === 0 ? name : "")}
                     fill
-                    sizes="(min-width: 1024px) 560px, (min-width: 768px) 50vw, 100vw"
+                    sizes={PHOTO_SIZES}
                     className="object-contain"
-                    priority={n === 0}
+                    {...(leadMedia ? (n === 0 ? { fetchPriority: "high" as const } : {}) : { priority: n === 0 })}
                     placeholder={s.image.blur ? "blur" : "empty"}
                     blurDataURL={s.image.blur ?? undefined}
                   />
