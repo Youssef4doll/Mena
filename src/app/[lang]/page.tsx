@@ -14,6 +14,7 @@ import { Img, WarmBlur } from "@/components/shop/Img";
 import { IconChevron, IconReturn, IconShield } from "@/components/shop/Icons";
 import { JsonLd, organizationLd, websiteLd } from "@/lib/seo";
 import { HeroBanners, type Banner } from "@/components/shop/HeroBanners";
+import { QuadCard, type Quad } from "@/components/shop/QuadCards";
 import { bannerLink, heroSlides } from "@/lib/settings-schema";
 
 export const revalidate = 60;
@@ -71,6 +72,17 @@ export default async function Home({ params }: PageProps<"/[lang]">) {
     .map((x) => ({ cat: x.cat!, products: shelf(x.list) }));
   const unit = (c: ProductCard) => (c.packOf ? c.price / c.packOf : c.price);
   const small = shelf(feed.map((f) => f.card).filter((c) => unit(c) <= SMALL_PRICE));
+  // Amazon's cards at the top: the same real shelves, four products each, at most eight cards.
+  const seeMore = t.home.seeMore;
+  const quads: Quad[] = [
+    ...catShelves.map((s) => ({ key: `cat-${s.cat.slug}`, title: t.home.bestOf(pick(lang, s.cat.name, s.cat.nameAr)), link: { href: href(lang, `/categorie/${s.cat.slug}`), label: seeMore }, products: s.products })),
+    { key: "deals", title: t.home.deals, link: { href: href(lang, "/boutique"), label: seeMore }, products: deals },
+    { key: "small", title: t.home.small(formatTND(SMALL_PRICE, lang)), link: { href: href(lang, "/boutique?tri=price_asc"), label: seeMore }, products: small },
+    { key: "new", title: t.home.newest, link: { href: href(lang, "/boutique"), label: seeMore }, products: fresh },
+    { key: "featured", title: t.home.featured, link: { href: href(lang, "/boutique"), label: seeMore }, products: home.featured },
+  ]
+    .filter((q) => q.products.length >= 4)
+    .slice(0, 8);
   // What the browser needs for "Pour vous" and the endless list: the cards and their category, nothing more.
   const forClient = feed.slice(0, 80).map((f) => ({ card: f.card, category: f.category }));
 
@@ -80,10 +92,25 @@ export default async function Home({ params }: PageProps<"/[lang]">) {
       <JsonLd data={websiteLd(settings, lang)} />
 
       {/* ------------------------------------------- welcome, one line */}
-      <section className="mx-auto max-w-6xl px-4 pb-5 pt-5 md:pb-6 md:pt-8">
+      <section className="mx-auto max-w-6xl px-4 pb-4 pt-5 md:pb-5 md:pt-7">
         <h1 className="text-[22px] font-bold leading-snug text-ink sm:text-[28px]">{pick(lang, hero.title, hero.titleAr)}</h1>
-        {banners.length > 0 && <HeroBanners banners={banners} prev={t.home.bannerPrev} next={t.home.bannerNext} />}
       </section>
+
+      {/* ---------------- Amazon's top: the banners edge to edge, the cards coming up over their faded bottom */}
+      {(banners.length > 0 || quads.length > 0) && (
+        <div className="bg-cream pb-6 md:pb-8">
+          {banners.length > 0 && <HeroBanners banners={banners} prev={t.home.bannerPrev} next={t.home.bannerNext} bleed />}
+          {quads.length > 0 && (
+            <div className={`relative mx-auto max-w-6xl md:px-4 ${banners.length > 0 ? "-mt-[11vw] md:-mt-[10vw] lg:-mt-[130px]" : "pt-5"}`}>
+              <div className="flex snap-x scroll-px-4 gap-3 overflow-x-auto px-4 pb-2 no-scrollbar md:grid md:grid-cols-3 md:gap-4 md:overflow-visible md:px-0 md:pb-0 lg:grid-cols-4">
+                {quads.map((q, i) => (
+                  <QuadCard key={q.key} q={q} lang={lang} eager={i === 0} list={`home_quad_${q.key}`} />
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
 
       {empty && <p className="mx-auto max-w-6xl px-4 py-16 text-center text-[18px] text-muted">{t.home.empty}</p>}
 
