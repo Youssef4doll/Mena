@@ -9,7 +9,7 @@ import { IconChevron } from "./Icons";
 export type Banner = { imageId: string; alt: string; href: string | null; external: boolean; label: string };
 
 const BOX = "relative block aspect-[16/7] w-full overflow-hidden rounded-2xl md:aspect-[21/6]";
-/** Edge to edge, like Amazon's: no corners, and the cards below come up over its faded bottom. */
+/** Edge to edge, like Amazon's: no corners, the whole picture in view. */
 const BLEED = "relative block aspect-[16/8] w-full overflow-hidden md:aspect-[21/7] lg:aspect-[21/6]";
 const EVERY_MS = 5000;
 
@@ -80,13 +80,10 @@ export function HeroBanners({ banners, prev, next, bleed = false }: { banners: B
     return () => clearInterval(id);
   }, [many, banners.length]);
 
-  // Edge to edge, the bottom fades into the band the cards sit on (the cards cover it, the dots would be under them).
-  const fade = bleed ? <span aria-hidden className="pointer-events-none absolute inset-x-0 bottom-0 h-[55%] bg-gradient-to-b from-transparent to-cream" /> : null;
   if (!many)
     return banners[0] ? (
       <div className={bleed ? "relative" : "mt-4"}>
         <Slide b={banners[0]} first bleed={bleed} />
-        {fade}
       </div>
     ) : null;
   const stop = () => {
@@ -102,12 +99,11 @@ export function HeroBanners({ banners, prev, next, bleed = false }: { banners: B
             </li>
           ))}
         </ul>
-        {fade}
         {/* Round, from the last to the first and back. */}
-        <Arrow label={prev} side="start" high={bleed} onClick={() => { stop(); show((activeRef.current - 1 + banners.length) % banners.length); }} />
-        <Arrow label={next} side="end" high={bleed} onClick={() => { stop(); show((activeRef.current + 1) % banners.length); }} />
+        <Arrow label={prev} side="start" onClick={() => { stop(); show((activeRef.current - 1 + banners.length) % banners.length); }} />
+        <Arrow label={next} side="end" onClick={() => { stop(); show((activeRef.current + 1) % banners.length); }} />
       </div>
-      <div className={`mt-2 flex justify-center gap-1 ${bleed ? "hidden" : ""}`}>
+      <div className="mt-2 flex justify-center gap-1">
         {banners.map((b, i) => (
           <button
             key={i}
@@ -129,13 +125,13 @@ export function HeroBanners({ banners, prev, next, bleed = false }: { banners: B
 }
 
 /** A computer's arrow over the banner's edge: wide screens without a touch screen only, brighter when the banner is pointed at. */
-function Arrow({ label, side, high = false, onClick }: { label: string; side: "start" | "end"; high?: boolean; onClick: () => void }) {
+function Arrow({ label, side, onClick }: { label: string; side: "start" | "end"; onClick: () => void }) {
   return (
     <button
       type="button"
       onClick={onClick}
       aria-label={label}
-      className={`absolute ${high ? "top-[36%]" : "top-1/2"} z-10 hidden h-12 w-12 -translate-y-1/2 items-center justify-center rounded-full border border-line bg-white/90 text-ink opacity-80 shadow-[0_4px_14px_-6px_rgb(0_0_0/.45)] transition hover:bg-white hover:opacity-100 focus-visible:opacity-100 group-hover:opacity-100 lg:flex lg:pointer-coarse:hidden ${side === "start" ? "start-3" : "end-3"}`}
+      className={`absolute top-1/2 z-10 hidden h-12 w-12 -translate-y-1/2 items-center justify-center rounded-full border border-line bg-white/90 text-ink opacity-80 shadow-[0_4px_14px_-6px_rgb(0_0_0/.45)] transition hover:bg-white hover:opacity-100 focus-visible:opacity-100 group-hover:opacity-100 lg:flex lg:pointer-coarse:hidden ${side === "start" ? "start-3" : "end-3"}`}
     >
       <IconChevron className={`h-6 w-6 ${side === "start" ? "rotate-180" : ""}`} />
     </button>
