@@ -96,12 +96,12 @@ export default async function Home({ params }: PageProps<"/[lang]">) {
         <h1 className="text-[22px] font-bold leading-snug text-ink sm:text-[28px]">{pick(lang, hero.title, hero.titleAr)}</h1>
       </section>
 
-      {/* ---------------- Amazon's top: the banners edge to edge, the cards coming up over their faded bottom */}
+      {/* ---------------- Amazon's top: the banners edge to edge in a carousel (swipe, arrows, dots), then the cards */}
       {(banners.length > 0 || quads.length > 0) && (
         <div className="bg-cream pb-6 md:pb-8">
           {banners.length > 0 && <HeroBanners banners={banners} prev={t.home.bannerPrev} next={t.home.bannerNext} bleed />}
           {quads.length > 0 && (
-            <div className={`relative mx-auto max-w-6xl md:px-4 ${banners.length > 0 ? "-mt-[11vw] md:-mt-[10vw] lg:-mt-[130px]" : "pt-5"}`}>
+            <div className="relative mx-auto max-w-6xl pt-4 md:px-4 md:pt-5">
               <div className="flex snap-x scroll-px-4 gap-3 overflow-x-auto px-4 pb-2 no-scrollbar md:grid md:grid-cols-3 md:gap-4 md:overflow-visible md:px-0 md:pb-0 lg:grid-cols-4">
                 {quads.map((q, i) => (
                   <QuadCard key={q.key} q={q} lang={lang} eager={i === 0} list={`home_quad_${q.key}`} />
