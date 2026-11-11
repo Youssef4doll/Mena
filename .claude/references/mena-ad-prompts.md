@@ -2,6 +2,15 @@
 
 Two steps for every feed picture. The owner wrote these prompts, so keep their wording. Fill only the [brackets], and only with the shop's real facts.
 
+## The look the owner chose (11 November)
+
+`mena-ad-example.jpg` in this folder is the model: attach it (`https://raw.githubusercontent.com/Youssef4doll/Mena/main/.claude/references/mena-ad-example.jpg`, uploaded to Canva) as a style reference in step 2, and match it.
+
+- Step 1 is **product only** (concept B): the whole set shown, every part the customer gets (bag, boxes, cutlery), on a ribbed travertine podium or a light stone surface, warm beige tonal background, softly blurred kitchen or room, no person.
+- Logo top centre; the product name is **the shop's full product name** (2 lines); the new price in a pill filled with a light colour taken from the product (cream, beige), the old price in a black pill with a strikethrough, touching.
+- One round badge, tilted, in a warm tan colour, on the right side above the product: "OFFRE SPÉCIALE" when the product has a real old price; the real pack ("2 POUR 95 DT") when it has a pack and no old price; no badge otherwise.
+- No other text: no "Paiement à la livraison" line on the picture (it goes in the caption).
+
 ## Step 1: the photo (send it with the product's own photos as references)
 
 ```
