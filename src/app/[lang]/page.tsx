@@ -28,9 +28,10 @@ export async function generateMetadata({ params }: PageProps<"/[lang]">): Promis
 }
 
 /**
- * A calm home page: one line of welcome, the categories as pictures, then
- * shelves of products, and at the end how ordering works. Each fact is said
- * once; the bar at the top already says how one pays and what delivery costs.
+ * A calm home page: one line of welcome, the categories as pictures right
+ * under it, the banners and cards, then shelves of products, and at the end
+ * how ordering works. Each fact is said once; the bar at the top already says
+ * how one pays and what delivery costs.
  */
 export default async function Home({ params }: PageProps<"/[lang]">) {
   const { lang } = await params;
@@ -96,27 +97,9 @@ export default async function Home({ params }: PageProps<"/[lang]">) {
         <h1 className="text-[22px] font-bold leading-snug text-ink sm:text-[28px]">{pick(lang, hero.title, hero.titleAr)}</h1>
       </section>
 
-      {/* ---------------- Amazon's top: the banners edge to edge in a carousel (swipe, arrows, dots), then the cards */}
-      {(banners.length > 0 || quads.length > 0) && (
-        <div className="bg-cream pb-6 md:pb-8">
-          {banners.length > 0 && <HeroBanners banners={banners} prev={t.home.bannerPrev} next={t.home.bannerNext} bleed />}
-          {quads.length > 0 && (
-            <div className="relative mx-auto max-w-6xl pt-4 md:px-4 md:pt-5">
-              <div className="flex snap-x scroll-px-4 gap-3 overflow-x-auto px-4 pb-2 no-scrollbar md:grid md:grid-cols-3 md:gap-4 md:overflow-visible md:px-0 md:pb-0 lg:grid-cols-4">
-                {quads.map((q, i) => (
-                  <QuadCard key={q.key} q={q} lang={lang} eager={i === 0} list={`home_quad_${q.key}`} />
-                ))}
-              </div>
-            </div>
-          )}
-        </div>
-      )}
-
-      {empty && <p className="mx-auto max-w-6xl px-4 py-16 text-center text-[18px] text-muted">{t.home.empty}</p>}
-
-      {/* ---------------- the categories: tall cards like Amazon's, the title on a blurred band over the picture */}
+      {/* ---------------- the categories first, under the welcome line: tall cards like Amazon's, the title on a blurred band over the picture */}
       {shown.length > 0 && (
-        <section className="mx-auto max-w-6xl px-4" aria-label={t.home.categories}>
+        <section className="mx-auto max-w-6xl px-4 pb-5 md:pb-7" aria-label={t.home.categories}>
           <ul className="-mx-4 flex snap-x scroll-px-4 gap-3 overflow-x-auto px-4 pb-2 no-scrollbar md:mx-0 md:scroll-px-0 md:px-0">
             {shown.map((c, i) => {
               const image = c.imageId ?? c.products[0]?.images[0]?.id ?? null;
@@ -138,6 +121,24 @@ export default async function Home({ params }: PageProps<"/[lang]">) {
           </ul>
         </section>
       )}
+
+      {/* ---------------- Amazon's top: the banners edge to edge in a carousel (swipe, arrows, dots), then the cards */}
+      {(banners.length > 0 || quads.length > 0) && (
+        <div className="bg-cream pb-6 md:pb-8">
+          {banners.length > 0 && <HeroBanners banners={banners} prev={t.home.bannerPrev} next={t.home.bannerNext} bleed />}
+          {quads.length > 0 && (
+            <div className="relative mx-auto max-w-6xl pt-4 md:px-4 md:pt-5">
+              <div className="flex snap-x scroll-px-4 gap-3 overflow-x-auto px-4 pb-2 no-scrollbar md:grid md:grid-cols-3 md:gap-4 md:overflow-visible md:px-0 md:pb-0 lg:grid-cols-4">
+                {quads.map((q, i) => (
+                  <QuadCard key={q.key} q={q} lang={lang} eager={i === 0} list={`home_quad_${q.key}`} />
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {empty && <p className="mx-auto max-w-6xl px-4 py-16 text-center text-[18px] text-muted">{t.home.empty}</p>}
 
       {/* --------------------------------------------------- shelves */}
       {home.featured.length > 0 && (
