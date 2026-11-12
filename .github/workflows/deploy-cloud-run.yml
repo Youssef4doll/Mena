@@ -1,0 +1,106 @@
+name: Deploy to Cloud Run
+
+# Every push to main puts the shop live on Google Cloud Run, as Vercel did.
+# Setup and the reasons: deploy/CLOUD-RUN.md. Until deploy/cloud-run.env has a
+# project, the workflow only says so and stops.
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: cloud-run-deploy
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  id-token: write # to sign in to Google without a stored key (Workload Identity Federation)
+
+jobs:
+  deploy:
+    if: github.repository == 'Youssef4doll/Mena'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Project
+        id: cfg
+        run: |
+          set -a; . deploy/cloud-run.env; set +a
+          if [ -z "$GCP_PROJECT_ID" ] || [ -z "$GCP_PROJECT_NUMBER" ]; then
+            echo "Cloud Run is not set up yet (deploy/CLOUD-RUN.md): nothing to deploy."
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          {
+            echo "ready=true"
+            echo "project=$GCP_PROJECT_ID"
+            echo "provider=projects/$GCP_PROJECT_NUMBER/locations/global/workloadIdentityPools/github/providers/github"
+            echo "account=mena-deployer@$GCP_PROJECT_ID.iam.gserviceaccount.com"
+            echo "region=$REGION"
+            echo "service=$SERVICE"
+            echo "image=$REGION-docker.pkg.dev/$GCP_PROJECT_ID/mena/shop:$GITHUB_SHA"
+            echo "url=https://$SERVICE-$GCP_PROJECT_NUMBER.$REGION.run.app"
+          } >> "$GITHUB_OUTPUT"
+
+      - uses: google-github-actions/auth@v2
+        if: steps.cfg.outputs.ready == 'true'
+        with:
+          workload_identity_provider: ${{ steps.cfg.outputs.provider }}
+          service_account: ${{ steps.cfg.outputs.account }}
+
+      - uses: google-github-actions/setup-gcloud@v2
+        if: steps.cfg.outputs.ready == 'true'
+
+      - name: Read the shop's settings from Cloud Run (hidden in the log)
+        if: steps.cfg.outputs.ready == 'true'
+        run: |
+          set -euo pipefail
+          gcloud run services describe "${{ steps.cfg.outputs.service }}" --region "${{ steps.cfg.outputs.region }}" --project "${{ steps.cfg.outputs.project }}" --format=json > "$RUNNER_TEMP/service.json"
+          node deploy/export-env.mjs "$RUNNER_TEMP/service.json"
+          rm -f "$RUNNER_TEMP/service.json"
+
+      - uses: actions/setup-node@v4
+        if: steps.cfg.outputs.ready == 'true'
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install
+        if: steps.cfg.outputs.ready == 'true'
+        run: npm ci --no-audit --no-fund
+
+      - name: Build (applies the database migrations first, as on Vercel)
+        if: steps.cfg.outputs.ready == 'true'
+        env:
+          NEXT_OUTPUT: standalone
+          SITE_ONE_HOST: "1"
+        run: |
+          : "${NEXT_PUBLIC_SITE_URL:=${{ steps.cfg.outputs.url }}}"
+          export NEXT_PUBLIC_SITE_URL
+          npm run build
+
+      - name: Image
+        if: steps.cfg.outputs.ready == 'true'
+        run: |
+          set -euo pipefail
+          gcloud auth configure-docker "${{ steps.cfg.outputs.region }}-docker.pkg.dev" --quiet
+          docker build -t "${{ steps.cfg.outputs.image }}" .
+          docker push "${{ steps.cfg.outputs.image }}"
+
+      - name: Put it live
+        if: steps.cfg.outputs.ready == 'true'
+        run: |
+          gcloud run deploy "${{ steps.cfg.outputs.service }}" --image "${{ steps.cfg.outputs.image }}" \
+            --region "${{ steps.cfg.outputs.region }}" --project "${{ steps.cfg.outputs.project }}" --quiet
+
+      - name: Check the shop answers
+        if: steps.cfg.outputs.ready == 'true'
+        run: |
+          site="${NEXT_PUBLIC_SITE_URL:-${{ steps.cfg.outputs.url }}}"
+          for path in / /ar /sitemap.xml; do
+            code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 60 "$site$path")
+            echo "$path → $code"
+            [ "$code" = 200 ] || exit 1
+          done

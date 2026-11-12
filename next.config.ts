@@ -42,6 +42,8 @@ if (process.env.NODE_ENV === "production") securityHeaders.push({ key: "Content-
  * (308), keeping its path and query. Production only, so previews and
  * localhost still work. /api is left alone: payment callbacks and crons may
  * still call an older domain, and a webhook does not always follow a redirect.
+ * On Vercel "production" is VERCEL_ENV; elsewhere (Cloud Run, which answers on
+ * two *.run.app addresses) the deploy sets SITE_ONE_HOST=1 at build time.
  */
 const SITE_URL = (process.env.NEXT_PUBLIC_SITE_URL ?? "").replace(/\/$/, "");
 const SITE_HOST = (() => {
@@ -51,11 +53,13 @@ const SITE_HOST = (() => {
     return "";
   }
 })();
-const oneHost = process.env.VERCEL_ENV === "production" && SITE_HOST && !SITE_HOST.startsWith("localhost");
+const oneHost = (process.env.VERCEL_ENV === "production" || process.env.SITE_ONE_HOST === "1") && SITE_HOST && !SITE_HOST.startsWith("localhost");
 
 const nextConfig: NextConfig = {
   // The e2e server runs beside the dev server and needs its own build folder.
   distDir: process.env.NEXT_DIST_DIR || ".next",
+  // The Cloud Run image (Dockerfile) runs the self-contained server: one folder, no npm install.
+  ...(process.env.NEXT_OUTPUT === "standalone" ? { output: "standalone" as const } : {}),
   poweredByHeader: false,
   productionBrowserSourceMaps: false,
   typescript: { ignoreBuildErrors: false },

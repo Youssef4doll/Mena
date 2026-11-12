@@ -1,7 +1,7 @@
 import "server-only";
 import { z } from "zod";
 import { Prisma, type OrderStatus } from "@prisma/client";
-import { after } from "next/server";
+import { afterResponse } from "./after-response";
 import { prisma } from "./prisma";
 import { quoteCart, publicQuote, type PublicQuote } from "./quote-server";
 import { formatPhone, normalizePhone, isMobile } from "./phone";
@@ -275,7 +275,7 @@ export async function placeOrder(input: PlaceOrderInput, ctx: { ua: string | nul
   const site = process.env.NEXT_PUBLIC_SITE_URL ?? "";
   // In the language the customer ordered in.
   const trackUrl = `${site}${href(orderLang(order.locale), `/suivi/t/${token}`)}`;
-  after(async () => {
+  await afterResponse(async () => {
     await recordOrderEvent("order_placed", order, { items: quote.lines.reduce((s, l) => s + l.qty, 0), lines: quote.lines.length, payment: input.payment, promo: Boolean(quote.discount), origin: input.origin ?? "product", restored: Boolean(input.restoredCartId) });
     if (settings.notify.smsOnPlaced) await sendSms({ to: order.phone, text: placedText(order, settings.shop.name, trackUrl), kind: "order_placed", orderId: order.id });
     // One e-mail, to the owner only, for each new order; customers get none (they are called, and get the SMS if set).
@@ -364,7 +364,7 @@ export async function changeStatus(orderId: string, to: OrderStatus, by: string,
 
   const settings = await getSettings();
   const ev = EVENT_FOR[to];
-  after(async () => {
+  await afterResponse(async () => {
     if (ev) {
       const hours = Math.round((now.getTime() - current.createdAt.getTime()) / 3_600_000);
       await recordOrderEvent(ev, updated, { from: current.status, hoursFromOrder: hours, ...(to === "REFUSED" ? { reason: extra.refusalReason ?? null } : {}) });
