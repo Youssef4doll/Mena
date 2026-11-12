@@ -1,0 +1,14 @@
+# The shop on Netlify (no card needed). Netlify detects Next.js and runs it
+# with its own adapter: pages, server actions, the proxy, pictures.
+# Setup and the reasons: deploy/NETLIFY.md.
+#
+# Production publishes from the `live` branch, not from `main`: each publish
+# costs 15 of the free plan's 300 monthly credits, so finished work is
+# grouped and published a few times a week.
+[build]
+  command = "npm run build"
+  publish = ".next"
+
+[build.environment]
+  NODE_VERSION = "22"
+  NEXT_TELEMETRY_DISABLED = "1"
