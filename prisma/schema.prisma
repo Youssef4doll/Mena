@@ -5,7 +5,10 @@
 // is always the exact sum of its lines.
 
 generator client {
-  provider = "prisma-client-js"
+  provider      = "prisma-client-js"
+  // "native" for this machine and the Docker image; rhel-openssl-3.0.x for
+  // Netlify's functions (AWS Lambda, Amazon Linux 2023), built on another system.
+  binaryTargets = ["native", "rhel-openssl-3.0.x"]
 }
 
 datasource db {

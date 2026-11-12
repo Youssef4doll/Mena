@@ -1,5 +1,10 @@
 # The shop on Google Cloud Run
 
+> **Not in use for now.** Google refused a prepaid card (OR_CCR_104), so the
+> shop runs on Netlify: see `deploy/NETLIFY.md`. Everything here stays ready
+> for the day there is a regular Visa or Mastercard: run the setup, send the
+> two lines, and the GitHub workflow takes over.
+
 Vercel paused the shop on 12 November 2026: its free plan allows 4 hours of
 server CPU a month, and only for personal, non-commercial sites. The shop now
 runs on Google Cloud Run, which has a free tier about twelve times larger and
