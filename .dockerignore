@@ -1,0 +1,6 @@
+# Only the finished server goes into the image (see Dockerfile).
+*
+!.next/standalone
+!.next/static
+!public
+.next/standalone/.env*
