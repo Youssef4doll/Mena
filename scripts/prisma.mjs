@@ -62,6 +62,31 @@ const DIRECT = "DATABASE_URL_UNPOOLED";
 const url = process.env.DATABASE_URL;
 const isMigrate = process.argv[2] === "migrate";
 
+/**
+ * Neon's pooled and direct strings differ by one thing: "-pooler" in the host
+ * name. So the direct one can be made from the pooled one, and a pooled string
+ * pasted into DATABASE_URL_UNPOOLED by mistake (migrate then waits for its
+ * lock until the database gives up: P1002) is put right the same way.
+ */
+const neonDirect = (u) => {
+  try {
+    const parsed = new URL(u);
+    if (!/\.neon\.tech$/i.test(parsed.hostname) || !/-pooler\./i.test(parsed.hostname)) return null;
+    parsed.hostname = parsed.hostname.replace(/-pooler\./i, ".");
+    parsed.searchParams.delete("pgbouncer");
+    return parsed.toString();
+  } catch {
+    return null;
+  }
+};
+if (isMigrate) {
+  const fixed = neonDirect(process.env[DIRECT] || url || "");
+  if (fixed) {
+    console.log(`${DIRECT}: using Neon's direct host (the pooled one without "-pooler") for the migrations.`);
+    process.env[DIRECT] = fixed;
+  }
+}
+
 if (isMigrate && !process.env[DIRECT] && url) {
   const pooled =
     /[?&]pgbouncer=true/i.test(url) ? "it carries ?pgbouncer=true"
@@ -101,12 +126,20 @@ const windows = process.platform === "win32";
 const local = join(root, "node_modules", ".bin", windows ? "prisma.cmd" : "prisma");
 const bin = existsSync(local) ? local : "prisma";
 
-const result = spawnSync(bin, process.argv.slice(2), {
-  stdio: "inherit",
-  // Windows cannot execute a .cmd shim without a shell. The arguments here are
-  // bare tokens like "migrate deploy", so there is nothing to quote.
-  shell: windows,
-});
+const run = () =>
+  spawnSync(bin, process.argv.slice(2), {
+    stdio: "inherit",
+    // Windows cannot execute a .cmd shim without a shell. The arguments here are
+    // bare tokens like "migrate deploy", so there is nothing to quote.
+    shell: windows,
+  });
+let result = run();
+// A database asleep (Neon's free plan suspends it) can miss the first try: wait, try again, twice at most.
+for (let attempt = 1; isMigrate && !result.error && result.status !== 0 && attempt <= 2; attempt++) {
+  console.log(`Migration failed; trying again in ${attempt * 10} s (${attempt}/2).`);
+  spawnSync(process.execPath, ["-e", `setTimeout(() => {}, ${attempt * 10_000})`]);
+  result = run();
+}
 
 if (result.error) {
   console.error(`\nCould not run the Prisma CLI (${bin}): ${result.error.message}`);
