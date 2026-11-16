@@ -15,3 +15,5 @@ playwright-report
 .next-*
 /screenshots/
 .next-shots
+# Netlify's local build output.
+.netlify
