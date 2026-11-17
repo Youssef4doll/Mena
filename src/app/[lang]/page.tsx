@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import Link from "next/link";
+import { IntentLink as Link } from "@/components/shop/IntentLink";
 import { notFound } from "next/navigation";
 import { dict, href, isLang, languages, pick } from "@/i18n";
 import { getHome, getHomeCategories, getHomeFeed, type ProductCard } from "@/lib/catalog";
@@ -17,7 +17,7 @@ import { HeroBanners, type Banner } from "@/components/shop/HeroBanners";
 import { QuadCard, type Quad } from "@/components/shop/QuadCards";
 import { bannerLink, heroSlides } from "@/lib/settings-schema";
 
-export const revalidate = 60;
+export const revalidate = 600;
 
 /** "À moins de 30 DT": the small prices' shelf, in millimes. */
 const SMALL_PRICE = 30_000;

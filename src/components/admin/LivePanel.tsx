@@ -5,7 +5,7 @@ import { useEffect, useState } from "react";
 import type { Live } from "@/lib/analytics";
 import { VIZ, fmt } from "@/lib/viz";
 
-/** The last five minutes, refreshed every 15 seconds while the tab is visible. Keeps its frame while reloading. */
+/** The last five minutes, refreshed every 30 seconds while the tab is visible. Keeps its frame while reloading. */
 export function LivePanel({ initial }: { initial: Live }) {
   const [d, setD] = useState(initial);
   const [stale, setStale] = useState(false);
@@ -20,7 +20,7 @@ export function LivePanel({ initial }: { initial: Live }) {
         setStale(false);
       }
     };
-    const id = setInterval(tick, 15_000);
+    const id = setInterval(tick, 30_000);
     return () => clearInterval(id);
   }, []);
   const max = Math.max(1, ...d.minutes.map((m) => m.visitors));

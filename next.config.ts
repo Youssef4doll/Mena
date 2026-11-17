@@ -73,6 +73,24 @@ const nextConfig: NextConfig = {
   distDir: process.env.NEXT_DIST_DIR || ".next",
   // The Cloud Run image (Dockerfile) runs the self-contained server: one folder, no npm install.
   ...(process.env.NEXT_OUTPUT === "standalone" ? { output: "standalone" as const } : {}),
+  // Files the server never loads, kept out of the server bundle (Netlify's function has a size limit):
+  // Prisma's engines for other databases and for the browser, sharp for Alpine, and on Netlify
+  // (Amazon Linux) the engine for Debian, which the Cloud Run image does need.
+  outputFileTracingExcludes: {
+    "/*": [
+      "node_modules/@prisma/client/runtime/query_compiler_bg.*",
+      "node_modules/@prisma/client/runtime/query_engine_bg.*",
+      "node_modules/@prisma/client/runtime/*.map",
+      "node_modules/@prisma/client/runtime/edge*",
+      "node_modules/@prisma/client/runtime/wasm*",
+      "node_modules/.prisma/client/query_engine_bg.*",
+      "node_modules/@img/sharp-linuxmusl-*/**",
+      "node_modules/@img/sharp-libvips-linuxmusl-*/**",
+      "node_modules/next/node_modules/@img/sharp-linuxmusl-*/**",
+      "node_modules/next/node_modules/@img/sharp-libvips-linuxmusl-*/**",
+      ...(process.env.NETLIFY === "true" ? ["node_modules/.prisma/client/libquery_engine-debian-*"] : []),
+    ],
+  },
   poweredByHeader: false,
   productionBrowserSourceMaps: false,
   typescript: { ignoreBuildErrors: false },

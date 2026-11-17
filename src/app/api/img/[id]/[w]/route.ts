@@ -46,6 +46,8 @@ const answer = (bytes: Uint8Array<ArrayBuffer>) =>
       "cache-control": "public, max-age=31536000, s-maxage=31536000, immutable",
       // Netlify's CDN: kept for a year and shared by all its edges ("durable"), so the function runs once per size.
       "netlify-cdn-cache-control": "public, max-age=31536000, immutable, durable",
+      // The picture's address changes when the picture does, so a new publish of the shop must not empty the CDN.
+      "netlify-cache-id": "mena-img",
       "content-length": String(bytes.length),
     },
   });

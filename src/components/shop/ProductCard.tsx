@@ -1,4 +1,4 @@
-import Link from "next/link";
+import { IntentLink as Link } from "@/components/shop/IntentLink";
 import type { ProductCard as Card } from "@/lib/catalog";
 import { dict, href, pick, type Lang } from "@/i18n";
 import { discountPct } from "@/lib/offer-display";
