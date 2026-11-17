@@ -14,13 +14,15 @@ import { rankFeed, type FeedItem } from "./home-feed";
  * one tag the back office marks stale on each catalog edit (pages are still
  * served at once and rebuilt in the background), and a product's page also
  * its own, expired when that product changes, so the change shows at once
- * (see refreshCatalog). Stock shown here may lag by up to a minute; the
- * checkout re-reads it.
+ * (see refreshCatalog). An order, a cancellation and every change in the
+ * admin expire it at once; only the clock does not (a promotion's first or
+ * last minute), so what is shown may lag by up to ten minutes there; the
+ * checkout re-reads prices and stock.
  */
 export const CATALOG_TAG = "catalog";
 /** The cache tag of one product's page, by its address. */
 export const productTag = (slug: string) => `product:${slug}`;
-const TTL = 60;
+const TTL = 600;
 
 const cardSelect = {
   id: true,

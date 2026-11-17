@@ -1,6 +1,6 @@
 "use client";
 
-import Link from "next/link";
+import { IntentLink as Link } from "@/components/shop/IntentLink";
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { dict, href, type Lang } from "@/i18n";
 import type { ProductCard } from "@/lib/catalog";

@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import Link from "next/link";
+import { IntentLink as Link } from "@/components/shop/IntentLink";
 import { notFound } from "next/navigation";
 import { dict, href, isLang, pick } from "@/i18n";
 import { getCategories, getHome, searchProducts } from "@/lib/catalog";

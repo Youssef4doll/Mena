@@ -1,4 +1,4 @@
-import Link from "next/link";
+import { IntentLink as Link } from "@/components/shop/IntentLink";
 import { href, pick, type Lang } from "@/i18n";
 import type { ProductCard } from "@/lib/catalog";
 import { formatTND } from "@/lib/money";

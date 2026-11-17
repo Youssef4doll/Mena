@@ -1,4 +1,4 @@
-import Link from "next/link";
+import { IntentLink as Link } from "@/components/shop/IntentLink";
 import { WarmBlur } from "./Img";
 import { dict, href, type Lang } from "@/i18n";
 import type { ProductCard, SortKey } from "@/lib/catalog";

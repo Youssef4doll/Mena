@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import Link from "next/link";
+import { IntentLink as Link } from "@/components/shop/IntentLink";
 import { notFound, permanentRedirect } from "next/navigation";
 import { dict, href, isLang, languages, pick } from "@/i18n";
 import { getProduct, productMovedTo, productSlugs } from "@/lib/catalog";
@@ -12,7 +12,7 @@ import { SITE_URL } from "@/lib/site";
 import { leadOffer } from "@/lib/offer-display";
 import { deliversEverywhere } from "@/lib/governorates";
 
-export const revalidate = 60;
+export const revalidate = 600;
 
 /**
  * Built with each new version of the site (a new version starts with an empty

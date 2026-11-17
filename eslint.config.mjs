@@ -14,6 +14,8 @@ const eslintConfig = defineConfig([
     ".next-build/**",
     // Any other local build folder (NEXT_DIST_DIR=.next-…).
     ".next-*/**",
+    // Netlify's local build output.
+    ".netlify/**",
     "test-results/**",
     "playwright-report/**",
     "out/**",

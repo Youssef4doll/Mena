@@ -1,6 +1,6 @@
 "use client";
 
-import Link from "next/link";
+import { IntentLink as Link } from "@/components/shop/IntentLink";
 import { useEffect, useRef, useState } from "react";
 import { Img } from "./Img";
 import { IconChevron } from "./Icons";

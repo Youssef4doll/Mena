@@ -1,4 +1,4 @@
-import Link from "next/link";
+import { IntentLink as Link } from "@/components/shop/IntentLink";
 import { dict, href, type Lang } from "@/i18n";
 import type { Settings } from "@/lib/settings-schema";
 import { formatPhone, normalizePhone } from "@/lib/phone";
