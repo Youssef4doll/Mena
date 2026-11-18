@@ -14,6 +14,9 @@ const NO_OPTION = "option non choisie";
  * Abandoned carts with their value at today's prices (read from the catalog,
  * never from the cart). Bounded by date and count.
  */
+const isLine = (l: unknown): l is CartLineInput =>
+  typeof l === "object" && l !== null && typeof (l as CartLineInput).productId === "string" && Number.isInteger((l as CartLineInput).qty) && (l as CartLineInput).qty > 0;
+
 export async function abandonedCarts(days = 30, take = 200) {
   const cutoff = new Date(Date.now() - ABANDON_MINUTES * 60_000);
   const since = new Date(Date.now() - days * 86_400_000);
@@ -22,7 +25,8 @@ export async function abandonedCarts(days = 30, take = 200) {
     orderBy: { updatedAt: "desc" },
     take,
   });
-  const lines = carts.map((c) => (Array.isArray(c.lines) ? (c.lines as CartLineInput[]) : []));
+  // Only well-formed lines: one odd row (an older shape, a hand edit) must not take the whole list down.
+  const lines = carts.map((c) => (Array.isArray(c.lines) ? (c.lines as unknown[]).filter(isLine) : []));
   // loadCatalog reads 50 products per call: past that, carts would drop out unpriced.
   const ids = [...new Set(lines.flat().map((l) => l.productId))];
   const parts = await Promise.all(Array.from({ length: Math.ceil(ids.length / 50) }, (_, k) => loadCatalog(ids.slice(k * 50, k * 50 + 50))));
