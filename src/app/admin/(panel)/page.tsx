@@ -6,6 +6,7 @@ import { minutesAgo, tunisMidnight } from "@/lib/analytics-range";
 import { flagLabel } from "@/lib/order-status";
 import { isRisky } from "@/lib/fraud";
 import { abandonedCarts } from "@/lib/abandoned";
+import { soft } from "@/lib/server-errors";
 import { Badge, Card, PageTitle, Stat, btn } from "@/components/admin/ui";
 
 export const metadata = { title: "Tableau de bord" };
@@ -13,19 +14,22 @@ export const metadata = { title: "Tableau de bord" };
 export default async function Dashboard() {
   const today = tunisMidnight(new Date());
   const since5 = minutesAgo(5);
-  const [todayAgg, toConfirm, counts, live, lowStock, carts, demo] = await Promise.all([
+  const [todayAgg, toConfirm, counts, liveR, lowStockR, cartsR, demo] = await Promise.all([
     prisma.order.aggregate({ where: { createdAt: { gte: today }, status: { not: "CANCELLED" } }, _count: { _all: true }, _sum: { total: true } }),
     prisma.order.findMany({ where: { status: "PENDING" }, orderBy: { createdAt: "asc" }, take: 8, select: { id: true, ref: true, name: true, phone: true, total: true, governorate: true, flags: true, createdAt: true, confirmAttempts: true } }),
     prisma.order.groupBy({ by: ["status"], where: { status: { in: ["PENDING", "CONFIRMED", "SUPPLIER_ORDERED", "SHIPPED"] } }, _count: { _all: true } }),
-    prisma.analyticsEvent.findMany({ where: { createdAt: { gte: since5 } }, distinct: ["visitorId"], select: { visitorId: true } }),
-    prisma.product.findMany({
+    soft(prisma.analyticsEvent.findMany({ where: { createdAt: { gte: since5 } }, distinct: ["visitorId"], select: { visitorId: true } }), [], "tableau de bord: visiteurs"),
+    soft(prisma.product.findMany({
       where: { active: true, OR: [{ stockMode: "TRACKED", stockQty: { lte: 5 }, variants: { none: {} } }, { stockMode: "SUPPLIER", available: false }] },
       take: 8,
       select: { id: true, name: true, stockMode: true, stockQty: true },
-    }),
-    abandonedCarts(2, 100),
+    }), [], "tableau de bord: stock bas"),
+    soft(abandonedCarts(2, 100), [], "tableau de bord: paniers non terminés"),
     prisma.product.count({ where: { isDemo: true } }),
   ]);
+  // These three may fail alone (recorded, see /admin/erreurs): the rest of the page still opens.
+  const [live, lowStock, carts] = [liveR.value, lowStockR.value, cartsR.value];
+  const partial = liveR.failed || lowStockR.failed || cartsR.failed;
   const c = Object.fromEntries(counts.map((x) => [x.status, x._count._all])) as Record<string, number>;
   const reachable = carts.filter((x) => x.cart.phone);
   const queue = [...toConfirm].sort((a, b) => Number(isRisky(b.flags)) - Number(isRisky(a.flags)));
@@ -33,6 +37,7 @@ export default async function Dashboard() {
   return (
     <div className="flex flex-col gap-4">
       <PageTitle title="Tableau de bord" sub="Ce qui demande une action aujourd'hui." actions={<Link href="/admin/analytics" className={btn.ghost}>Analytics</Link>} />
+      {partial && <p className="rounded-2xl border border-line bg-white px-4 py-3 text-sm">Une partie du tableau n&apos;a pas pu se charger ; le reste est à jour.</p>}
       {demo > 0 && (
         <p className="rounded-2xl border border-[#e8d49a] bg-[#fff8e6] px-4 py-3 text-sm">
           La boutique affiche {demo} produits de démonstration. <Link href="/admin/produits" className="underline">Ajoutez vos produits puis supprimez la démo</Link>.
