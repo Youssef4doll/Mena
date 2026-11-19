@@ -1,6 +1,11 @@
 import "server-only";
 import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
 
+/** Whether the server has its secret (APP_SECRET, 32+ characters): without it, logins, orders and order links fail. */
+export function hasSecret(): boolean {
+  return (process.env.APP_SECRET ?? "").length >= 32;
+}
+
 function secret(): string {
   const s = process.env.APP_SECRET;
   if (!s || s.length < 32) {
