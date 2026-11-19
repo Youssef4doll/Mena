@@ -4,8 +4,11 @@ import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { createAdminSession, verifyLogin } from "@/lib/admin-auth";
 import { callerIp, hit, LIMITS } from "@/lib/rate-limit";
+import { hasSecret } from "@/lib/tokens";
 
 export async function login(_prev: unknown, form: FormData) {
+  // Said in words: without it the session cannot be made, and the page would only show an error code.
+  if (!hasSecret()) return { error: "Le serveur n'a pas sa clé APP_SECRET (32 caractères ou plus). Ajoutez-la dans les variables d'environnement de l'hébergeur, puis republiez." };
   const email = String(form.get("email") ?? "");
   const password = String(form.get("password") ?? "");
   const ip = callerIp(await headers());
