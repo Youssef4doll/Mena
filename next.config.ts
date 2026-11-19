@@ -65,6 +65,27 @@ const SITE_HOST = (() => {
     return "";
   }
 })();
+/**
+ * The shop's own addresses, from which the back office's forms (Server
+ * Actions: the login first) may be sent. Next refuses a form whose origin is
+ * not the host the request reached it on (CSRF protection), and on Netlify the
+ * host seen by the server is not always the address in the browser: the login
+ * then failed with a 500 before running, so no session was ever opened. Only
+ * this site's own hosts are listed: its address, and Netlify's for this
+ * deploy (URL, DEPLOY_PRIME_URL, DEPLOY_URL, set during Netlify's build).
+ */
+const ownHosts = [...new Set(
+  [SITE_URL, process.env.URL, process.env.DEPLOY_PRIME_URL, process.env.DEPLOY_URL]
+    .map((u) => {
+      try {
+        return u ? new URL(u).host : "";
+      } catch {
+        return "";
+      }
+    })
+    .filter((h) => h && !h.startsWith("localhost")),
+)];
+
 const production = process.env.VERCEL_ENV === "production" || process.env.CONTEXT === "production" || process.env.SITE_ONE_HOST === "1";
 const oneHost = production && SITE_HOST && !SITE_HOST.startsWith("localhost");
 
@@ -103,7 +124,7 @@ const nextConfig: NextConfig = {
     imageSizes: [64, 96, 128, 200, 256],
   },
   experimental: {
-    serverActions: { bodySizeLimit: "10mb" },
+    serverActions: { bodySizeLimit: "10mb", allowedOrigins: ownHosts },
     proxyClientMaxBodySize: "10mb",
   },
   async redirects() {
