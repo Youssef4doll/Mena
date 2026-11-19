@@ -28,6 +28,7 @@ export default function AdminError({ error, reset }: { error: Error & { digest?:
         <button type="button" onClick={() => reset()} className="min-h-11 rounded-full bg-ink px-5 text-sm font-semibold text-white">Réessayer</button>
         <Link href="/admin" className="flex min-h-11 items-center rounded-full border border-line px-5 text-sm">Tableau de bord</Link>
         <Link href="/admin/commandes" className="flex min-h-11 items-center rounded-full border border-line px-5 text-sm">Commandes</Link>
+        <Link href="/admin/diagnostic" className="flex min-h-11 items-center rounded-full border border-line px-5 text-sm">Diagnostic</Link>
       </div>
       {shown.length > 0 && (
         <section className="rounded-2xl border border-line bg-white p-4">
