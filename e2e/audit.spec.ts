@@ -33,9 +33,9 @@ test("the editor refuses an offer whose name speaks of another quantity", async 
   await expect(page.getByText(/Offre 3 : le nom « Achetez 2, la 3e offerte » annonce 3 unités, mais la quantité est 2/)).toBeVisible();
 });
 
-test("the form says what the number is for, and the delay of the governorate chosen", async ({ page }) => {
+test("the form shows its total in the fields' card, and the delay of the governorate chosen", async ({ page }) => {
   await page.goto(PRODUCT);
-  await expect(page.getByText(/Votre numéro sert à confirmer et livrer votre commande/).first()).toBeVisible();
+  await expect(page.locator("section").filter({ has: page.getByTestId("phone") }).getByTestId("total").first()).toBeVisible();
   // Chosen again until the page is live: a choice made before it is, is reset when it starts.
   await expect(async () => {
     await page.getByTestId("governorate").first().selectOption("Sfax");
