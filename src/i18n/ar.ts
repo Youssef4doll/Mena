@@ -144,8 +144,6 @@ export const ar: Dict = {
     govError: "اختار ولايتك.",
     addressError: "اكتب عنوانك.",
     addressShort: "زيد المدينة والنهج.",
-    phoneUse: "رقمك نستعملوه باش نأكدو ونوصلو طلبيتك. كان ما كمّلتش، نجمو نكلموك مرّة وحدة باش نعاونوك.",
-    privacyLink: "معطياتك",
     deliveryTo: (gov, range) => `التوصيل لـ ${gov}: ${range}، من نهار ما نأكدو معاك.`,
     missing: (fields) => `باقي تعمّر: ${fields}.`,
     variantError: "اختار الخيار الفوق قبل.",

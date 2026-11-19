@@ -148,8 +148,6 @@ export const fr = {
     addressError: "Écrivez votre adresse.",
     addressShort: "Ajoutez la ville et la rue.",
     /** Said under the fields: what the number is for, before anything is sent. */
-    phoneUse: "Votre numéro sert à confirmer et livrer votre commande. Si vous ne terminez pas, nous pouvons vous appeler une fois pour vous aider.",
-    privacyLink: "Vos données",
     /** The delay for the governorate chosen, from the shop's own settings. */
     deliveryTo: (gov: string, range: string) => `Livraison à ${gov} : ${range}, après l'appel de confirmation.`,
     missing: (fields: string) => `Il reste à remplir : ${fields}.`,
