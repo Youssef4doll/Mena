@@ -94,7 +94,7 @@ The STRICT RULES win over LAYOUT 4 and 5: no badge and no carousel dots unless t
 ## Filling CONTENT truthfully
 
 - Language: French on the picture (the owner's examples are French, and generated Arabic letters come out wrong). The caption stays in derja.
-- Store logo: `https://menatn.netlify.app/brand/mena-logo.png` (dark) or `mena-logo-white.png` (white), uploaded to Canva with `upload-asset-from-url`. Generated from `src/components/shop/Logo.tsx`; never let the generator redraw it.
+- Store logo: `https://menatn.store/brand/mena-logo.png` (dark) or `mena-logo-white.png` (white), uploaded to Canva with `upload-asset-from-url`. Generated from `src/components/shop/Logo.tsx`; never let the generator redraw it.
 - Brand logo: only when the product carries a real brand the shop names (e.g. MAXISALON). Otherwise write "none, leave that space empty".
 - Price: the shop's price as the shop writes it ("39,000 DT"). Old price only when the product has a real `ancien_prix` / compare-at price. Without one, write "no old price: show the new price pill only".
 - Deal: only a real offer of the product ("2 pour 95 DT, livraison gratuite") or a real promise ("Paiement à la livraison").

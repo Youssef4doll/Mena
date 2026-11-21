@@ -57,11 +57,10 @@ export function Gallery({ slides, name, productId, badge, lang, details, leadMed
         <span className="ltr-nums">−{badge}%</span>
       </span>
     ) : null;
-  // In the corner opposite the zoom button, never under it: narrower than the picture by the button, its margins
-  // and a gap (12 + 44 + 8 + 12 px), it goes on two lines rather than over it. One line on a 360 px phone.
+  // Under the photos, never on them: the product stays fully visible, and the button is a full-width target for a thumb.
   const link =
     details && details.count > 0 ? (
-      <button type="button" onClick={details.onClick} className={`absolute bottom-3 start-3 flex min-h-11 max-w-[calc(100%-4.75rem)] items-center gap-1 rounded-[22px] border border-line bg-white/95 py-1 ps-3 pe-2.5 text-start text-[16px] font-bold leading-tight text-ink shadow-[0_2px_10px_-4px_rgb(0_0_0/.3)] ${details.className ?? ""}`} data-testid="details-link">
+      <button type="button" onClick={details.onClick} className={`flex min-h-12 w-full items-center justify-center gap-2 rounded-xl border border-line bg-white px-4 py-2 text-[16px] font-bold leading-tight text-ink transition hover:border-sea/60 hover:bg-sea-soft/40 ${details.className ?? ""}`} data-testid="details-link">
         <span>
           {details.label}&nbsp;<span className="ltr-nums">({details.count})</span>
         </span>
@@ -70,9 +69,11 @@ export function Gallery({ slides, name, productId, badge, lang, details, leadMed
     ) : null;
   if (slides.length === 0)
     return (
-      <div className="relative aspect-square overflow-hidden rounded-2xl border border-line">
-        {tag}
-        <Placeholder />
+      <div className="flex flex-col gap-2.5">
+        <div className="relative aspect-square overflow-hidden rounded-2xl border border-line">
+          {tag}
+          <Placeholder />
+        </div>
         {link}
       </div>
     );
@@ -89,7 +90,8 @@ export function Gallery({ slides, name, productId, badge, lang, details, leadMed
   const photos = slides.flatMap((s) => (s.kind === "image" ? [s.image] : []));
 
   return (
-    <div className="flex flex-col gap-2.5 md:flex-row md:items-start md:gap-3">
+    <div className="flex flex-col gap-2.5">
+      <div className="flex flex-col gap-2.5 md:flex-row md:items-start md:gap-3">
       <div className="relative min-w-0 md:flex-1">
         {tag}
         <div
@@ -155,8 +157,6 @@ export function Gallery({ slides, name, productId, badge, lang, details, leadMed
             <IconExpand className="h-5 w-5" />
           </button>
         )}
-        {/* Out of the way of a playing video's controls. */}
-        {!playing && link}
       </div>
 
       {slides.length > 1 && (
@@ -190,6 +190,8 @@ export function Gallery({ slides, name, productId, badge, lang, details, leadMed
 
       {/* On the page's body, not inside the gallery: a sticky or transformed parent would otherwise hold the full-screen view and let the page show over it. */}
       {viewer != null && createPortal(<Viewer images={photos} start={viewer} name={name} lang={lang} onClose={() => setViewer(null)} />, document.body)}
+      </div>
+      {link}
     </div>
   );
 }
