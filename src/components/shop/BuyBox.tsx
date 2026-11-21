@@ -321,14 +321,15 @@ function OfferCard({ o, lang, name, locale, imageId, checked, disabled, fee, onS
   const badge = o.mostChosen && !disabled;
   return (
     <label
-      className={`relative flex flex-col gap-2 rounded-2xl border-2 px-3 py-3 transition ${badge ? "mt-2.5" : ""} ${
+      className={`relative flex flex-col gap-2 rounded-2xl border-2 px-3 py-3 transition max-[374px]:px-2.5 ${badge ? "mt-2.5" : ""} ${
         disabled ? "cursor-not-allowed border-dashed border-line bg-sand/50 opacity-70" : checked ? "cursor-pointer border-sea bg-sea-soft/50" : "cursor-pointer border-line bg-white hover:border-sea/50"
       }`}
     >
       {badge && <span className="absolute -top-3 end-3 rounded-full bg-sea px-2.5 text-[13px] font-bold leading-6 text-white">{t.buy.mostChosen}</span>}
-      <span className="flex items-center gap-3">
+      {/* Under 375 px the picture and the gaps give back a few pixels, so the offer's name keeps two words a line. */}
+      <span className="flex items-center gap-3 max-[374px]:gap-2">
         <input type="radio" name={name} checked={checked} disabled={disabled} onChange={onSelect} className="h-[22px] w-[22px] shrink-0 accent-[var(--color-sea)]" data-testid={`offer-${o.quantity}`} />
-        <span className="relative h-12 w-12 shrink-0 overflow-hidden rounded-xl bg-sand">
+        <span className="relative h-12 w-12 shrink-0 overflow-hidden rounded-xl bg-sand max-[374px]:h-10 max-[374px]:w-10">
           {imageId && (
             // eslint-disable-next-line @next/next/no-img-element
             <img src={`/api/img/${imageId}/128`} alt="" className="h-full w-full object-cover" loading="lazy" decoding="async" />
@@ -371,9 +372,10 @@ function OfferCard({ o, lang, name, locale, imageId, checked, disabled, fee, onS
           <span className="whitespace-nowrap text-[18px] font-extrabold text-ink price-nums ltr-nums">{formatTND(o.price, lang)}</span>
         </span>
       </span>
-      {/* Its own line under the card's texts (radio 22 + gap 12 + picture 48 + gap 12 = 94 px in), so "8,000 DT" is never cut. */}
+      {/* Its own line under the card's texts (radio 22 + gap 12 + picture 48 + gap 12 = 94 px in; 22 + 8 + 40 + 8 = 78 px
+          under 375 px), so "8,000 DT" is never cut. */}
       {!disabled && (o.freeDelivery || o.lastDay) && (
-        <span className="flex flex-wrap items-center gap-x-3 gap-y-1 ps-[94px]">
+        <span className="flex flex-wrap items-center gap-x-3 gap-y-1 ps-[94px] max-[374px]:ps-[78px]">
           {o.freeDelivery && (
             <span className="inline-flex items-center gap-1 text-[14px] font-bold text-olive">
               <IconTruck className="h-4 w-4 shrink-0" />

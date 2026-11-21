@@ -8,7 +8,7 @@ import { dict, type Lang } from "@/i18n";
 import type { ImageRef } from "@/lib/catalog";
 import type { Video } from "@/lib/product-content";
 import { track } from "@/lib/client/track";
-import { Placeholder } from "./Img";
+import { LOAD, Placeholder } from "./Img";
 import { IconArrowDown, IconExpand, IconPlay } from "./Icons";
 
 // The full-screen viewer is only downloaded when someone opens it.
@@ -123,7 +123,7 @@ export function Gallery({ slides, name, productId, badge, lang, details, leadMed
                     fill
                     sizes={PHOTO_SIZES}
                     className="object-contain"
-                    {...(leadMedia ? (n === 0 ? { fetchPriority: "high" as const } : {}) : { priority: n === 0 })}
+                    {...(leadMedia ? (n === 0 ? { fetchPriority: "high" as const } : {}) : n === 0 ? LOAD.lcp : {})}
                     placeholder={s.image.blur ? "blur" : "empty"}
                     blurDataURL={s.image.blur ?? undefined}
                   />

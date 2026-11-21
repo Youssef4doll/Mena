@@ -26,7 +26,7 @@ export function QuadCard({ q, lang, eager = false, list }: { q: Quad; lang: Lang
           <li key={p.id} className="min-w-0">
             <Link href={href(lang, `/produit/${p.slug}`)} className="group block" data-list={list}>
               <span className="relative block aspect-square overflow-hidden rounded-xl bg-sand">
-                <Img image={p.images[0] ?? null} alt="" sizes={TILE_SIZES} priority={eager} className="transition duration-500 group-hover:scale-[1.04]" />
+                <Img image={p.images[0] ?? null} alt="" sizes={TILE_SIZES} load={eager ? "eager" : "lazy"} className="transition duration-500 group-hover:scale-[1.04]" />
               </span>
               <span className="mt-1.5 block truncate text-[14px] leading-tight text-ink-2" dir="auto">
                 {pick(lang, p.name, p.nameAr)}
@@ -36,7 +36,7 @@ export function QuadCard({ q, lang, eager = false, list }: { q: Quad; lang: Lang
           </li>
         ))}
       </ul>
-      <Link href={q.link.href} className="mt-3 flex min-h-10 items-center text-[15px] font-bold text-sea-2 underline-offset-4 hover:underline">
+      <Link href={q.link.href} className="mt-2 flex min-h-12 items-center text-[15px] font-bold text-sea-2 underline-offset-4 hover:underline">
         {q.link.label}
       </Link>
     </section>

@@ -1,19 +1,26 @@
 import Image from "next/image";
 import type { ImageRef } from "@/lib/catalog";
 
+/**
+ * How soon a picture loads. "lazy" (the default): when it nears the screen. "eager": on the first screen, at once.
+ * "lcp": the page's main picture, the one the visitor waits for: announced in the <head> and fetched first.
+ */
+export type Load = "lazy" | "eager" | "lcp";
+export const LOAD = { lazy: {}, eager: { loading: "eager" }, lcp: { preload: true, fetchPriority: "high" } } as const;
+
 /** A product picture from /api/img, with its blurred preview while it loads. */
 export function Img({
   image,
   alt,
   sizes,
-  priority = false,
+  load = "lazy",
   className = "",
   fill = true,
 }: {
   image: Pick<ImageRef, "id" | "blur" | "width" | "height"> | null;
   alt: string;
   sizes: string;
-  priority?: boolean;
+  load?: Load;
   className?: string;
   fill?: boolean;
 }) {
@@ -22,7 +29,7 @@ export function Img({
     src: `/api/img/${image.id}`,
     alt,
     sizes,
-    priority,
+    ...LOAD[load],
     className: `object-cover ${className}`,
     ...(image.blur ? { placeholder: "blur" as const, blurDataURL: image.blur } : {}),
   };
