@@ -438,7 +438,20 @@ export function OrderForm(props: Props) {
           )}
           <div className="flex justify-between gap-3 text-ink-2">
             <dt>{t.buy.delivery}</dt>
-            <dd className="shrink-0 whitespace-nowrap price-nums ltr-nums">{freeKnown ? <span className="font-bold text-olive">{t.product.free}</span> : formatTND(deliveryShown, lang)}</dd>
+            <dd className="shrink-0 whitespace-nowrap price-nums ltr-nums">{freeKnown ? (
+                // The fee it saves, struck through, then "Offerte": the shop's one fee, a real figure.
+                <>
+                  {fee > 0 && (
+                    <>
+                      <span className="sr-only">{t.buy.instead(formatTND(fee, lang))}</span>
+                      <s aria-hidden className="me-1.5 text-muted">{formatTND(fee, lang)}</s>
+                    </>
+                  )}
+                  <span className="font-bold text-olive">{t.product.free}</span>
+                </>
+              ) : (
+                formatTND(deliveryShown, lang)
+              )}</dd>
           </div>
           <div className="flex items-baseline justify-between gap-3 border-t border-line pt-3">
             <dt className="text-[17px] font-bold text-ink">{t.buy.total}</dt>

@@ -48,13 +48,17 @@ if (process.env.NODE_ENV === "production") securityHeaders.push({ key: "Content-
  */
 /**
  * On Netlify the shop's address is Netlify's own (its URL variable: the
- * netlify.app name, or the custom domain once there is one), unless
- * NEXT_PUBLIC_SITE_URL says otherwise. An address still pointing at Vercel,
- * copied over with the other settings, is ignored there: every page would
- * otherwise redirect to the paused site. Set here, before the build reads it,
- * so pages, sitemap and e-mails all use it.
+ * netlify.app name, or the custom domain once there is one, menatn.store),
+ * unless NEXT_PUBLIC_SITE_URL says otherwise. An address still pointing at
+ * Vercel, copied over with the other settings, is ignored there: every page
+ * would otherwise redirect to the paused site. So is a netlify.app address
+ * once the shop has its own domain: every page of menatn.store would
+ * otherwise be sent back to menatn.netlify.app. Set here, before the build
+ * reads it, so pages, sitemap and e-mails all use it.
  */
-if (process.env.NETLIFY === "true" && process.env.URL && (!process.env.NEXT_PUBLIC_SITE_URL || /\.vercel\.app\/?$/.test(process.env.NEXT_PUBLIC_SITE_URL))) {
+const netlifyName = (u: string | undefined) => Boolean(u && /\.netlify\.app\/?$/.test(u));
+const staleAddress = (u: string | undefined) => !u || /\.vercel\.app\/?$/.test(u) || (netlifyName(u) && !netlifyName(process.env.URL));
+if (process.env.NETLIFY === "true" && process.env.URL && staleAddress(process.env.NEXT_PUBLIC_SITE_URL)) {
   process.env.NEXT_PUBLIC_SITE_URL = process.env.URL;
 }
 const SITE_URL = (process.env.NEXT_PUBLIC_SITE_URL ?? "").replace(/\/$/, "");

@@ -15,6 +15,7 @@ import { offerLine, offerNote, offerTitle } from "@/lib/offer-label";
 import { OrderForm, type OrderDraft } from "./OrderForm";
 import { VariantSelect } from "./VariantSelect";
 import { Bidi } from "./Bidi";
+import { FreeDelivery } from "./FreeDelivery";
 import { IconMinus, IconPlus, IconTruck, IconWhatsApp } from "./Icons";
 
 type P = Omit<ProductPage, "related">;
@@ -182,6 +183,7 @@ export function BuyBox({ p, lang, settings, url, choice, idp = "bb", origin, dra
               imageId={p.images[0]?.id ?? null}
               checked={offerId === o.id}
               disabled={!choice.fits(o)}
+              fee={settings.delivery.fee}
               onSelect={() => {
                 choice.setOffer(o.id);
                 chose();
@@ -300,70 +302,89 @@ export function BuyBox({ p, lang, settings, url, choice, idp = "bb", origin, dra
 }
 
 /**
- * One offer, laid out like the cards Tunisian shoppers already know: the
- * picture with its quantity, the quantity in words (the owner's name for the
- * offer under it, only when it says the same; see offer-label) and the saving, the price with the real
- * price it replaces, and the round choice at the end. Light until chosen.
+ * One offer, laid out like the bundle cards of the best Shopify shops: the
+ * round choice first, the picture with its quantity, the quantity in words
+ * (the owner's name for the offer under it, only when it says the same; see
+ * offer-label) and what it saves, the price at the end with the real price it
+ * replaces struck above it, and free delivery with the fee it saves. "Le plus
+ * choisi" sits on the card's edge, and only when the orders say so. Light
+ * until chosen.
  */
-function OfferCard({ o, lang, name, locale, imageId, checked, disabled, onSelect }: { o: Offer; lang: Lang; name: string; locale: string; imageId: string | null; checked: boolean; disabled: boolean; onSelect: () => void }) {
+function OfferCard({ o, lang, name, locale, imageId, checked, disabled, fee, onSelect }: { o: Offer; lang: Lang; name: string; locale: string; imageId: string | null; checked: boolean; disabled: boolean; fee: number; onSelect: () => void }) {
   const t = dict(lang);
   // "Instead of" comes from the server: a real price, or nothing. The % is only
   // given for packs, all measured against the same one-unit offer, so a bigger
   // pack never looks like a smaller saving.
   const pct = o.quantity > 1 ? discountPct(o.price, o.compareAt) : 0;
   const struck = o.compareAt != null && o.compareAt > o.price ? o.compareAt : null;
+  const note = offerNote(o, lang);
+  const badge = o.mostChosen && !disabled;
   return (
     <label
-      className={`relative flex items-center gap-3 rounded-2xl border p-2.5 transition ${
-        disabled ? "cursor-not-allowed border-dashed border-line bg-sand/50 opacity-70" : checked ? "cursor-pointer border-sea bg-sea-soft/60 ring-1 ring-sea" : "cursor-pointer border-sand-2 bg-white hover:border-sea/60"
+      className={`relative flex flex-col gap-2 rounded-2xl border-2 px-3 py-3 transition ${badge ? "mt-2.5" : ""} ${
+        disabled ? "cursor-not-allowed border-dashed border-line bg-sand/50 opacity-70" : checked ? "cursor-pointer border-sea bg-sea-soft/50" : "cursor-pointer border-line bg-white hover:border-sea/50"
       }`}
     >
-      <span className="relative h-16 w-16 shrink-0 overflow-hidden rounded-xl bg-sand">
-        {imageId && (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img src={`/api/img/${imageId}/200`} alt="" className="h-full w-full object-cover" loading="lazy" decoding="async" />
-        )}
-        <span aria-hidden className="absolute bottom-1 end-1 rounded-full bg-sea px-1.5 text-[13px] font-bold leading-5 text-white">
-          <span className="ltr-nums">×{o.quantity}</span>
+      {badge && <span className="absolute -top-3 end-3 rounded-full bg-sea px-2.5 text-[13px] font-bold leading-6 text-white">{t.buy.mostChosen}</span>}
+      <span className="flex items-center gap-3">
+        <input type="radio" name={name} checked={checked} disabled={disabled} onChange={onSelect} className="h-[22px] w-[22px] shrink-0 accent-[var(--color-sea)]" data-testid={`offer-${o.quantity}`} />
+        <span className="relative h-12 w-12 shrink-0 overflow-hidden rounded-xl bg-sand">
+          {imageId && (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img src={`/api/img/${imageId}/128`} alt="" className="h-full w-full object-cover" loading="lazy" decoding="async" />
+          )}
+          <span aria-hidden className="absolute bottom-0.5 end-0.5 rounded-full bg-sea px-1 text-[12px] font-bold leading-[18px] text-white">
+            <span className="ltr-nums">×{o.quantity}</span>
+          </span>
         </span>
-      </span>
-      <span className="flex min-w-0 flex-1 flex-col gap-0.5">
-        <span className="flex flex-wrap items-center gap-x-2 gap-y-1">
-          <span className="text-[16px] leading-snug text-ink">{offerTitle(o, lang)}</span>
-          {pct > 0 && !disabled && (
-            <span className="rounded-full bg-deal px-2 text-[13px] font-bold leading-6 text-white">
-              <span className="ltr-nums">−{pct}%</span>
+        <span className="flex min-w-0 flex-1 flex-col gap-0.5">
+          <span className="flex flex-wrap items-center gap-x-2 gap-y-1">
+            <span className="text-[16px] font-bold leading-snug text-ink">{offerTitle(o, lang)}</span>
+            {pct > 0 && !disabled && (
+              <span className="rounded-full bg-olive-soft px-2 text-[13px] font-bold leading-6 text-olive">
+                <span className="ltr-nums">−{pct}%</span>
+              </span>
+            )}
+          </span>
+          {note && (
+            <span className="text-[14px] leading-snug text-ink-2" dir="auto">
+              <Bidi text={note} />
             </span>
           )}
-          {o.mostChosen && !disabled && <span className="rounded-full border border-sea bg-white px-2 text-[14px] font-bold leading-6 text-sea-2">{t.buy.mostChosen}</span>}
+          {disabled ? (
+            <span className="text-[14px] text-muted">{t.buy.packTooBig}</span>
+          ) : (
+            struck != null && (
+              <span className="text-[14px] leading-snug text-ink-2">{t.buy.save(formatTND(struck - o.price, lang))}</span>
+            )
+          )}
         </span>
-        {offerNote(o, lang) && <span className="text-[14px] leading-snug text-ink-2" dir="auto"><Bidi text={offerNote(o, lang)!} /></span>}
-        <span className="flex flex-wrap items-baseline gap-x-2">
-          <span className="whitespace-nowrap text-[18px] font-bold text-ink price-nums ltr-nums">{formatTND(o.price, lang)}</span>
+        <span className="flex shrink-0 flex-col items-end text-end">
           {struck != null && !disabled && (
             <>
               <span className="sr-only">{t.buy.instead(formatTND(struck, lang))}</span>
-              <span aria-hidden className="whitespace-nowrap text-[14px] text-muted line-through price-nums ltr-nums">{formatTND(struck, lang)}</span>
+              <s aria-hidden className="whitespace-nowrap text-[14px] text-muted price-nums ltr-nums">
+                {formatTND(struck, lang)}
+              </s>
             </>
           )}
+          <span className="whitespace-nowrap text-[18px] font-extrabold text-ink price-nums ltr-nums">{formatTND(o.price, lang)}</span>
         </span>
-        {disabled ? (
-          <span className="text-[14px] text-muted">{t.buy.packTooBig}</span>
-        ) : (
-          (o.freeDelivery || o.lastDay) && (
-            <span className="flex flex-wrap items-center gap-x-2 text-[14px]">
-              {o.freeDelivery && (
-                <span className="inline-flex items-center gap-1 font-bold text-olive">
-                  <IconTruck className="h-4 w-4" />
-                  {t.buy.freeDelivery}
-                </span>
-              )}
-              {o.lastDay && <span className="text-muted">{t.buy.until(formatDay(o.lastDay, locale))}</span>}
-            </span>
-          )
-        )}
       </span>
-      <input type="radio" name={name} checked={checked} disabled={disabled} onChange={onSelect} className="h-[22px] w-[22px] shrink-0 accent-[var(--color-sea)]" data-testid={`offer-${o.quantity}`} />
+      {/* Its own line under the card's texts (radio 22 + gap 12 + picture 48 + gap 12 = 94 px in), so "8,000 DT" is never cut. */}
+      {!disabled && (o.freeDelivery || o.lastDay) && (
+        <span className="flex flex-wrap items-center gap-x-3 gap-y-1 ps-[94px]">
+          {o.freeDelivery && (
+            <span className="inline-flex items-center gap-1 text-[14px] font-bold text-olive">
+              <IconTruck className="h-4 w-4 shrink-0" />
+              <span>
+                <FreeDelivery lang={lang} fee={fee} />
+              </span>
+            </span>
+          )}
+          {o.lastDay && <span className="text-[13px] text-muted">{t.buy.until(formatDay(o.lastDay, locale))}</span>}
+        </span>
+      )}
     </label>
   );
 }

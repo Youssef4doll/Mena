@@ -16,6 +16,7 @@ import { discountPct, leadOffer } from "@/lib/offer-display";
 import { deliveryRangeLabel, deliverySpan, freeOffersOf } from "@/lib/delivery";
 import { Stars } from "./Stars";
 import { Bidi } from "./Bidi";
+import { FreeDelivery } from "./FreeDelivery";
 import { Gallery, slidesOf } from "./Gallery";
 import { BuyBox, useBuyChoice, type BuyChoice } from "./BuyBox";
 import { useOrderDraft } from "./OrderForm";
@@ -458,7 +459,15 @@ function DeliveryLine({ lang, settings, free, price }: { lang: Lang; settings: P
     <p className="flex items-start gap-2 text-[16px] text-ink-2" data-testid="delivery-line">
       <IconTruck className="mt-0.5 h-5 w-5 shrink-0 text-sea" />
       <span>
-        {isFree ? <strong className="text-olive">{t.buy.freeDelivery}</strong> : <>{t.buy.delivery} <span className="price-nums ltr-nums">{formatTND(fee, lang)}</span></>}
+        {isFree ? (
+          <strong className="text-olive">
+            <FreeDelivery lang={lang} fee={fee} />
+          </strong>
+        ) : (
+          <>
+            {t.buy.delivery} <span className="price-nums ltr-nums">{formatTND(fee, lang)}</span>
+          </>
+        )}
       </span>
     </p>
   );

@@ -124,6 +124,10 @@ export const fr = {
     save: (amount: string) => `Vous économisez ${amount}`,
     instead: (amount: string) => `au lieu de ${amount}`,
     freeDelivery: "Livraison offerte",
+    /** "Livraison ~~8,000 DT~~ offerte": the fee the shop charges otherwise, struck through, between these two words. */
+    freeBefore: "Livraison",
+    freeAfter: "offerte",
+    freeInstead: (fee: string) => `Livraison offerte au lieu de ${fee}`,
     mostChosen: "Le plus choisi",
     until: (date: string) => `Jusqu'au ${date}`,
     quantity: "Quantité",
