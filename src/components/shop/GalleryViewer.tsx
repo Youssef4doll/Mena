@@ -154,7 +154,7 @@ export function GalleryViewer({ images, start, name, lang, onClose }: { images: 
                 onClick={(e) => e.detail === 0 && toggleZoom()}
                 aria-label={`${t.product.zoomIn} — ${t.product.photo(n + 1, images.length)}`}
               >
-                <Image src={`/api/img/${img.id}`} alt={img.alt ?? name} fill sizes="100vw" className="object-contain p-2" priority={n === start} />
+                <Image src={`/api/img/${img.id}`} alt={img.alt ?? name} fill sizes="100vw" className="object-contain p-2" {...(n === start ? { loading: "eager" as const, fetchPriority: "high" as const } : {})} />
               </button>
             )}
           </div>

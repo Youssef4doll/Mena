@@ -83,7 +83,7 @@ export function Header({ lang, categories, announcement, phone }: { lang: Lang; 
           <button ref={openBtn} type="button" onClick={() => setMenu(true)} className="-ms-1.5 flex h-11 w-11 items-center justify-center rounded-full text-ink hover:bg-sand" aria-label={t.nav.menu}>
             <IconMenu className="h-6 w-6" />
           </button>
-          <Link href={href(lang, "/")} className="flex items-center rounded-lg px-0.5 py-1" aria-label="Mena">
+          <Link href={href(lang, "/")} className="flex min-h-12 items-center rounded-lg px-0.5" aria-label="Mena">
             <Logo />
           </Link>
           <div className={`order-last w-full md:order-none md:ms-4 md:w-auto md:flex-1 ${compact ? "max-md:hidden" : ""}`}>
@@ -251,7 +251,7 @@ function CartLink({ lang }: { lang: Lang }) {
   const t = dict(lang);
   const n = cartCount(useCart());
   return (
-    <Link href={href(lang, "/panier")} className="relative flex h-11 items-center gap-1 rounded-full px-1.5 text-ink hover:bg-sand md:pe-3" aria-label={t.cart.open(n)} prefetch={false} data-testid="cart-link">
+    <Link href={href(lang, "/panier")} className="relative flex h-12 min-w-12 items-center justify-center gap-1 rounded-full px-1.5 text-ink hover:bg-sand md:pe-3" aria-label={t.cart.open(n)} prefetch={false} data-testid="cart-link">
       {/* The cart is drawn the same way in both languages, so the count sits over its basket on the left. */}
       <span className="relative" dir="ltr">
         <IconCart className="h-7 w-7" />

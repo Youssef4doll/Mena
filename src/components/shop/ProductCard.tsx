@@ -4,7 +4,7 @@ import { dict, href, pick, type Lang } from "@/i18n";
 import { discountPct } from "@/lib/offer-display";
 import { offerNote, offerTitle } from "@/lib/offer-label";
 import { formatTND } from "@/lib/money";
-import { Img } from "./Img";
+import { Img, type Load } from "./Img";
 import { QuickBuy } from "./QuickBuy";
 import { ListClicks } from "./ListClicks";
 import { OpeningHint } from "./OpeningHint";
@@ -27,7 +27,7 @@ import { IconGift, IconStar, IconTruck } from "./Icons";
 /** Two to a row on a phone, three on a tablet, four, then five on a laptop (the container stops at 1152 px). */
 const SIZES = "(min-width: 1280px) 220px, (min-width: 1024px) 25vw, (min-width: 640px) 33vw, 50vw";
 
-export function ProductCard({ p, lang, priority = false, className = "", compact = false, pos = 0 }: { p: Card; lang: Lang; priority?: boolean; className?: string; compact?: boolean; pos?: number }) {
+export function ProductCard({ p, lang, load = "lazy", className = "", compact = false, pos = 0, heading = "h3" }: { p: Card; lang: Lang; load?: Load; className?: string; compact?: boolean; pos?: number; heading?: "h2" | "h3" }) {
   const t = dict(lang);
   const name = pick(lang, p.name, p.nameAr);
   const out = p.stock.kind === "out";
@@ -44,11 +44,12 @@ export function ProductCard({ p, lang, priority = false, className = "", compact
             ? { cls: "text-clay", icon: null, text: t.product.low(p.stock.qty) }
             : null;
   const sold = compact ? null : p.sold;
+  const Heading = heading;
   return (
     <div className={`group row-span-4 grid grid-rows-subgrid content-start gap-y-0 ${className}`}>
       <Link href={href(lang, `/produit/${p.slug}`)} className="row-span-3 grid grid-rows-subgrid gap-y-0 rounded-2xl" data-slug={p.slug} data-pos={pos}>
         <div className="relative aspect-square overflow-hidden rounded-2xl border border-line bg-white transition-shadow duration-300 group-hover:shadow-[0_10px_28px_-16px_rgb(0_0_0/.45)]">
-          <Img image={p.images[0] ?? null} alt={p.images[0]?.alt ?? name} sizes={SIZES} priority={priority} className={`transition duration-500 group-hover:scale-[1.03] ${out ? "opacity-60 grayscale" : ""}`} />
+          <Img image={p.images[0] ?? null} alt={p.images[0]?.alt ?? name} sizes={SIZES} load={load} className={`transition duration-500 group-hover:scale-[1.03] ${out ? "opacity-60 grayscale" : ""}`} />
           {/* With a mouse only: never downloaded on a phone (not displayed there, so never loaded). */}
           {p.images[1] && (
             <div className="absolute inset-0 hidden opacity-0 transition-opacity duration-300 pointer-fine:block group-hover:opacity-100" aria-hidden>
@@ -58,7 +59,7 @@ export function ProductCard({ p, lang, priority = false, className = "", compact
           <OpeningHint />
           {(out || pct > 0) && <span className={`absolute start-2.5 top-2.5 rounded-full px-2.5 text-[14px] font-bold leading-7 text-white ${out ? "bg-ink/85" : "bg-deal"}`}>{out ? t.product.out : <span className="ltr-nums">−{pct}%</span>}</span>}
         </div>
-        <h3 className="mt-2.5 line-clamp-2 text-[16px] font-normal leading-snug text-ink underline-offset-2 group-hover:underline"><Bidi text={name} /></h3>
+        <Heading className="mt-2.5 line-clamp-2 text-[16px] font-normal leading-snug text-ink underline-offset-2 group-hover:underline"><Bidi text={name} /></Heading>
         <div className="mt-1 flex flex-col items-start gap-1">
           <span className="relative flex flex-wrap items-baseline gap-x-1.5">
             {(p.packOf || p.priceFrom) && <span className="text-[15px] text-muted">{p.packOf ? t.product.pack(p.packOf) : t.product.from}</span>}
@@ -109,13 +110,17 @@ export function ProductCard({ p, lang, priority = false, className = "", compact
   );
 }
 
-/** `list` names the list in the analytics (which product was opened from where, at which place). */
-export function ProductGrid({ products, lang, priorityFirst = 0, list = "grid", q }: { products: Card[]; lang: Lang; priorityFirst?: number; list?: string; q?: string }) {
+/**
+ * `list` names the list in the analytics (which product was opened from where, at which place). `firstScreen`: the
+ * cards on a phone's first screen; the first row (two on a phone) is the page's main picture, the rest load at once.
+ * The names are headings under the page's title (h2), with no section title between.
+ */
+export function ProductGrid({ products, lang, firstScreen = 0, list = "grid", q }: { products: Card[]; lang: Lang; firstScreen?: number; list?: string; q?: string }) {
   return (
     <ListClicks list={list} q={q}>
       <div className="grid grid-cols-2 gap-x-3 gap-y-8 sm:grid-cols-3 lg:grid-cols-4 lg:gap-x-5 xl:grid-cols-5">
         {products.map((p, i) => (
-          <ProductCard key={p.id} p={p} lang={lang} priority={i < priorityFirst} pos={i} />
+          <ProductCard key={p.id} p={p} lang={lang} load={i < Math.min(2, firstScreen) ? "lcp" : i < firstScreen ? "eager" : "lazy"} pos={i} heading="h2" />
         ))}
       </div>
     </ListClicks>

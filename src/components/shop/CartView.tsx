@@ -21,7 +21,8 @@ const readSearch = () => location.search;
  * out, an offer that ended) leaves the basket with a sentence saying so,
  * before anything is ordered.
  */
-export function CartView({ lang, settings }: { lang: Lang; settings: PublicSettings }) {
+/** `suggestions`: products drawn by the server, shown under an empty basket. */
+export function CartView({ lang, settings, suggestions }: { lang: Lang; settings: PublicSettings; suggestions?: React.ReactNode }) {
   const t = dict(lang);
   const items = useCart();
   const hydrated = useHydrated();
@@ -132,6 +133,7 @@ export function CartView({ lang, settings }: { lang: Lang; settings: PublicSetti
             </Link>
           </div>
         )}
+        {hydrated && suggestions}
       </div>
     );
 

@@ -387,7 +387,7 @@ export function OrderForm(props: Props) {
       {/* The four fields in one card: its title, then each field with its name and a star when it is needed.
           Where the form already sits in a sheet (quick buy, the product page's order sheet) or a framed panel (the basket from tablet width), the card does not draw a second frame. */}
       <section className={origin === "quick" || origin === "sheet" ? "border-t border-line pt-5" : origin === "cart" ? `${CARD} md:rounded-none md:border-0 md:p-0 md:shadow-none` : `${CARD} @md:p-5`} aria-labelledby={id("info-title")}>
-        <h3 id={id("info-title")} className="text-[17px] font-bold leading-tight text-ink">{t.buy.deliveryInfo}</h3>
+        <h2 id={id("info-title")} className="text-[17px] font-bold leading-tight text-ink">{t.buy.deliveryInfo}</h2>
         {/* On a phone: the name and the address, long, each on its own line; the phone and the governorate, short, side by side
             (the phone's column a little wider, so the eight digits after +216 fit on a 360 px screen). Two by two once the form is wide. */}
         <fieldset className="mt-3 grid min-w-0 items-start gap-x-2.5 gap-y-3 @2xs:grid-cols-[minmax(0,1.15fr)_minmax(0,1fr)]" onClick={start} onKeyDown={start}>
