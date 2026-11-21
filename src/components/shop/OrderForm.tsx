@@ -425,7 +425,7 @@ export function OrderForm(props: Props) {
           </Field>
         </fieldset>
         {/* The summary in the same card as the fields (the owner's choice): what is typed and what it costs, read together. */}
-        <dl className="mt-4 flex flex-col gap-2 rounded-2xl bg-sand/70 p-4 text-[15px]" data-testid="summary">
+        <dl className="mt-4 flex flex-col gap-2 rounded-2xl bg-sand/70 p-4 text-[15px]" data-testid="order-summary">
           <div className="flex justify-between gap-3 text-ink-2">
             <dt>{props.priceLabel}</dt>
             <dd className="shrink-0 whitespace-nowrap price-nums ltr-nums">{waiting ? <span className="text-muted">{t.cart.loading}</span> : formatTND(price, lang)}</dd>
