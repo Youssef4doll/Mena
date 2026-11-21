@@ -112,15 +112,16 @@ export function ProductCard({ p, lang, load = "lazy", className = "", compact = 
 
 /**
  * `list` names the list in the analytics (which product was opened from where, at which place). `firstScreen`: the
- * cards on a phone's first screen; the first row (two on a phone) is the page's main picture, the rest load at once.
- * The names are headings under the page's title (h2), with no section title between.
+ * cards on a phone's first screen, loaded at once. `lead`: those of them that are the page's main picture, fetched
+ * before anything else (none under a category's banner, which is the main picture there). The names are headings
+ * under the page's title (h2), with no section title between.
  */
-export function ProductGrid({ products, lang, firstScreen = 0, list = "grid", q }: { products: Card[]; lang: Lang; firstScreen?: number; list?: string; q?: string }) {
+export function ProductGrid({ products, lang, firstScreen = 0, lead = 0, list = "grid", q }: { products: Card[]; lang: Lang; firstScreen?: number; lead?: number; list?: string; q?: string }) {
   return (
     <ListClicks list={list} q={q}>
       <div className="grid grid-cols-2 gap-x-3 gap-y-8 sm:grid-cols-3 lg:grid-cols-4 lg:gap-x-5 xl:grid-cols-5">
         {products.map((p, i) => (
-          <ProductCard key={p.id} p={p} lang={lang} load={i < Math.min(2, firstScreen) ? "lcp" : i < firstScreen ? "eager" : "lazy"} pos={i} heading="h2" />
+          <ProductCard key={p.id} p={p} lang={lang} load={i < lead ? "lcp" : i < firstScreen ? "eager" : "lazy"} pos={i} heading="h2" />
         ))}
       </div>
     </ListClicks>

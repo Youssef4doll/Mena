@@ -19,9 +19,9 @@ export function Listing({ lang, title, path, sort, products, emptyText, banner }
         {banner ? (
           <div className="relative -mx-4 overflow-hidden px-4 py-7 md:mx-0 md:flex-1 md:rounded-2xl md:px-7 md:py-9">
             {banner.image ? (
-              // Blurred this much, a small file looks the same as a large one, and it is the first picture on a phone.
+              // Blurred this much, a small file looks the same as a large one: a few KB, there before the styles are.
               // eslint-disable-next-line @next/next/no-img-element
-              <img src={`/api/img/${banner.image}/200`} alt="" aria-hidden fetchPriority="high" decoding="async" className="absolute inset-0 h-full w-full scale-110 object-cover opacity-70 blur-2xl" />
+              <img src={`/api/img/${banner.image}/200`} alt="" aria-hidden decoding="async" className="absolute inset-0 h-full w-full scale-110 object-cover opacity-70 blur-2xl" />
             ) : (
               <WarmBlur />
             )}
@@ -64,7 +64,7 @@ export function Listing({ lang, title, path, sort, products, emptyText, banner }
           )}
         </div>
       ) : (
-        <ProductGrid products={products} lang={lang} firstScreen={4} list={path === "/boutique" ? "shop" : "category"} />
+        <ProductGrid products={products} lang={lang} firstScreen={4} lead={banner?.image ? 0 : 2} list={path === "/boutique" ? "shop" : "category"} />
       )}
     </div>
   );

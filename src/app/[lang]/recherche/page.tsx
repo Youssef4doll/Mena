@@ -54,7 +54,7 @@ export default async function SearchRoute({ params, searchParams }: PageProps<"/
               {corrected ? <p className="mb-4 mt-1 text-[16px] text-muted">{t.search.typed(q)}</p> : <div className="mb-4" />}
             </>
           )}
-          <ProductGrid products={results} lang={lang} firstScreen={4} list="search" q={q} />
+          <ProductGrid products={results} lang={lang} firstScreen={4} lead={2} list="search" q={q} />
         </>
       )}
       {empty && (
