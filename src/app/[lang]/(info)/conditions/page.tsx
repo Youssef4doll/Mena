@@ -20,7 +20,7 @@ export default async function TermsRoute({ params }: PageProps<"/[lang]/conditio
   if (!isLang(lang)) notFound();
   const [s, freeOffers] = await Promise.all([getSettings(), hasFreeDeliveryOffers()]);
   const shop = s.shop;
-  const freeAr = s.delivery.fee > 0 && freeOffers ? "، ومجاني في العروض اللي مكتوب عليها «التوصيل مجاني»" : "";
+  const freeAr = s.delivery.fee > 0 && freeOffers ? "، ومجاني في العروض اللي مكتوب عليها «توصيل مجاني»" : "";
   const freeFr = s.delivery.fee > 0 && freeOffers ? ", offerte sur les offres marquées « Livraison offerte »" : "";
   const phone = shop.phone ? formatPhone(normalizePhone(shop.phone) || shop.phone) : "";
   if (lang === "ar")

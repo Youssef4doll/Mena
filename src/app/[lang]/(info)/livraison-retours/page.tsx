@@ -54,7 +54,7 @@ export default async function DeliveryRoute({ params }: PageProps<"/[lang]/livra
           <p className="text-[16px] text-muted">{t.product.deliveryFee}</p>
           <p className="mt-1 whitespace-nowrap text-[30px] font-bold leading-none text-ink price-nums ltr-nums">{s.delivery.fee === 0 ? t.product.free : formatTND(s.delivery.fee, lang)}</p>
           <p className="mt-2 text-[16px] text-ink-2">{everywhere ? (ar ? "نفس السوم لكل الولايات" : "Le même prix dans tous les gouvernorats") : ar ? "نفس السوم لكل الولايات اللي نوصلولها" : "Le même prix dans tous les gouvernorats desservis"}</p>
-          {s.delivery.fee > 0 && freeOffers && <p className="mt-1 text-[16px] font-bold text-olive">{ar ? "ومجاني في العروض اللي مكتوب عليها «التوصيل مجاني»" : "Offerte sur les offres marquées « Livraison offerte »"}</p>}
+          {s.delivery.fee > 0 && freeOffers && <p className="mt-1 text-[16px] font-bold text-olive">{ar ? "ومجاني في العروض اللي مكتوب عليها «توصيل مجاني»" : "Offerte sur les offres marquées « Livraison offerte »"}</p>}
           {s.delivery.freeThreshold != null && <p className="mt-1 text-[16px] font-bold text-olive">{t.product.freeFrom(formatTND(s.delivery.freeThreshold, lang))}</p>}
         </div>
         <div className="flex flex-col gap-3 border-t border-line px-5 py-4 text-[16px] leading-snug text-ink-2">

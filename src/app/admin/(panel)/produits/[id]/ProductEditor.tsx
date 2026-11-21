@@ -555,7 +555,25 @@ function Form({ id, version, nextId, initial, images, categories, suppliers, sho
                     <label className={label}>Dernier jour (facultatif)<input type="date" className={input} value={o.endsOn} onChange={(e) => setO({ endsOn: e.target.value })} /></label>
                   </div>
                   <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm">
-                    <label className="flex items-center gap-1.5"><input type="checkbox" checked={o.freeDelivery} onChange={(e) => setO({ freeDelivery: e.target.checked })} />Livraison offerte</label>
+                    {/* One tap: the shop then shows "Livraison ~~8,000 DT~~ offerte" (توصيل مجاني in Arabic) on this offer. */}
+                    <button
+                      type="button"
+                      aria-pressed={o.freeDelivery}
+                      onClick={() => setO({ freeDelivery: !o.freeDelivery })}
+                      className={`inline-flex min-h-9 items-center gap-1.5 rounded-full border px-3 text-sm font-medium transition ${o.freeDelivery ? "border-olive bg-olive-soft text-olive" : "border-line bg-white text-ink-2 hover:border-olive/60"}`}
+                      data-testid={`offer-free-${i}`}
+                    >
+                      <span aria-hidden>{o.freeDelivery ? "✓" : "+"}</span>
+                      Livraison offerte · <span lang="ar" dir="rtl">توصيل مجاني</span>
+                    </button>
+                    {o.freeDelivery && shipping.fee > 0 && (
+                      <span className="text-xs text-muted">
+                        Affiché : Livraison <s>{formatTND(shipping.fee)}</s> offerte
+                      </span>
+                    )}
+                    {/livraison\s+(gratuite|offerte)|توصيل\s+(مجاني|بلاش)|التوصيل\s+(مجاني|بلاش)/i.test(`${o.label} ${o.labelAr}`) && (
+                      <span className="basis-full text-xs text-[#8a5a00]">Le nom de l&apos;offre parle déjà de livraison : utilisez plutôt le bouton « Livraison offerte » et gardez un nom court (« 1 unité »), sinon la boutique l&apos;écrit deux fois.</span>
+                    )}
                     <label className="flex items-center gap-1.5"><input type="checkbox" checked={o.active} onChange={(e) => setO({ active: e.target.checked })} />Active</label>
                     {total != null && total > 0 && q != null && (
                       <span className="text-muted">

@@ -15,7 +15,6 @@ import { formatPhone, normalizePhone } from "@/lib/phone";
 import { removeOrdered } from "@/lib/client/cart";
 import { GOVERNORATES, governorateLabel } from "@/lib/governorates";
 import { deliveryRangeLabel } from "@/lib/delivery";
-import Link from "next/link";
 import { IconCartPlus, IconChevronDown, IconPhone, IconShield, IconTruck, IconWhatsApp } from "./Icons";
 
 export type OrderLine = { productId: string; variantId: string | null; offerId: string | null; qty: number };
@@ -425,13 +424,52 @@ export function OrderForm(props: Props) {
             </Boxed>
           </Field>
         </fieldset>
-        {/* Said where the number is typed, not only in the privacy page: it is kept as soon as it is typed (see /api/cart). */}
-        <p className="mt-2 text-[14px] leading-snug text-muted">
-          {t.buy.phoneUse}{" "}
-          <Link href={href(lang, "/confidentialite")} className="underline underline-offset-2" prefetch={false}>
-            {t.buy.privacyLink}
-          </Link>
-        </p>
+        {/* The summary in the same card as the fields (the owner's choice): what is typed and what it costs, read together. */}
+        <dl className="mt-4 flex flex-col gap-2 rounded-2xl bg-sand/70 p-4 text-[15px]" data-testid="summary">
+          <div className="flex justify-between gap-3 text-ink-2">
+            <dt>{props.priceLabel}</dt>
+            <dd className="shrink-0 whitespace-nowrap price-nums ltr-nums">{waiting ? <span className="text-muted">{t.cart.loading}</span> : formatTND(price, lang)}</dd>
+          </div>
+          {discount > 0 && (
+            <div className="flex justify-between gap-3 text-olive">
+              <dt>{t.checkout.discount}</dt>
+              <dd className="shrink-0 whitespace-nowrap price-nums ltr-nums">−{formatTND(discount, lang)}</dd>
+            </div>
+          )}
+          <div className="flex justify-between gap-3 text-ink-2">
+            <dt>{t.buy.delivery}</dt>
+            <dd className="shrink-0 whitespace-nowrap price-nums ltr-nums">{freeKnown ? (
+                // The fee it saves, struck through, then "Offerte": the shop's one fee, a real figure.
+                <>
+                  {fee > 0 && (
+                    <>
+                      <span className="sr-only">{t.buy.instead(formatTND(fee, lang))}</span>
+                      <s aria-hidden className="me-1.5 text-muted">{formatTND(fee, lang)}</s>
+                    </>
+                  )}
+                  <span className="font-bold text-olive">{t.product.free}</span>
+                </>
+              ) : (
+                formatTND(deliveryShown, lang)
+              )}</dd>
+          </div>
+          <div className="flex items-baseline justify-between gap-3 border-t border-line pt-3">
+            <dt className="text-[17px] font-bold text-ink">{t.buy.total}</dt>
+            <dd className="shrink-0 whitespace-nowrap text-end text-[21px] font-extrabold text-sea" data-testid="total">
+              {waiting ? (
+                <span className="text-[17px] font-normal text-muted">{t.cart.loading}</span>
+              ) : (
+                <>
+                  {props.priceVaries && !priced && <span className="text-[15px] font-normal text-muted">{t.product.from} </span>}
+                  <span className="price-nums ltr-nums">{formatTND(total, lang)}</span>
+                </>
+              )}
+            </dd>
+          </div>
+          {quote?.deliveryUnavailable && <p className="text-[15px] text-danger">{t.checkout.errors.delivery_unavailable}</p>}
+          {quote?.delivery && f.governorate && <p className="text-[14px] text-muted" data-testid="delivery-delay">{t.buy.deliveryTo(governorateLabel(f.governorate, lang), deliveryRangeLabel(quote.delivery.minDays, quote.delivery.maxDays, lang))}</p>}
+          {!freeKnown && threshold != null && <p className="text-[15px] text-muted">{t.product.freeFrom(formatTND(threshold, lang))}</p>}
+        </dl>
       </section>
 
       {/* ------------------------------------------------ promo code: a quiet link until it is wanted */}
@@ -476,39 +514,6 @@ export function OrderForm(props: Props) {
       )}
       {promo && promoError && <p className="-mt-2 text-[15px] text-danger">{promoError}</p>}
 
-      {/* ------------------------------------------------ summary: its own soft card, the total in the shop's blue */}
-      <dl className="flex flex-col gap-2 rounded-[24px] bg-sand/70 p-4 text-[15px] @md:px-5">
-        <div className="flex justify-between gap-3 text-ink-2">
-          <dt>{props.priceLabel}</dt>
-          <dd className="shrink-0 whitespace-nowrap price-nums ltr-nums">{waiting ? <span className="text-muted">{t.cart.loading}</span> : formatTND(price, lang)}</dd>
-        </div>
-        {discount > 0 && (
-          <div className="flex justify-between gap-3 text-olive">
-            <dt>{t.checkout.discount}</dt>
-            <dd className="shrink-0 whitespace-nowrap price-nums ltr-nums">−{formatTND(discount, lang)}</dd>
-          </div>
-        )}
-        <div className="flex justify-between gap-3 text-ink-2">
-          <dt>{t.buy.delivery}</dt>
-          <dd className="shrink-0 whitespace-nowrap price-nums ltr-nums">{freeKnown ? <span className="font-bold text-olive">{t.product.free}</span> : formatTND(deliveryShown, lang)}</dd>
-        </div>
-        <div className="flex items-baseline justify-between gap-3 border-t border-line pt-3">
-          <dt className="text-[17px] font-bold text-ink">{t.buy.total}</dt>
-          <dd className="shrink-0 whitespace-nowrap text-end text-[21px] font-extrabold text-sea" data-testid="total">
-            {waiting ? (
-              <span className="text-[17px] font-normal text-muted">{t.cart.loading}</span>
-            ) : (
-              <>
-                {props.priceVaries && !priced && <span className="text-[15px] font-normal text-muted">{t.product.from} </span>}
-                <span className="price-nums ltr-nums">{formatTND(total, lang)}</span>
-              </>
-            )}
-          </dd>
-        </div>
-        {quote?.deliveryUnavailable && <p className="text-[15px] text-danger">{t.checkout.errors.delivery_unavailable}</p>}
-        {quote?.delivery && f.governorate && <p className="text-[14px] text-muted" data-testid="delivery-delay">{t.buy.deliveryTo(governorateLabel(f.governorate, lang), deliveryRangeLabel(quote.delivery.minDays, quote.delivery.maxDays, lang))}</p>}
-        {!freeKnown && threshold != null && <p className="text-[15px] text-muted">{t.product.freeFrom(formatTND(threshold, lang))}</p>}
-      </dl>
 
       {error && (
         <p className="rounded-xl bg-clay-soft px-4 py-3 text-[16px] text-clay" role="alert">

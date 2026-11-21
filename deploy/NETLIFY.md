@@ -68,9 +68,24 @@ Update the Instagram bio link, the Meta ads' destination URL, Meta Business →
 Brand safety → Domains (verify the new address), Google Search Console (add
 the new address), and Konnect if a callback address is typed in its dashboard.
 
-Later, once: a domain of your own (about 30 to 40 TND a year) connected in
-Netlify → Domain management. Then the address never changes again, whatever the
-host.
+## The shop's own domain: menatn.store
+
+The domain is connected in Netlify → Domain management. The shop takes its
+address from Netlify (the primary domain), at each build:
+
+1. In **Domain management**, `menatn.store` must be the **Primary domain**
+   (`www.menatn.store` and `menatn.netlify.app` then send visitors to it).
+2. In **Environment variables**, `NEXT_PUBLIC_SITE_URL` should not be set. If it
+   is, set it to `https://menatn.store` (an old `…netlify.app` or `…vercel.app`
+   value is ignored by the build anyway).
+3. **Publish once** after the domain is connected (merge `main` into `live`):
+   until that build, the pages still name the old address and send visitors
+   back to it.
+
+Then: Meta Business → Brand safety → Domains (verify `menatn.store`), the
+Instagram bio link and the ads' destination URL, Google Search Console (add
+`menatn.store` and its sitemap `https://menatn.store/sitemap.xml`), and Konnect
+if a callback address is typed in its dashboard.
 
 When Vercel's pause ends (12 December), `menatn.vercel.app` can send old links
 to the new address: in Vercel set `NEXT_PUBLIC_SITE_URL` to the new address and
