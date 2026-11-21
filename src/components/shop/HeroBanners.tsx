@@ -16,7 +16,7 @@ const EVERY_MS = 5000;
 /** One banner: its picture, and its link when it has one. The first one is the page's main picture, loaded first. */
 function Slide({ b, first, bleed }: { b: Banner; first: boolean; bleed: boolean }) {
   const BOX_ = bleed ? BLEED : BOX;
-  const pic = <Img image={{ id: b.imageId, blur: null, width: 1600, height: 700 }} alt={b.alt} sizes={bleed ? "100vw" : "(min-width: 1152px) 1120px, 100vw"} priority={first} />;
+  const pic = <Img image={{ id: b.imageId, blur: null, width: 1600, height: 700 }} alt={b.alt} sizes={bleed ? "100vw" : "(min-width: 1152px) 1120px, 100vw"} load={first ? "lcp" : "lazy"} />;
   if (!b.href) return <div className={BOX_}>{pic}</div>;
   if (b.external)
     return (
